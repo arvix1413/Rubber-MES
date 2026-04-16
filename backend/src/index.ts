@@ -18,6 +18,7 @@ app.use('/api/*', cors({
 
 app.use('/api/*', async (_c, next) => {
   await ensureShipmentReconciliationTables()
+  await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
   await ensureSoftDeleteColumns()
   await next()
@@ -257,6 +258,86 @@ const ensureShipmentReconciliationTables = async () => {
   await ensureShipmentReconciliationTablesPromise
 }
 
+let ensureInvoiceTablesPromise: Promise<void> | null = null
+const ensureInvoiceTables = async () => {
+  if (!ensureInvoiceTablesPromise) {
+    ensureInvoiceTablesPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await execute(`
+        CREATE TABLE IF NOT EXISTS invoice_headers (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          invoice_no VARCHAR(100) NOT NULL UNIQUE,
+          invoice_type VARCHAR(50) NOT NULL DEFAULT 'customer',
+          invoice_date DATE,
+          status VARCHAR(50) NOT NULL DEFAULT 'draft',
+          party_id INT NULL,
+          party_name VARCHAR(255),
+          currency VARCHAR(20) DEFAULT 'VND',
+          total_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          tax_rate DECIMAL(8,4) NOT NULL DEFAULT 0,
+          tax_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          grand_total DECIMAL(15,2) NOT NULL DEFAULT 0,
+          payment_status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          received_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          payment_date DATE NULL,
+          payment_note TEXT,
+          remark TEXT,
+          created_by INT,
+          confirmed_by INT,
+          confirmed_at DATETIME NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_invoice_type_status (invoice_type, status)
+        )
+      `)
+      await execute(`
+        CREATE TABLE IF NOT EXISTS invoice_items (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          invoice_id INT NOT NULL,
+          reconciliation_id INT NULL,
+          reconciliation_item_id INT NULL,
+          customer_order_id INT NULL,
+          order_item_id INT NULL,
+          po_number VARCHAR(100),
+          delivery_note_id INT NULL,
+          delivery_note_item_id INT NULL,
+          material_code VARCHAR(100),
+          material_name VARCHAR(255),
+          spec TEXT,
+          unit VARCHAR(50) DEFAULT 'PCS',
+          qty DECIMAL(15,4) NOT NULL DEFAULT 0,
+          unit_price DECIMAL(15,2) NOT NULL DEFAULT 0,
+          amount DECIMAL(15,2) NOT NULL DEFAULT 0,
+          supplier_id INT NULL,
+          supplier_name VARCHAR(255),
+          customer_id INT NULL,
+          customer_name VARCHAR(255),
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_invoice_item_invoice_id (invoice_id),
+          INDEX idx_invoice_item_reconcile_item (reconciliation_item_id),
+          CONSTRAINT fk_invoice_items_header FOREIGN KEY (invoice_id) REFERENCES invoice_headers(id) ON DELETE CASCADE
+        )
+      `)
+      await alterSafe("ALTER TABLE invoice_headers ADD COLUMN payment_status VARCHAR(50) NOT NULL DEFAULT 'pending'")
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN received_amount DECIMAL(15,2) NOT NULL DEFAULT 0')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN payment_date DATE NULL')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN payment_note TEXT')
+    })().catch((e) => {
+      ensureInvoiceTablesPromise = null
+      throw e
+    })
+  }
+  await ensureInvoiceTablesPromise
+}
+
 const SOFT_DELETE_TABLES = [
   'suppliers',
   'customers',
@@ -275,6 +356,8 @@ const SOFT_DELETE_TABLES = [
   'order_profit_entries',
   'shipment_reconciliations',
   'shipment_reconciliation_items',
+  'invoice_headers',
+  'invoice_items',
 ] as const
 
 let ensureSoftDeleteColumnsPromise: Promise<void> | null = null
@@ -312,6 +395,12 @@ const toQty = (value: any): number => {
   const num = Number(value)
   if (!Number.isFinite(num)) return 0
   return Math.round(num * 10000) / 10000
+}
+
+const toMoney = (value: any): number => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return 0
+  return Math.round(num * 100) / 100
 }
 
 const resolveOrderItemId = async (customerOrderId: any, materialCode: any): Promise<number | null> => {
@@ -1831,6 +1920,303 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('deliv
   }
 })
 
+const getInvoicedQtyByReconciliationItem = async (reconciliationItemId: number, invoiceType: string): Promise<number> => {
+  const row = await queryOne<any>(`
+    SELECT COALESCE(SUM(ii.qty), 0) as qty
+    FROM invoice_items ii
+    JOIN invoice_headers ih ON ih.id = ii.invoice_id
+    WHERE ii.reconciliation_item_id = ?
+      AND ih.invoice_type = ?
+      AND ih.status = 'confirmed'
+      AND ih.deleted_at IS NULL
+      AND ii.deleted_at IS NULL
+  `, [reconciliationItemId, invoiceType])
+  return toQty(row?.qty || 0)
+}
+
+app.get('/api/invoices/pending-items', authMiddleware, async c => {
+  try {
+    const invoiceType = (c.req.query('type') || 'customer').trim() === 'supplier' ? 'supplier' : 'customer'
+    const rows = await query<any>(`
+      SELECT
+        sri.id as reconciliation_item_id,
+        sri.reconciliation_id,
+        sri.delivery_note_id,
+        sri.delivery_note_item_id,
+        sri.customer_order_id,
+        sri.order_item_id,
+        sri.po_number,
+        sri.material_code,
+        sri.material_name,
+        sri.unit,
+        sri.accepted_qty,
+        sri.supplier_id,
+        sri.supplier_name,
+        sr.reconciliation_no,
+        sr.reconcile_date,
+        co.customer_id,
+        co.customer_name,
+        COALESCE(ci.unit_price, 0) as customer_unit_price,
+        COALESCE(b.supplier_price, 0) as supplier_unit_price
+      FROM shipment_reconciliation_items sri
+      JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+      LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN customer_order_items ci ON ci.id = sri.order_item_id
+      LEFT JOIN bom b ON b.product_sku = sri.material_code AND b.deleted_at IS NULL
+      WHERE sr.status = 'confirmed'
+        AND sr.deleted_at IS NULL
+        AND sri.deleted_at IS NULL
+      ORDER BY sr.confirmed_at DESC, sri.id ASC
+      LIMIT 2000
+    `)
+
+    const pending: any[] = []
+    for (const row of rows) {
+      const acceptedQty = toQty(row.accepted_qty)
+      const invoicedQty = await getInvoicedQtyByReconciliationItem(Number(row.reconciliation_item_id), invoiceType)
+      const remainingQty = toQty(Math.max(0, acceptedQty - invoicedQty))
+      if (remainingQty <= 0) continue
+      const unitPrice = invoiceType === 'supplier' ? toMoney(row.supplier_unit_price) : toMoney(row.customer_unit_price)
+      pending.push({
+        reconciliation_item_id: Number(row.reconciliation_item_id),
+        reconciliation_id: Number(row.reconciliation_id),
+        reconciliation_no: row.reconciliation_no,
+        reconcile_date: row.reconcile_date,
+        customer_order_id: row.customer_order_id ? Number(row.customer_order_id) : null,
+        order_item_id: row.order_item_id ? Number(row.order_item_id) : null,
+        po_number: row.po_number || '',
+        delivery_note_id: row.delivery_note_id ? Number(row.delivery_note_id) : null,
+        delivery_note_item_id: row.delivery_note_item_id ? Number(row.delivery_note_item_id) : null,
+        material_code: row.material_code || '',
+        material_name: row.material_name || '',
+        unit: row.unit || 'PCS',
+        accepted_qty: acceptedQty,
+        invoiced_qty: invoicedQty,
+        remaining_qty: remainingQty,
+        supplier_id: row.supplier_id ? Number(row.supplier_id) : null,
+        supplier_name: row.supplier_name || '',
+        customer_id: row.customer_id ? Number(row.customer_id) : null,
+        customer_name: row.customer_name || '',
+        unit_price: unitPrice,
+      })
+    }
+    return c.json(pending)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.get('/api/invoices', authMiddleware, async c => {
+  try {
+    const invoiceType = (c.req.query('type') || '').trim()
+    const where: string[] = ['ih.deleted_at IS NULL']
+    const params: any[] = []
+    if (invoiceType) { where.push('ih.invoice_type=?'); params.push(invoiceType) }
+    const rows = await query<any>(`
+      SELECT
+        ih.*,
+        uc.name as created_by_name,
+        ucf.name as confirmed_by_name,
+        COUNT(ii.id) as item_count,
+        COALESCE(SUM(ii.qty), 0) as total_qty
+      FROM invoice_headers ih
+      LEFT JOIN invoice_items ii ON ii.invoice_id = ih.id AND ii.deleted_at IS NULL
+      LEFT JOIN users uc ON uc.id = ih.created_by
+      LEFT JOIN users ucf ON ucf.id = ih.confirmed_by
+      WHERE ${where.join(' AND ')}
+      GROUP BY ih.id
+      ORDER BY ih.created_at DESC
+      LIMIT 1000
+    `, params.length ? params : undefined)
+    return c.json(rows.map((r: any) => ({ ...r, total_qty: toQty(r.total_qty) })))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.get('/api/invoices/:id', authMiddleware, async c => {
+  const id = c.req.param('id')
+  const header = await queryOne<any>('SELECT * FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+  if (!header) return c.json({ error: 'Not found' }, 404)
+  const items = await query<any>(`
+    SELECT *
+    FROM invoice_items
+    WHERE invoice_id=? AND deleted_at IS NULL
+    ORDER BY id ASC
+  `, [id])
+  return c.json({
+    ...header,
+    items: items.map((it: any) => ({ ...it, qty: toQty(it.qty), unit_price: toMoney(it.unit_price), amount: toMoney(it.amount) })),
+  })
+})
+
+app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const b = await c.req.json()
+    const invoiceType = String(b?.invoice_type || 'customer').trim() === 'supplier' ? 'supplier' : 'customer'
+    const items = Array.isArray(b?.items) ? b.items : []
+    if (!items.length) return c.json({ error: 'items required' }, 400)
+
+    let partyId: number | null = null
+    let partyName = ''
+    let totalAmount = 0
+    const validatedItems: any[] = []
+    for (const item of items) {
+      const reconciliationItemId = Number(item?.reconciliation_item_id || 0)
+      if (!reconciliationItemId) continue
+      const pendingRows = await query<any>(`SELECT * FROM shipment_reconciliation_items WHERE id=? AND deleted_at IS NULL`, [reconciliationItemId])
+      const source = pendingRows[0]
+      if (!source) continue
+      const acceptedQty = toQty(source.accepted_qty)
+      const alreadyInvoicedQty = await getInvoicedQtyByReconciliationItem(reconciliationItemId, invoiceType)
+      const remainingQty = toQty(Math.max(0, acceptedQty - alreadyInvoicedQty))
+      let qty = toQty(item?.qty)
+      if (qty <= 0) continue
+      if (qty > remainingQty) qty = remainingQty
+      if (qty <= 0) continue
+
+      const customer = await queryOne<any>('SELECT customer_id, customer_name FROM customer_orders WHERE id=? AND deleted_at IS NULL', [source.customer_order_id])
+      const supplier = source.supplier_id ? await queryOne<any>('SELECT id, name FROM suppliers WHERE id=? AND deleted_at IS NULL', [source.supplier_id]) : null
+      const coItem = source.order_item_id ? await queryOne<any>('SELECT unit_price FROM customer_order_items WHERE id=?', [source.order_item_id]) : null
+      const bom = source.material_code ? await queryOne<any>('SELECT supplier_price FROM bom WHERE product_sku=? AND deleted_at IS NULL', [source.material_code]) : null
+      const unitPrice = toMoney(item?.unit_price === undefined ? (invoiceType === 'supplier' ? bom?.supplier_price : coItem?.unit_price) : item?.unit_price)
+      const amount = toMoney(qty * unitPrice)
+
+      if (invoiceType === 'customer') {
+        partyId = customer?.customer_id ? Number(customer.customer_id) : partyId
+        partyName = customer?.customer_name || partyName
+      } else {
+        partyId = supplier?.id ? Number(supplier.id) : partyId
+        partyName = supplier?.name || partyName || source.supplier_name || ''
+      }
+
+      totalAmount += amount
+      validatedItems.push({
+        reconciliation_id: source.reconciliation_id,
+        reconciliation_item_id: source.id,
+        customer_order_id: source.customer_order_id,
+        order_item_id: source.order_item_id,
+        po_number: source.po_number || '',
+        delivery_note_id: source.delivery_note_id,
+        delivery_note_item_id: source.delivery_note_item_id,
+        material_code: source.material_code || '',
+        material_name: source.material_name || '',
+        spec: source.spec || '',
+        unit: source.unit || 'PCS',
+        qty,
+        unit_price: unitPrice,
+        amount,
+        supplier_id: source.supplier_id || null,
+        supplier_name: source.supplier_name || '',
+        customer_id: customer?.customer_id || null,
+        customer_name: customer?.customer_name || '',
+      })
+    }
+
+    if (!validatedItems.length) return c.json({ error: 'no valid items' }, 400)
+    const taxRate = toMoney(b?.tax_rate || 0)
+    const taxAmount = toMoney(totalAmount * (taxRate / 100))
+    const grandTotal = toMoney(totalAmount + taxAmount)
+    const prefix = invoiceType === 'supplier' ? 'SI' : 'CI'
+    const invoiceNo = `${prefix}${Date.now()}`
+
+    const r = await execute(`
+      INSERT INTO invoice_headers
+        (invoice_no, invoice_type, invoice_date, status, party_id, party_name, currency, total_amount, tax_rate, tax_amount, grand_total, remark, created_by, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `, [
+      invoiceNo, invoiceType, b?.invoice_date || null, 'draft', partyId, partyName, b?.currency || 'VND',
+      toMoney(totalAmount), taxRate, taxAmount, grandTotal, b?.remark || '', c.get('user')?.userId || null, now8(),
+    ])
+    const invoiceId = r.insertId
+
+    for (const it of validatedItems) {
+      await execute(`
+        INSERT INTO invoice_items
+          (invoice_id, reconciliation_id, reconciliation_item_id, customer_order_id, order_item_id, po_number, delivery_note_id, delivery_note_item_id,
+           material_code, material_name, spec, unit, qty, unit_price, amount, supplier_id, supplier_name, customer_id, customer_name, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `, [
+        invoiceId, it.reconciliation_id, it.reconciliation_item_id, it.customer_order_id, it.order_item_id, it.po_number,
+        it.delivery_note_id, it.delivery_note_item_id, it.material_code, it.material_name, it.spec, it.unit, it.qty, it.unit_price, it.amount,
+        it.supplier_id, it.supplier_name, it.customer_id, it.customer_name, now8(),
+      ])
+    }
+
+    await audit(c.get('user'), 'CREATE', invoiceType === 'supplier' ? '供應商發票' : '客戶發票', invoiceId, invoiceNo)
+    return c.json({ id: invoiceId, invoice_no: invoiceNo }, 201)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.put('/api/invoices/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const b = await c.req.json()
+    const header = await queryOne<any>('SELECT status FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    if (header.status !== 'draft') return c.json({ error: 'only draft invoice can be edited' }, 400)
+    await execute('UPDATE invoice_headers SET invoice_date=?, remark=?, tax_rate=? WHERE id=?', [b?.invoice_date || null, b?.remark || '', toMoney(b?.tax_rate || 0), id])
+
+    const items = Array.isArray(b?.items) ? b.items : []
+    let totalAmount = 0
+    for (const item of items) {
+      const itemId = Number(item?.id || 0)
+      if (!itemId) continue
+      const row = await queryOne<any>('SELECT id, qty, unit_price FROM invoice_items WHERE id=? AND invoice_id=? AND deleted_at IS NULL', [itemId, id])
+      if (!row) continue
+      const qty = Math.max(0, toQty(item?.qty))
+      const unitPrice = toMoney(item?.unit_price === undefined ? row.unit_price : item?.unit_price)
+      const amount = toMoney(qty * unitPrice)
+      totalAmount += amount
+      await execute('UPDATE invoice_items SET qty=?, unit_price=?, amount=? WHERE id=?', [qty, unitPrice, amount, itemId])
+    }
+
+    const latestItems = await query<any>('SELECT amount FROM invoice_items WHERE invoice_id=? AND deleted_at IS NULL', [id])
+    totalAmount = latestItems.reduce((sum: number, x: any) => sum + toMoney(x.amount), 0)
+    const latestHeader = await queryOne<any>('SELECT tax_rate FROM invoice_headers WHERE id=?', [id])
+    const taxRate = toMoney(latestHeader?.tax_rate || 0)
+    const taxAmount = toMoney(totalAmount * (taxRate / 100))
+    const grandTotal = toMoney(totalAmount + taxAmount)
+    await execute('UPDATE invoice_headers SET total_amount=?, tax_amount=?, grand_total=? WHERE id=?', [toMoney(totalAmount), taxAmount, grandTotal, id])
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const u = c.get('user')
+    const header = await queryOne<any>('SELECT id, status, invoice_type, invoice_no FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    if (header.status !== 'draft') return c.json({ error: 'already confirmed' }, 400)
+    const items = await query<any>('SELECT order_item_id, qty FROM invoice_items WHERE invoice_id=? AND deleted_at IS NULL', [id])
+    if (!items.length) return c.json({ error: 'no items' }, 400)
+
+    if (header.invoice_type === 'customer') {
+      for (const item of items) {
+        const orderItemId = Number(item.order_item_id || 0)
+        const qty = toQty(item.qty)
+        if (!orderItemId || qty <= 0) continue
+        await execute(`
+          UPDATE customer_order_items
+          SET settled_qty = LEAST(COALESCE(reconciled_qty, qty), COALESCE(settled_qty, 0) + ?)
+          WHERE id=?
+        `, [qty, orderItemId])
+      }
+    }
+
+    await execute('UPDATE invoice_headers SET status=?, confirmed_by=?, confirmed_at=? WHERE id=?', ['confirmed', u?.userId || null, now8(), id])
+    await audit(u, 'CONFIRM', header.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', id, header.invoice_no || `id=${id}`)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── Delivery Notes ────────────────────────────────────────────────────────────
 app.get('/api/delivery-notes', authMiddleware, async c => c.json(await query(`
   SELECT dn.*, c.customer_name, c.customer_code,
@@ -2216,21 +2602,33 @@ app.get('/api/audit-logs', authMiddleware, requirePerm('audit.view'), async c =>
 })
 
 // ── 應收帳款 (Receivables) ────────────────────────────────────────────────────
-// 來源：客戶訂單（所有狀態）→ 待收款；可標記已收款
+// 來源：已確認客戶發票 → 待收款；可標記已收款
 app.get('/api/receivables', authMiddleware, async c => {
   try {
     const rows = await query<any>(`
-      SELECT co.id, co.po_number as dn_number, co.customer_name,
-             co.po_date as delivery_date, co.status, co.remark, co.created_at,
-             COALESCE(co.received_amount, 0) as received_amount,
-             COALESCE(
-               (SELECT SUM(qty * unit_price) FROM customer_order_items WHERE order_id = co.id), 0
-             ) as invoice_amount,
-             co.payment_status, co.payment_date, co.payment_note,
-             co.po_number as customer_po
-      FROM customer_orders co
-      WHERE co.deleted_at IS NULL
-      ORDER BY co.created_at DESC
+      SELECT
+        ih.id,
+        ih.invoice_no as dn_number,
+        ih.party_name as customer_name,
+        ih.invoice_date as delivery_date,
+        ih.status,
+        ih.remark,
+        ih.created_at,
+        COALESCE(ih.received_amount, 0) as received_amount,
+        COALESCE(ih.grand_total, 0) as invoice_amount,
+        ih.payment_status,
+        ih.payment_date,
+        ih.payment_note,
+        (
+          SELECT GROUP_CONCAT(DISTINCT ii.po_number ORDER BY ii.po_number SEPARATOR ', ')
+          FROM invoice_items ii
+          WHERE ii.invoice_id = ih.id AND ii.deleted_at IS NULL
+        ) as customer_po
+      FROM invoice_headers ih
+      WHERE ih.invoice_type = 'customer'
+        AND ih.status = 'confirmed'
+        AND ih.deleted_at IS NULL
+      ORDER BY ih.created_at DESC
     `)
     return c.json(rows)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
@@ -2240,26 +2638,38 @@ app.patch('/api/receivables/:id/payment', authMiddleware, async c => {
     const id = c.req.param('id')
     const { payment_status, received_amount, payment_date, payment_note } = await c.req.json()
     await execute(
-      'UPDATE customer_orders SET payment_status=?, received_amount=?, payment_date=?, payment_note=? WHERE id=?',
+      'UPDATE invoice_headers SET payment_status=?, received_amount=?, payment_date=?, payment_note=? WHERE id=? AND invoice_type=\'customer\'',
       [payment_status, received_amount||0, payment_date||null, payment_note||'', id]
     )
-    const row = await queryOne<any>('SELECT po_number, customer_name FROM customer_orders WHERE id=? AND deleted_at IS NULL', [id])
-    await audit(c.get('user'), 'PAYMENT', '應收帳款', id, `${row?.po_number} ${payment_status}`)
+    const row = await queryOne<any>('SELECT invoice_no, party_name FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+    await audit(c.get('user'), 'PAYMENT', '應收帳款', id, `${row?.invoice_no} ${payment_status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
 // ── 應付帳款 (Payables) ───────────────────────────────────────────────────────
-// 來源：採購單（所有非草稿狀態）→ 待付款；可標記已付款
+// 來源：已確認供應商發票 → 待付款；可標記已付款
 app.get('/api/payables', authMiddleware, async c => {
   try {
     const rows = await query<any>(`
-      SELECT id, po_number, supplier_name, total_amount, currency, status,
-             COALESCE(paid_amount, 0) as paid_amount,
-             payment_status, payment_date, payment_note, created_at, approved_at
-      FROM purchase_orders
-      WHERE status != 'cancelled' AND deleted_at IS NULL
-      ORDER BY created_at DESC
+      SELECT
+        ih.id,
+        ih.invoice_no as po_number,
+        ih.party_name as supplier_name,
+        ih.grand_total as total_amount,
+        ih.currency,
+        ih.status,
+        COALESCE(ih.paid_amount, 0) as paid_amount,
+        ih.payment_status,
+        ih.payment_date,
+        ih.payment_note,
+        ih.created_at,
+        ih.confirmed_at as approved_at
+      FROM invoice_headers ih
+      WHERE ih.invoice_type = 'supplier'
+        AND ih.status = 'confirmed'
+        AND ih.deleted_at IS NULL
+      ORDER BY ih.created_at DESC
     `)
     return c.json(rows)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
@@ -2269,11 +2679,11 @@ app.patch('/api/payables/:id/payment', authMiddleware, async c => {
     const id = c.req.param('id')
     const { payment_status, paid_amount, payment_date, payment_note } = await c.req.json()
     await execute(
-      'UPDATE purchase_orders SET payment_status=?, paid_amount=?, payment_date=?, payment_note=? WHERE id=?',
+      'UPDATE invoice_headers SET payment_status=?, paid_amount=?, payment_date=?, payment_note=? WHERE id=? AND invoice_type=\'supplier\'',
       [payment_status, paid_amount||0, payment_date||null, payment_note||'', id]
     )
-    const row = await queryOne<any>('SELECT po_number, supplier_name FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
-    await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.po_number} ${payment_status}`)
+    const row = await queryOne<any>('SELECT invoice_no, party_name FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+    await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.invoice_no} ${payment_status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -2284,38 +2694,43 @@ app.get('/api/reports', authMiddleware, async c => {
     const url = new URL(c.req.url)
     const year = url.searchParams.get('year') || new Date().getFullYear().toString()
 
-    // 應收：客戶訂單金額，按月（用 po_date 或 created_at）
+    // 應收：客戶發票金額，按月
     const receivables = await query<any>(`
-      SELECT DATE_FORMAT(COALESCE(co.po_date, co.created_at), '%Y-%m') as month,
-             SUM(COALESCE(ci.qty * ci.unit_price, 0)) as invoiced,
-             SUM(CASE WHEN co.payment_status='paid' THEN COALESCE(co.received_amount, 0) ELSE 0 END) as received,
-             COUNT(DISTINCT co.id) as count
-      FROM customer_orders co
-      LEFT JOIN customer_order_items ci ON ci.order_id = co.id
-      WHERE DATE_FORMAT(COALESCE(co.po_date, co.created_at), '%Y') = ? AND co.deleted_at IS NULL
+      SELECT DATE_FORMAT(COALESCE(ih.invoice_date, ih.created_at), '%Y-%m') as month,
+             SUM(COALESCE(ih.grand_total, 0)) as invoiced,
+             SUM(CASE WHEN ih.payment_status='paid' THEN COALESCE(ih.received_amount, 0) ELSE 0 END) as received,
+             COUNT(DISTINCT ih.id) as count
+      FROM invoice_headers ih
+      WHERE ih.invoice_type='customer'
+        AND ih.status='confirmed'
+        AND DATE_FORMAT(COALESCE(ih.invoice_date, ih.created_at), '%Y') = ?
+        AND ih.deleted_at IS NULL
       GROUP BY month ORDER BY month
     `, [year])
 
-    // 應付：採購單金額，按月
+    // 應付：供應商發票金額，按月
     const payables = await query<any>(`
-      SELECT DATE_FORMAT(created_at, '%Y-%m') as month,
-             SUM(total_amount) as total,
+      SELECT DATE_FORMAT(COALESCE(invoice_date, created_at), '%Y-%m') as month,
+             SUM(grand_total) as total,
              SUM(CASE WHEN payment_status='paid' THEN COALESCE(paid_amount, 0) ELSE 0 END) as paid,
              COUNT(*) as count
-      FROM purchase_orders
-      WHERE status != 'cancelled' AND deleted_at IS NULL AND DATE_FORMAT(created_at, '%Y') = ?
+      FROM invoice_headers
+      WHERE invoice_type='supplier'
+        AND status='confirmed'
+        AND deleted_at IS NULL
+        AND DATE_FORMAT(COALESCE(invoice_date, created_at), '%Y') = ?
       GROUP BY month ORDER BY month
     `, [year])
 
     // 匯總
     const summary = await queryOne<any>(`
       SELECT
-        (SELECT COALESCE(SUM(ci.qty * ci.unit_price), 0) FROM customer_orders co LEFT JOIN customer_order_items ci ON ci.order_id = co.id WHERE co.deleted_at IS NULL) as total_invoiced,
-        (SELECT COALESCE(SUM(received_amount), 0) FROM customer_orders WHERE payment_status='paid' AND deleted_at IS NULL) as total_received,
-        (SELECT COALESCE(SUM(ci.qty * ci.unit_price), 0) FROM customer_orders co LEFT JOIN customer_order_items ci ON ci.order_id = co.id WHERE co.deleted_at IS NULL AND (co.payment_status IS NULL OR co.payment_status != 'paid')) as total_outstanding_receivable,
-        (SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status != 'cancelled' AND deleted_at IS NULL) as total_payable,
-        (SELECT COALESCE(SUM(paid_amount), 0) FROM purchase_orders WHERE payment_status='paid' AND deleted_at IS NULL) as total_paid,
-        (SELECT COALESCE(SUM(total_amount), 0) FROM purchase_orders WHERE status != 'cancelled' AND deleted_at IS NULL AND (payment_status IS NULL OR payment_status != 'paid')) as total_outstanding_payable
+        (SELECT COALESCE(SUM(grand_total), 0) FROM invoice_headers WHERE invoice_type='customer' AND status='confirmed' AND deleted_at IS NULL) as total_invoiced,
+        (SELECT COALESCE(SUM(received_amount), 0) FROM invoice_headers WHERE invoice_type='customer' AND status='confirmed' AND payment_status='paid' AND deleted_at IS NULL) as total_received,
+        (SELECT COALESCE(SUM(grand_total - received_amount), 0) FROM invoice_headers WHERE invoice_type='customer' AND status='confirmed' AND payment_status!='paid' AND deleted_at IS NULL) as total_outstanding_receivable,
+        (SELECT COALESCE(SUM(grand_total), 0) FROM invoice_headers WHERE invoice_type='supplier' AND status='confirmed' AND deleted_at IS NULL) as total_payable,
+        (SELECT COALESCE(SUM(paid_amount), 0) FROM invoice_headers WHERE invoice_type='supplier' AND status='confirmed' AND payment_status='paid' AND deleted_at IS NULL) as total_paid,
+        (SELECT COALESCE(SUM(grand_total - paid_amount), 0) FROM invoice_headers WHERE invoice_type='supplier' AND status='confirmed' AND payment_status!='paid' AND deleted_at IS NULL) as total_outstanding_payable
     `)
 
     return c.json({ receivables, payables, summary, year })

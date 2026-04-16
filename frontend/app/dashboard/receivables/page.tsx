@@ -68,7 +68,7 @@ export default function ReceivablesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">應收帳款管理（收款）</h1>
-          <p className="text-xs text-slate-400 mt-0.5">已出貨訂單的收款追蹤</p>
+          <p className="text-xs text-slate-400 mt-0.5">客戶發票的收款追蹤</p>
         </div>
       </div>
 
@@ -162,7 +162,7 @@ export default function ReceivablesPage() {
                     </tr>
                   )
                 })}
-                {paged.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">尚無待收款記錄（出貨單狀態需為「已出貨」）</td></tr>}
+                {paged.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">尚無待收款記錄（需先確認客戶發票）</td></tr>}
               </tbody>
             </table>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />

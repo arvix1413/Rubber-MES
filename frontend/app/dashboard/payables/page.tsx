@@ -11,7 +11,7 @@ type AP = {
 }
 
 const PO_STATUS: Record<string, string> = {
-  approved: '已核准', sent: '已送出', received: '已收貨'
+  approved: '已核准', sent: '已送出', received: '已收貨', confirmed: '已確認'
 }
 
 const PAY_STATUS = {
@@ -72,7 +72,7 @@ export default function PayablesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">應付帳款管理（付款）</h1>
-          <p className="text-xs text-slate-400 mt-0.5">採購單的付款追蹤</p>
+          <p className="text-xs text-slate-400 mt-0.5">供應商發票的付款追蹤</p>
         </div>
       </div>
 
@@ -165,7 +165,7 @@ export default function PayablesPage() {
                     </tr>
                   )
                 })}
-                {paged.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">尚無待付款記錄（採購單需已核准）</td></tr>}
+                {paged.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">尚無待付款記錄（需先確認供應商發票）</td></tr>}
               </tbody>
             </table>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />
