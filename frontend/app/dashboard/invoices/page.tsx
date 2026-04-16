@@ -88,6 +88,9 @@ export default function InvoicesPage() {
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
   const [pendingSearch, setPendingSearch] = useState('')
+  const [verifyTargetId, setVerifyTargetId] = useState<number | null>(null)
+  const [verifyCodeInput, setVerifyCodeInput] = useState('')
+  const [verifyResult, setVerifyResult] = useState<{ ok: boolean; invoice_no: string } | null>(null)
 
   const loadHeaders = async (type: InvoiceType = invoiceType) => {
     setLoading(true)
@@ -267,6 +270,34 @@ export default function InvoicesPage() {
     }
   }
 
+  const removeInvoice = async (id: number) => {
+    if (!await confirm('確定刪除草稿發票？', '刪除後不可恢復。', '刪除')) return
+    try {
+      await apiFetch(`/api/invoices/${id}`, { method: 'DELETE' })
+      if (expandedId === id) setExpandedId(null)
+      toast('草稿已刪除')
+      await Promise.all([loadHeaders(), loadPending()])
+    } catch (e: any) {
+      toast(`刪除失敗：${e.message}`, 'error')
+    }
+  }
+
+  const verifyInvoiceCode = async (id: number) => {
+    const code = verifyCodeInput.trim()
+    if (!code) {
+      toast('請輸入驗證碼', 'error')
+      return
+    }
+    try {
+      const res = await apiFetch<{ ok: boolean; invoice_no: string }>(`/api/invoices/${id}/verify?code=${encodeURIComponent(code)}`)
+      setVerifyResult(res)
+      if (res.ok) toast('驗證成功')
+      else toast('驗證失敗', 'error')
+    } catch (e: any) {
+      toast(`驗證失敗：${e.message}`, 'error')
+    }
+  }
+
   const pendingPg = usePagination(pending, 10)
   const headerPg = usePagination(headers, 20)
 
@@ -419,7 +450,9 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => printInvoice(h.id)}>列印</button>
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
+                        <button className="btn-ghost" onClick={() => { setVerifyTargetId(h.id); setVerifyResult(null); setVerifyCodeInput('') }}>驗證</button>
                         {h.status === 'draft' && canWrite && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>確認</button>}
+                        {h.status === 'draft' && canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id)}>刪除</button>}
                       </td>
                     </tr>
                     {expandedId === h.id && detail && (
@@ -529,6 +562,25 @@ export default function InvoicesPage() {
       {!loading && headerPg.total > 0 && (
         <div className="mt-4">
           <Pagination page={headerPg.page} totalPages={headerPg.totalPages} setPage={headerPg.setPage} total={headerPg.total} pageSize={20} />
+        </div>
+      )}
+
+      {verifyTargetId !== null && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-6 w-full max-w-md">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">發票驗證</h3>
+            <label className="block text-xs text-slate-500 mb-1">驗證碼</label>
+            <input className="oms-input mb-3" value={verifyCodeInput} onChange={(e) => setVerifyCodeInput(e.target.value)} placeholder="輸入 12 碼驗證碼" />
+            {verifyResult && (
+              <div className={`text-xs mb-3 ${verifyResult.ok ? 'text-emerald-700' : 'text-red-600'}`}>
+                {verifyResult.ok ? `驗證成功：${verifyResult.invoice_no}` : '驗證失敗：驗證碼不匹配'}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button className="btn-primary flex-1 justify-center" onClick={() => verifyInvoiceCode(verifyTargetId)}>驗證</button>
+              <button className="btn-ghost flex-1 justify-center border border-slate-200" onClick={() => setVerifyTargetId(null)}>關閉</button>
+            </div>
+          </div>
         </div>
       )}
     </div>

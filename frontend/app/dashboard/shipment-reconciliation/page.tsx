@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { API, apiFetch, getToken } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
@@ -192,6 +192,27 @@ export default function ShipmentReconciliationPage() {
     }
   }
 
+  const exportCsv = async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API}/api/reconciliations/export/csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('匯出失敗')
+      const csv = await res.text()
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `reconciliations_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('CSV 已下載')
+    } catch (e: any) {
+      toast(`匯出失敗：${e.message}`, 'error')
+    }
+  }
+
   const pendingPaged = usePagination(pending, 10)
   const headerPaged = usePagination(headers, 15)
 
@@ -202,11 +223,14 @@ export default function ShipmentReconciliationPage() {
           <h1 className="text-xl font-bold text-slate-800">出貨核對</h1>
           <p className="text-xs text-slate-500 mt-1">將已出貨項目建立核對單，確認到貨差異並回寫訂單核對量。</p>
         </div>
-        {canWrite && (
-          <button className="btn-primary" onClick={() => setCreating(v => !v)}>
-            {creating ? '收起建立區' : '+ 新建核對單'}
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
+          {canWrite && (
+            <button className="btn-primary" onClick={() => setCreating(v => !v)}>
+              {creating ? '收起建立區' : '+ 新建核對單'}
+            </button>
+          )}
+        </div>
       </div>
 
       {creating && canWrite && (

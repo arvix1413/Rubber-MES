@@ -1865,6 +1865,41 @@ app.get('/api/reconciliations/:id', authMiddleware, async c => {
   })
 })
 
+app.get('/api/reconciliations/export/csv', authMiddleware, async c => {
+  try {
+    const rows = await query<any>(`
+      SELECT
+        sr.reconciliation_no,
+        sr.reconcile_date,
+        sr.status,
+        sri.po_number,
+        sri.material_code,
+        sri.material_name,
+        sri.shipped_qty,
+        sri.accepted_qty,
+        sri.difference_qty,
+        sri.difference_reason
+      FROM shipment_reconciliation_items sri
+      JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+      WHERE sr.deleted_at IS NULL AND sri.deleted_at IS NULL
+      ORDER BY sr.created_at DESC, sri.id ASC
+      LIMIT 5000
+    `)
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['reconciliation_no', 'reconcile_date', 'status', 'po_number', 'material_code', 'material_name', 'shipped_qty', 'accepted_qty', 'difference_qty', 'difference_reason']
+    const lines = [header.join(',')]
+    for (const row of rows) {
+      lines.push([
+        row.reconciliation_no, row.reconcile_date, row.status, row.po_number, row.material_code, row.material_name,
+        toQty(row.shipped_qty), toQty(row.accepted_qty), toQty(row.difference_qty), row.difference_reason,
+      ].map(esc).join(','))
+    }
+    return c.text(lines.join('\n'))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'), async c => {
   try {
     const b = await c.req.json()
@@ -2381,6 +2416,20 @@ app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('customer_ord
   }
 })
 
+app.delete('/api/invoices/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const row = await queryOne<any>('SELECT invoice_no, status, invoice_type FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    if (row.status !== 'draft') return c.json({ error: 'only draft invoice can be deleted' }, 400)
+    await softDeleteById('invoice_headers', id, c.get('user')?.userId)
+    await audit(c.get('user'), 'DELETE', row.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', id, row.invoice_no)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── Delivery Notes ────────────────────────────────────────────────────────────
 app.get('/api/delivery-notes', authMiddleware, async c => c.json(await query(`
   SELECT dn.*, c.customer_name, c.customer_code,
@@ -2801,12 +2850,17 @@ app.patch('/api/receivables/:id/payment', authMiddleware, async c => {
   try {
     const id = c.req.param('id')
     const { payment_status, received_amount, payment_date, payment_note } = await c.req.json()
+    const header = await queryOne<any>('SELECT grand_total FROM invoice_headers WHERE id=? AND invoice_type=\'customer\' AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    const total = toMoney(header.grand_total)
+    const received = Math.max(0, toMoney(received_amount || 0))
+    const status = received <= 0 ? 'pending' : received >= total ? 'paid' : 'partial'
     await execute(
       'UPDATE invoice_headers SET payment_status=?, received_amount=?, payment_date=?, payment_note=? WHERE id=? AND invoice_type=\'customer\'',
-      [payment_status, received_amount||0, payment_date||null, payment_note||'', id]
+      [status || payment_status, received, payment_date||null, payment_note||'', id]
     )
     const row = await queryOne<any>('SELECT invoice_no, party_name FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
-    await audit(c.get('user'), 'PAYMENT', '應收帳款', id, `${row?.invoice_no} ${payment_status}`)
+    await audit(c.get('user'), 'PAYMENT', '應收帳款', id, `${row?.invoice_no} ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -2842,12 +2896,17 @@ app.patch('/api/payables/:id/payment', authMiddleware, async c => {
   try {
     const id = c.req.param('id')
     const { payment_status, paid_amount, payment_date, payment_note } = await c.req.json()
+    const header = await queryOne<any>('SELECT grand_total FROM invoice_headers WHERE id=? AND invoice_type=\'supplier\' AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    const total = toMoney(header.grand_total)
+    const paid = Math.max(0, toMoney(paid_amount || 0))
+    const status = paid <= 0 ? 'pending' : paid >= total ? 'paid' : 'partial'
     await execute(
       'UPDATE invoice_headers SET payment_status=?, paid_amount=?, payment_date=?, payment_note=? WHERE id=? AND invoice_type=\'supplier\'',
-      [payment_status, paid_amount||0, payment_date||null, payment_note||'', id]
+      [status || payment_status, paid, payment_date||null, payment_note||'', id]
     )
     const row = await queryOne<any>('SELECT invoice_no, party_name FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
-    await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.invoice_no} ${payment_status}`)
+    await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.invoice_no} ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
