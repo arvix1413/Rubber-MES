@@ -1,10 +1,12 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getSignatureUrl } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
+import { getCompany } from '@/lib/useCompany'
+import { generateInvoiceHTML } from '@/lib/printInvoice'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -206,6 +208,26 @@ export default function InvoicesPage() {
     }
   }
 
+  const printInvoice = async (id: number) => {
+    try {
+      const [detail, company] = await Promise.all([
+        apiFetch<InvoiceDetail>(`/api/invoices/${id}`),
+        getCompany(),
+      ])
+      const html = generateInvoiceHTML(detail, getSignatureUrl() || undefined, company)
+      const w = window.open('', '_blank', 'width=900,height=1100')
+      if (!w) {
+        toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')
+        return
+      }
+      w.document.write(html)
+      w.document.close()
+      setTimeout(() => w.print(), 500)
+    } catch (e: any) {
+      toast(`列印失敗：${e.message}`, 'error')
+    }
+  }
+
   const pendingPg = usePagination(pending, 10)
   const headerPg = usePagination(headers, 20)
 
@@ -341,6 +363,7 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2 text-right font-semibold text-slate-800">{Number(h.grand_total || 0).toLocaleString()}</td>
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
+                        <button className="btn-ghost" onClick={() => printInvoice(h.id)}>列印</button>
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
                         {h.status === 'draft' && canWrite && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>確認</button>}
                       </td>

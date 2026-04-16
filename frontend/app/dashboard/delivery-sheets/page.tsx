@@ -2,7 +2,7 @@
 import { generateDeliverySheetHTML } from '@/lib/printDeliverySheet'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { apiFetch, getSignatureUrl } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
@@ -174,7 +174,7 @@ export default function DeliverySheetsPage() {
       address: detail.address || '',
       remark: sheet.remark,
       items: detail.items || sheet.items || []
-    }, company)
+    }, getSignatureUrl() || undefined, company)
     const w = window.open('', '_blank', 'width=800,height=1000')
     if (!w) {
       toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')
