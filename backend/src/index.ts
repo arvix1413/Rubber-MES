@@ -271,6 +271,15 @@ const ensureInvoiceTables = async () => {
           if (!msg.includes('duplicate column')) throw e
         }
       }
+      const alterIndexSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (msg.includes('duplicate key name') || msg.includes('duplicate index')) return
+          throw e
+        }
+      }
       await execute(`
         CREATE TABLE IF NOT EXISTS invoice_headers (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -339,6 +348,13 @@ const ensureInvoiceTables = async () => {
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN invoice_seq INT NULL')
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN verification_code VARCHAR(32) NULL')
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN qr_payload TEXT NULL')
+      await alterIndexSafe('ALTER TABLE invoice_headers ADD INDEX idx_invoice_period_seq (invoice_type, invoice_period, invoice_seq)')
+      await alterIndexSafe('ALTER TABLE invoice_headers ADD INDEX idx_invoice_payment (invoice_type, payment_status)')
+      await alterIndexSafe('ALTER TABLE invoice_headers ADD INDEX idx_invoice_date (invoice_date)')
+      await alterIndexSafe('ALTER TABLE invoice_headers ADD INDEX idx_invoice_verify (verification_code)')
+      await alterIndexSafe('ALTER TABLE invoice_items ADD INDEX idx_invoice_reconciliation (reconciliation_id)')
+      await alterIndexSafe('ALTER TABLE invoice_items ADD INDEX idx_invoice_reconciliation_item (reconciliation_item_id)')
+      await alterIndexSafe('ALTER TABLE invoice_items ADD INDEX idx_invoice_order_item (order_item_id)')
     })().catch((e) => {
       ensureInvoiceTablesPromise = null
       throw e
@@ -2067,18 +2083,26 @@ app.delete('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.cre
   }
 })
 
-const getInvoicedQtyByReconciliationItem = async (reconciliationItemId: number, invoiceType: string): Promise<number> => {
-  const row = await queryOne<any>(`
-    SELECT COALESCE(SUM(ii.qty), 0) as qty
+const getInvoicedQtyMapByReconciliationItems = async (reconciliationItemIds: number[], invoiceType: string): Promise<Map<number, number>> => {
+  const map = new Map<number, number>()
+  const ids = Array.from(new Set(reconciliationItemIds.filter((x) => Number.isFinite(x) && x > 0)))
+  if (!ids.length) return map
+  const placeholders = ids.map(() => '?').join(',')
+  const rows = await query<any>(`
+    SELECT ii.reconciliation_item_id, COALESCE(SUM(ii.qty), 0) as qty
     FROM invoice_items ii
     JOIN invoice_headers ih ON ih.id = ii.invoice_id
-    WHERE ii.reconciliation_item_id = ?
+    WHERE ii.reconciliation_item_id IN (${placeholders})
       AND ih.invoice_type = ?
       AND ih.status = 'confirmed'
       AND ih.deleted_at IS NULL
       AND ii.deleted_at IS NULL
-  `, [reconciliationItemId, invoiceType])
-  return toQty(row?.qty || 0)
+    GROUP BY ii.reconciliation_item_id
+  `, [...ids, invoiceType])
+  for (const row of rows) {
+    map.set(Number(row.reconciliation_item_id), toQty(row.qty))
+  }
+  return map
 }
 
 app.get('/api/invoices/pending-items', authMiddleware, async c => {
@@ -2117,11 +2141,12 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
       ORDER BY sr.confirmed_at DESC, sri.id ASC
       LIMIT 2000
     `)
+    const invoicedQtyMap = await getInvoicedQtyMapByReconciliationItems(rows.map((r: any) => Number(r.reconciliation_item_id)), invoiceType)
 
     const pending: any[] = []
     for (const row of rows) {
       const acceptedQty = toQty(row.accepted_qty)
-      const invoicedQty = await getInvoicedQtyByReconciliationItem(Number(row.reconciliation_item_id), invoiceType)
+      const invoicedQty = toQty(invoicedQtyMap.get(Number(row.reconciliation_item_id)) || 0)
       const remainingQty = toQty(Math.max(0, acceptedQty - invoicedQty))
       if (remainingQty <= 0) continue
       const unitPrice = invoiceType === 'supplier' ? toMoney(row.supplier_unit_price) : toMoney(row.customer_unit_price)
@@ -2293,38 +2318,68 @@ app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), 
     const invoiceType = String(b?.invoice_type || 'customer').trim() === 'supplier' ? 'supplier' : 'customer'
     const items = Array.isArray(b?.items) ? b.items : []
     if (!items.length) return c.json({ error: 'items required' }, 400)
+    const reconciliationItemIds: number[] = Array.from(
+      new Set<number>(
+        items
+          .map((it: any) => Number(it?.reconciliation_item_id || 0))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+    )
+    if (!reconciliationItemIds.length) return c.json({ error: 'no valid reconciliation item ids' }, 400)
+
+    const placeholders = reconciliationItemIds.map(() => '?').join(',')
+    const sources = await query<any>(`
+      SELECT
+        sri.*,
+        co.customer_id,
+        co.customer_name,
+        COALESCE(coi.unit_price, 0) as customer_unit_price,
+        COALESCE(b.supplier_price, 0) as supplier_unit_price,
+        s.name as supplier_name_resolved
+      FROM shipment_reconciliation_items sri
+      JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+      LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN customer_order_items coi ON coi.id = sri.order_item_id
+      LEFT JOIN bom b ON b.product_sku = sri.material_code AND b.deleted_at IS NULL
+      LEFT JOIN suppliers s ON s.id = sri.supplier_id AND s.deleted_at IS NULL
+      WHERE sri.id IN (${placeholders})
+        AND sri.deleted_at IS NULL
+        AND sr.status = 'confirmed'
+        AND sr.deleted_at IS NULL
+    `, reconciliationItemIds)
+    const sourceMap = new Map<number, any>()
+    for (const src of sources) sourceMap.set(Number(src.id), src)
+    const invoicedQtyMap = await getInvoicedQtyMapByReconciliationItems(reconciliationItemIds, invoiceType)
 
     let partyId: number | null = null
     let partyName = ''
     let totalAmount = 0
     const validatedItems: any[] = []
+    const dedupe = new Set<number>()
     for (const item of items) {
       const reconciliationItemId = Number(item?.reconciliation_item_id || 0)
       if (!reconciliationItemId) continue
-      const pendingRows = await query<any>(`SELECT * FROM shipment_reconciliation_items WHERE id=? AND deleted_at IS NULL`, [reconciliationItemId])
-      const source = pendingRows[0]
+      if (dedupe.has(reconciliationItemId)) continue
+      dedupe.add(reconciliationItemId)
+      const source = sourceMap.get(reconciliationItemId)
       if (!source) continue
       const acceptedQty = toQty(source.accepted_qty)
-      const alreadyInvoicedQty = await getInvoicedQtyByReconciliationItem(reconciliationItemId, invoiceType)
+      const alreadyInvoicedQty = toQty(invoicedQtyMap.get(reconciliationItemId) || 0)
       const remainingQty = toQty(Math.max(0, acceptedQty - alreadyInvoicedQty))
       let qty = toQty(item?.qty)
       if (qty <= 0) continue
       if (qty > remainingQty) qty = remainingQty
       if (qty <= 0) continue
 
-      const customer = await queryOne<any>('SELECT customer_id, customer_name FROM customer_orders WHERE id=? AND deleted_at IS NULL', [source.customer_order_id])
-      const supplier = source.supplier_id ? await queryOne<any>('SELECT id, name FROM suppliers WHERE id=? AND deleted_at IS NULL', [source.supplier_id]) : null
-      const coItem = source.order_item_id ? await queryOne<any>('SELECT unit_price FROM customer_order_items WHERE id=?', [source.order_item_id]) : null
-      const bom = source.material_code ? await queryOne<any>('SELECT supplier_price FROM bom WHERE product_sku=? AND deleted_at IS NULL', [source.material_code]) : null
-      const unitPrice = toMoney(item?.unit_price === undefined ? (invoiceType === 'supplier' ? bom?.supplier_price : coItem?.unit_price) : item?.unit_price)
+      const unitPrice = toMoney(item?.unit_price === undefined ? (invoiceType === 'supplier' ? source.supplier_unit_price : source.customer_unit_price) : item?.unit_price)
       const amount = toMoney(qty * unitPrice)
 
       if (invoiceType === 'customer') {
-        partyId = customer?.customer_id ? Number(customer.customer_id) : partyId
-        partyName = customer?.customer_name || partyName
+        partyId = source?.customer_id ? Number(source.customer_id) : partyId
+        partyName = source?.customer_name || partyName
       } else {
-        partyId = supplier?.id ? Number(supplier.id) : partyId
-        partyName = supplier?.name || partyName || source.supplier_name || ''
+        partyId = source?.supplier_id ? Number(source.supplier_id) : partyId
+        partyName = source?.supplier_name_resolved || partyName || source.supplier_name || ''
       }
 
       totalAmount += amount
@@ -2344,9 +2399,9 @@ app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), 
         unit_price: unitPrice,
         amount,
         supplier_id: source.supplier_id || null,
-        supplier_name: source.supplier_name || '',
-        customer_id: customer?.customer_id || null,
-        customer_name: customer?.customer_name || '',
+        supplier_name: source.supplier_name_resolved || source.supplier_name || '',
+        customer_id: source.customer_id || null,
+        customer_name: source.customer_name || '',
       })
     }
 
