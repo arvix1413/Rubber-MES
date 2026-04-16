@@ -8,6 +8,7 @@ import { SearchableSelect } from '@/components/SearchableSelect'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
+import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 
 type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; bom_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
@@ -242,194 +243,12 @@ export default function PoPage() {
     window.scrollTo({ top: 0, behavior: 'smooth' })
   }
 
-  const printPo = async (id: number, poNumber: string, supplierName: string) => {
-    const txt = (v: any) => {
-      if (v === null || v === undefined) return ''
-      const s = String(v).trim()
-      if (!s || s === 'null' || s === 'undefined' || s === '—' || s === '-') return ''
-      return s
-    }
-    const num = (v: any) => {
-      const n = Number(v)
-      return Number.isFinite(n) ? n : 0
-    }
-    const fmt = (v: any) => num(v).toLocaleString()
-
+  const printPo = async (id: number) => {
     const [data, company] = await Promise.all([
       apiFetch<Po>(`/api/po/${id}`),
       getCompany(),
     ])
-    const items = data.items || []
-    const subTotal = items.reduce((s, i) => s + num(i.total_price), 0)
-    const taxRate = Math.min(25, Math.max(1, Number((data as any).tax_rate || 8)))
-    const total = Math.round(subTotal * (1 + taxRate / 100) * 100) / 100
-    const currency = txt(items[0]?.currency) || txt(data.currency) || 'VND'
-    const signatureUrl = getSignatureUrl()
-    const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234'
-    const logoUrl = company.logo_url ? (company.logo_url.startsWith('http') ? company.logo_url : `${API_BASE}${company.logo_url}`) : null
-
-    const itemRows = items.map((item, idx) => `
-      <tr>
-        <td class="col-st" style="text-align:center">${idx + 1}</td>
-        <td class="col-poref" style="text-align:center;font-family:monospace;font-size:10px">${txt(item.po_ref)}</td>
-        <td class="col-code" style="font-family:monospace;font-size:10px;color:#1a56db">${txt(item.material_code)}</td>
-        <td class="col-name">${txt(item.material_name)}</td>
-        <td class="col-spec" style="font-size:10px;color:#555">${txt(item.spec)}</td>
-        <td class="col-unit" style="text-align:center">${txt(item.unit) || 'PCS'}</td>
-        <td class="col-qty" style="text-align:right;font-weight:600">${fmt(item.quantity)}</td>
-        <td class="col-price" style="text-align:right">${fmt(item.unit_price)}</td>
-        <td class="col-total" style="text-align:right;font-weight:700">${fmt(item.total_price)}</td>
-        <td class="col-tax" style="text-align:center">${taxRate}%</td>
-        <td class="col-cur" style="text-align:center;font-size:10px">${txt(item.currency) || currency}</td>
-        <td class="col-remark" style="font-size:10px;color:#666">${txt(item.remark)}</td>
-      </tr>`).join('')
-
-    const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/>
-    <title>採購單 ${poNumber}</title>
-    <style>
-      * { box-sizing: border-box; margin: 0; padding: 0; }
-      body { font-family: "Microsoft JhengHei", "PingFang TC", Arial, sans-serif; font-size: 11px; font-weight: 400; color: #000; background: #fff; }
-      .page { padding: 12mm 15mm; max-width: 210mm; margin: 0 auto; }
-      /* Header */
-      .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 5mm; margin-bottom: 5mm; }
-      .company { font-size: 18px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
-      .subtitle { font-size: 10px; color: #666; margin-top: 3px; }
-      .doc-title { font-size: 22px; font-weight: 700; color: #1a56db; letter-spacing: 2px; text-align: right; }
-      .doc-sub { font-size: 10px; color: #666; text-align: right; margin-top: 2px; }
-      .doc-no { font-size: 12px; font-weight: 600; text-align: right; margin-top: 3px; }
-      /* Info table */
-      .info-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
-      .info-table td { border: 1px solid #bbb; padding: 5px 8px; font-size: 11px; font-weight: 400; vertical-align: middle; }
-      .info-table .lbl { font-weight: 600; background: #f5f5f5; white-space: nowrap; width: 110px; color: #333; line-height: 1.4; }
-      .info-table .val { color: #000; }
-      /* Items table */
-      table.items { width: 100%; border-collapse: collapse; table-layout: fixed; margin-bottom: 4mm; }
-      table.items th { border: 1px solid #555; background: #e8e8e8; padding: 5px 4px; text-align: center; font-size: 10px; font-weight: 600; white-space: nowrap; color: #000; }
-      table.items td { border: 1px solid #bbb; padding: 5px 5px; font-size: 11px; font-weight: 400; color: #000; }
-      table.items tbody tr:nth-child(even) { background: #fafafa; }
-      table.items .col-st { width: 24px; }
-      table.items .col-poref { width: 48px; }
-      table.items .col-code { width: 64px; }
-      table.items .col-name { width: 140px; word-break: break-word; line-height: 1.35; font-weight: 500; }
-      table.items .col-spec { width: 56px; }
-      table.items .col-unit { width: 36px; }
-      table.items .col-qty { width: 42px; }
-      table.items .col-price { width: 56px; }
-      table.items .col-total { width: 64px; }
-      table.items .col-tax { width: 40px; }
-      table.items .col-cur { width: 32px; }
-      table.items .col-remark { width: 44px; }
-      .total-row td { border: 1px solid #555; background: #efefef; font-weight: 600; font-size: 11px; padding: 6px 8px; }
-      /* Remark */
-      .remark-box { border: 1px solid #bbb; padding: 6px 10px; min-height: 18mm; font-size: 10px; font-weight: 400; margin-top: 5mm; }
-      .remark-title { font-weight: 600; margin-bottom: 4px; font-size: 10px; }
-      /* Terms */
-      .terms { border: 1px solid #ccc; padding: 6px 10px; margin-top: 4mm; font-size: 9px; font-weight: 400; line-height: 1.5; color: #555; }
-      /* Sign section - equal height both sides */
-      .sign-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
-      .sign-box { border: 1px solid #bbb; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; }
-      .sign-label { font-weight: 600; font-size: 10px; color: #333; padding-bottom: 4px; border-bottom: 1px solid #eee; margin-bottom: 0; }
-      .sign-area { flex: 1; min-height: 50px; display: flex; align-items: center; justify-content: center; }
-      .sign-line { border-top: 1px solid #555; padding-top: 4px; font-size: 10px; font-weight: 400; color: #333; margin-top: 4px; }
-      @media print { body { -webkit-print-color-adjust: exact; } @page { size: A4; margin: 0; } }
-    </style></head><body>
-    <div class="page">
-      <div class="header">
-        <div>
-          ${logoUrl ? `<img src="${logoUrl}" style="max-height:40px;max-width:160px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'"/><br/>` : ''}
-          <div class="company">${txt(company.company_name)}</div>
-          <div class="subtitle">${txt(company.company_name_local)}</div>
-        </div>
-        <div>
-          <div class="doc-title">採購單</div>
-          <div class="doc-sub">PURCHASE ORDER / ĐƠN ĐẶT HÀNG</div>
-          <div class="doc-no">No. ${txt(poNumber)}</div>
-        </div>
-      </div>
-
-      <table class="info-table">
-        <tr>
-          <td class="lbl">供應商<br/>Nhà cung cấp</td>
-          <td class="val" colspan="3" style="font-weight:600;font-size:12px">${txt(supplierName)}</td>
-          <td class="lbl">採購單號<br/>Số PO</td>
-          <td class="val" style="font-family:monospace;font-weight:600">${txt(poNumber)}</td>
-        </tr>
-        <tr>
-          <td class="lbl">幣別<br/>Loại tiền</td>
-          <td class="val">${currency}</td>
-          <td class="lbl">稅率<br/>Thuế suất</td>
-          <td class="val">${taxRate}%</td>
-        </tr>
-        <tr>
-          <td class="lbl">建立日期<br/>Ngày lập</td>
-          <td class="val">${data.created_at ? String(data.created_at).slice(0,10) : ''}</td>
-          <td class="lbl">狀態<br/>Trạng thái</td>
-          <td class="val">${txt(data.status)}</td>
-          <td class="lbl"></td>
-          <td class="val"></td>
-        </tr>
-        ${txt(data.remark) ? `<tr><td class="lbl">備註<br/>Ghi chú</td><td class="val" colspan="5">${txt(data.remark)}</td></tr>` : ''}
-      </table>
-
-      <table class="items">
-        <thead><tr>
-          <th class="col-st">ST</th>
-          <th class="col-poref">PO訂單編號</th>
-          <th class="col-code">物料編號</th>
-          <th class="col-name">材料名稱</th>
-          <th class="col-spec">規格</th>
-          <th class="col-unit">單位</th>
-          <th class="col-qty">數量</th>
-          <th class="col-price">單價</th>
-          <th class="col-total">小計</th>
-          <th class="col-tax">稅率</th>
-          <th class="col-cur">幣別</th>
-          <th class="col-remark">備註</th>
-        </tr></thead>
-        <tbody>${itemRows}</tbody>
-        <tfoot>
-          <tr class="total-row">
-            <td colspan="8" style="text-align:right">未稅 / Trước thuế</td>
-            <td style="text-align:right;font-size:12px">${fmt(subTotal)}</td>
-            <td style="text-align:center">${taxRate}%</td>
-            <td style="text-align:center">${currency}</td>
-            <td></td>
-          </tr>
-          <tr class="total-row">
-            <td colspan="8" style="text-align:right">含稅合計 / Tổng cộng sau thuế</td>
-            <td style="text-align:right;font-size:12px;color:#1a56db">${fmt(total)}</td>
-            <td style="text-align:center">${taxRate}%</td>
-            <td style="text-align:center">${currency}</td>
-            <td></td>
-          </tr>
-        </tfoot>
-      </table>
-
-      ${txt(data.remark) ? `<div class="remark-box"><div class="remark-title">備註 / Ghi chú：</div><div>${txt(data.remark)}</div></div>` : ''}
-
-      <div class="terms">
-        <strong>注意事項 / Lưu ý：</strong>
-        供應商須按訂單規格、數量、日期交貨，如有不符將不予收貨。訂單確認後不得擅自更改，如需更改須經本公司書面同意。
-        Nhà cung cấp phải giao hàng đúng quy cách, số lượng, ngày giao theo đơn hàng. Sau khi xác nhận đơn hàng không được tự ý thay đổi, nếu cần thay đổi phải có sự đồng ý bằng văn bản của chúng tôi.
-      </div>
-
-      <div class="sign-section">
-        <div class="sign-box">
-          <div class="sign-label">供應商確認 / NCC xác nhận</div>
-          <div class="sign-area"></div>
-          <div class="sign-line">${txt(supplierName)}</div>
-        </div>
-        <div class="sign-box">
-          <div class="sign-label">採購確認 / Người lập biểu xác nhận</div>
-          <div class="sign-area">
-            ${signatureUrl ? `<img src="${signatureUrl}" style="max-height:44px;max-width:150px;object-fit:contain" />` : ''}
-          </div>
-          <div class="sign-line">${txt(company.company_name)}</div>
-        </div>
-      </div>
-    </div>
-    </body></html>`
-
+    const html = generatePurchaseSheetHTML(data, getSignatureUrl() || undefined, company)
     const w = window.open('', '_blank', 'width=900,height=1100')
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
   }
@@ -622,7 +441,7 @@ export default function PoPage() {
                                 else if (toStatus === 'received') await confirmReceipt(p, { stopPropagation: ()=>{} } as any)
                                 else await changeStatus(p.id, toStatus, { stopPropagation: ()=>{} } as any)
                               }} />
-                            <button onClick={e => { e.stopPropagation(); printPo(p.id, p.po_number, p.supplier_name) }} className="btn-ghost ml-1" title="列印">🖨 列印</button>
+                            <button onClick={e => { e.stopPropagation(); printPo(p.id) }} className="btn-ghost ml-1" title="列印">🖨 列印</button>
                             {canWrite && p.status === 'draft' && (
                               <button onClick={e => startEdit(p, e)} className="btn-ghost text-blue-600">✏ 編輯</button>
                             )}
