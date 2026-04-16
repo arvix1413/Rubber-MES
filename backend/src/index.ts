@@ -2140,14 +2140,27 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('deliv
     `, [id])
     if (!items.length) return c.json({ error: 'no items' }, 400)
 
+    const reconcileMap = new Map<number, number>()
     for (const item of items) {
+      const orderItemId = Number(item.order_item_id || 0)
       const qty = toQty(item.accepted_qty)
-      if (!item.order_item_id || qty <= 0) continue
+      if (!orderItemId || qty <= 0) continue
+      reconcileMap.set(orderItemId, toQty((reconcileMap.get(orderItemId) || 0) + qty))
+    }
+    const orderItemIds = Array.from(reconcileMap.keys())
+    if (orderItemIds.length) {
+      const caseClause = orderItemIds.map(() => 'WHEN ? THEN ?').join(' ')
+      const inClause = orderItemIds.map(() => '?').join(',')
+      const params: any[] = []
+      for (const oid of orderItemIds) {
+        params.push(oid, reconcileMap.get(oid) || 0)
+      }
+      params.push(...orderItemIds)
       await execute(`
         UPDATE customer_order_items
-        SET reconciled_qty = LEAST(qty, COALESCE(reconciled_qty, 0) + ?)
-        WHERE id=?
-      `, [qty, item.order_item_id])
+        SET reconciled_qty = LEAST(qty, COALESCE(reconciled_qty, 0) + CASE id ${caseClause} ELSE 0 END)
+        WHERE id IN (${inClause})
+      `, params)
     }
 
     await execute(
