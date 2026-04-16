@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { API, apiFetch, getSignatureUrl, getToken } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
@@ -41,6 +41,7 @@ type InvoiceHeader = {
   item_count: number
   total_qty: number
   created_at: string
+  verification_code?: string
 }
 
 type InvoiceItem = {
@@ -57,6 +58,7 @@ type InvoiceItem = {
 
 type InvoiceDetail = InvoiceHeader & {
   remark: string
+  qr_payload?: string
   items: InvoiceItem[]
 }
 
@@ -81,16 +83,30 @@ export default function InvoicesPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [details, setDetails] = useState<Record<number, InvoiceDetail>>({})
   const [saving, setSaving] = useState<number | null>(null)
+  const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const [dateFrom, setDateFrom] = useState('')
+  const [dateTo, setDateTo] = useState('')
+  const [pendingSearch, setPendingSearch] = useState('')
 
   const loadHeaders = async (type: InvoiceType = invoiceType) => {
     setLoading(true)
-    const rows = await apiFetch<InvoiceHeader[]>(`/api/invoices?type=${type}`)
+    const qs = new URLSearchParams()
+    qs.set('type', type)
+    if (search.trim()) qs.set('search', search.trim())
+    if (statusFilter) qs.set('status', statusFilter)
+    if (dateFrom) qs.set('date_from', dateFrom)
+    if (dateTo) qs.set('date_to', dateTo)
+    const rows = await apiFetch<InvoiceHeader[]>(`/api/invoices?${qs.toString()}`)
     setHeaders(rows)
     setLoading(false)
   }
 
   const loadPending = async (type: InvoiceType = invoiceType) => {
-    const rows = await apiFetch<PendingItem[]>(`/api/invoices/pending-items?type=${type}`)
+    const qs = new URLSearchParams()
+    qs.set('type', type)
+    if (pendingSearch.trim()) qs.set('search', pendingSearch.trim())
+    const rows = await apiFetch<PendingItem[]>(`/api/invoices/pending-items?${qs.toString()}`)
     setPending(rows)
   }
 
@@ -100,7 +116,7 @@ export default function InvoicesPage() {
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceType])
+  }, [invoiceType, search, statusFilter, dateFrom, dateTo, pendingSearch])
 
   const selectedCount = useMemo(() => Object.keys(selected).length, [selected])
   const selectedTotal = useMemo(() => Object.entries(selected).reduce((sum, [, row]) => sum + Number(row.qty || 0) * Number(row.unit_price || 0), 0), [selected])
@@ -228,6 +244,29 @@ export default function InvoicesPage() {
     }
   }
 
+  const exportCsv = async () => {
+    try {
+      const qs = new URLSearchParams()
+      qs.set('type', invoiceType)
+      const token = getToken()
+      const res = await fetch(`${API}/api/invoices/export/csv?${qs.toString()}`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('匯出失敗')
+      const csv = await res.text()
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `invoices_${invoiceType}_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('CSV 已下載')
+    } catch (e: any) {
+      toast(`匯出失敗：${e.message}`, 'error')
+    }
+  }
+
   const pendingPg = usePagination(pending, 10)
   const headerPg = usePagination(headers, 20)
 
@@ -243,7 +282,22 @@ export default function InvoicesPage() {
             <button className={`px-3 py-1.5 ${invoiceType === 'customer' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`} onClick={() => setInvoiceType('customer')}>客戶發票</button>
             <button className={`px-3 py-1.5 ${invoiceType === 'supplier' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`} onClick={() => setInvoiceType('supplier')}>供應商發票</button>
           </div>
+          <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
           {canWrite && <button className="btn-primary" onClick={() => setCreating((v) => !v)}>{creating ? '收起建立區' : '+ 新建發票'}</button>}
+        </div>
+      </div>
+
+      <div className="oms-card p-3 mb-4">
+        <div className="grid md:grid-cols-6 gap-2">
+          <input className="oms-input md:col-span-2" placeholder="搜尋發票號/對象/驗證碼" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="oms-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+            <option value="">全部狀態</option>
+            <option value="draft">草稿</option>
+            <option value="confirmed">已確認</option>
+          </select>
+          <input type="date" className="oms-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <input type="date" className="oms-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <input className="oms-input" placeholder="待開票列表搜尋" value={pendingSearch} onChange={(e) => setPendingSearch(e.target.value)} />
         </div>
       </div>
 
@@ -371,6 +425,10 @@ export default function InvoicesPage() {
                     {expandedId === h.id && detail && (
                       <tr>
                         <td colSpan={9} className="bg-slate-50 border-t border-slate-100 p-3">
+                          <div className="grid md:grid-cols-2 gap-3 mb-3">
+                            <div className="text-xs text-slate-700">驗證碼：<span className="font-mono font-semibold">{detail.verification_code || '-'}</span></div>
+                            <div className="text-xs text-slate-500 truncate">QR Payload：{detail.qr_payload || '-'}</div>
+                          </div>
                           <div className="grid md:grid-cols-3 gap-3 mb-3">
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">發票日期</label>

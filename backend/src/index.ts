@@ -5,6 +5,7 @@ import { query, queryOne, execute } from './db'
 import { hashPw, signJwt, verifyJwt, now8 } from './auth'
 import fs from 'fs'
 import path from 'path'
+import crypto from 'crypto'
 
 type Variables = { user: any }
 const app = new Hono<{ Variables: Variables }>()
@@ -275,6 +276,8 @@ const ensureInvoiceTables = async () => {
           id INT AUTO_INCREMENT PRIMARY KEY,
           invoice_no VARCHAR(100) NOT NULL UNIQUE,
           invoice_type VARCHAR(50) NOT NULL DEFAULT 'customer',
+          invoice_period CHAR(6) NULL,
+          invoice_seq INT NULL,
           invoice_date DATE,
           status VARCHAR(50) NOT NULL DEFAULT 'draft',
           party_id INT NULL,
@@ -289,6 +292,8 @@ const ensureInvoiceTables = async () => {
           paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0,
           payment_date DATE NULL,
           payment_note TEXT,
+          verification_code VARCHAR(32) NULL,
+          qr_payload TEXT NULL,
           remark TEXT,
           created_by INT,
           confirmed_by INT,
@@ -330,6 +335,10 @@ const ensureInvoiceTables = async () => {
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN paid_amount DECIMAL(15,2) NOT NULL DEFAULT 0')
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN payment_date DATE NULL')
       await alterSafe('ALTER TABLE invoice_headers ADD COLUMN payment_note TEXT')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN invoice_period CHAR(6) NULL')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN invoice_seq INT NULL')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN verification_code VARCHAR(32) NULL')
+      await alterSafe('ALTER TABLE invoice_headers ADD COLUMN qr_payload TEXT NULL')
     })().catch((e) => {
       ensureInvoiceTablesPromise = null
       throw e
@@ -401,6 +410,43 @@ const toMoney = (value: any): number => {
   const num = Number(value)
   if (!Number.isFinite(num)) return 0
   return Math.round(num * 100) / 100
+}
+
+const toDateStr = (value: any): string => {
+  const raw = String(value || '').trim()
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
+  const d = new Date(raw)
+  if (Number.isNaN(d.getTime())) return now8().slice(0, 10)
+  const y = d.getFullYear()
+  const m = String(d.getMonth() + 1).padStart(2, '0')
+  const day = String(d.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
+const toPeriod = (dateStr: string): string => {
+  return dateStr.slice(0, 7).replace('-', '')
+}
+
+const genVerifyCode = (invoiceNo: string): string => {
+  const seed = `${invoiceNo}|${Date.now()}|${Math.random()}`
+  return crypto.createHash('sha256').update(seed).digest('hex').slice(0, 12).toUpperCase()
+}
+
+const buildQrPayload = (invoiceNo: string, verifyCode: string, grandTotal: number): string => {
+  return `INV:${invoiceNo}|VC:${verifyCode}|AMT:${toMoney(grandTotal).toFixed(2)}`
+}
+
+const nextInvoiceIdentity = async (invoiceType: 'customer' | 'supplier', invoiceDate: string) => {
+  const period = toPeriod(invoiceDate)
+  const row = await queryOne<any>(`
+    SELECT COALESCE(MAX(invoice_seq), 0) as max_seq
+    FROM invoice_headers
+    WHERE invoice_type=? AND invoice_period=?
+  `, [invoiceType, period])
+  const seq = Number(row?.max_seq || 0) + 1
+  const prefix = invoiceType === 'supplier' ? 'SINV' : 'CINV'
+  const invoiceNo = `${prefix}-${period}-${String(seq).padStart(4, '0')}`
+  return { invoiceNo, period, seq }
 }
 
 const resolveOrderItemId = async (customerOrderId: any, materialCode: any): Promise<number | null> => {
@@ -1666,6 +1712,48 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
   })
 })
 
+app.get('/api/order-intake/export/csv', authMiddleware, async c => {
+  try {
+    const rows = await query<any>(`
+      SELECT
+        co.po_number,
+        co.po_date,
+        co.status as order_status,
+        c.customer_name,
+        b.product_sku as material_code,
+        b.product_name as material_name,
+        ci.qty as ordered_qty,
+        ci.arrived_qty as shipped_qty,
+        COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
+        COALESCE(ci.settled_qty, 0) as settled_qty
+      FROM customer_order_items ci
+      JOIN customer_orders co ON co.id = ci.order_id
+      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
+      LEFT JOIN bom b ON b.id = ci.bom_id
+      WHERE co.deleted_at IS NULL
+      ORDER BY co.created_at DESC, ci.id ASC
+      LIMIT 5000
+    `)
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['po_number', 'po_date', 'order_status', 'customer_name', 'material_code', 'material_name', 'ordered_qty', 'shipped_qty', 'reconciled_qty', 'settled_qty', 'pending_reconcile_qty']
+    const lines = [header.join(',')]
+    for (const row of rows) {
+      const ordered = toQty(row.ordered_qty)
+      const shipped = toQty(row.shipped_qty)
+      const reconciled = toQty(row.reconciled_qty)
+      const settled = toQty(row.settled_qty)
+      const pending = toQty(Math.max(0, shipped - reconciled))
+      lines.push([
+        row.po_number, row.po_date, row.order_status, row.customer_name, row.material_code, row.material_name,
+        ordered, shipped, reconciled, settled, pending,
+      ].map(esc).join(','))
+    }
+    return c.text(lines.join('\n'))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
   try {
     const rows = await query<any>(`
@@ -1860,6 +1948,16 @@ app.put('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create
     const header = await queryOne<any>('SELECT status FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
     if (!header) return c.json({ error: 'Not found' }, 404)
     if (header.status !== 'draft') return c.json({ error: 'only draft reconciliation can be edited' }, 400)
+    const locked = await queryOne<any>(`
+      SELECT COUNT(*) as cnt
+      FROM invoice_items ii
+      JOIN invoice_headers ih ON ih.id = ii.invoice_id
+      WHERE ii.reconciliation_id = ?
+        AND ih.status = 'confirmed'
+        AND ih.deleted_at IS NULL
+        AND ii.deleted_at IS NULL
+    `, [id])
+    if (Number(locked?.cnt || 0) > 0) return c.json({ error: 'reconciliation already used by confirmed invoice' }, 400)
 
     await execute('UPDATE shipment_reconciliations SET reconcile_date=?, remark=? WHERE id=?', [b.reconcile_date || null, b.remark || '', id])
     const items = Array.isArray(b?.items) ? b.items : []
@@ -1937,6 +2035,7 @@ const getInvoicedQtyByReconciliationItem = async (reconciliationItemId: number, 
 app.get('/api/invoices/pending-items', authMiddleware, async c => {
   try {
     const invoiceType = (c.req.query('type') || 'customer').trim() === 'supplier' ? 'supplier' : 'customer'
+    const search = String(c.req.query('search') || '').trim().toLowerCase()
     const rows = await query<any>(`
       SELECT
         sri.id as reconciliation_item_id,
@@ -1977,7 +2076,7 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
       const remainingQty = toQty(Math.max(0, acceptedQty - invoicedQty))
       if (remainingQty <= 0) continue
       const unitPrice = invoiceType === 'supplier' ? toMoney(row.supplier_unit_price) : toMoney(row.customer_unit_price)
-      pending.push({
+      const rowOut = {
         reconciliation_item_id: Number(row.reconciliation_item_id),
         reconciliation_id: Number(row.reconciliation_id),
         reconciliation_no: row.reconciliation_no,
@@ -1998,7 +2097,10 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
         customer_id: row.customer_id ? Number(row.customer_id) : null,
         customer_name: row.customer_name || '',
         unit_price: unitPrice,
-      })
+      }
+      const text = `${rowOut.reconciliation_no} ${rowOut.po_number} ${rowOut.material_code} ${rowOut.material_name} ${rowOut.customer_name} ${rowOut.supplier_name}`.toLowerCase()
+      if (search && !text.includes(search)) continue
+      pending.push(rowOut)
     }
     return c.json(pending)
   } catch (e: any) {
@@ -2009,9 +2111,21 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
 app.get('/api/invoices', authMiddleware, async c => {
   try {
     const invoiceType = (c.req.query('type') || '').trim()
+    const status = (c.req.query('status') || '').trim()
+    const search = (c.req.query('search') || '').trim()
+    const dateFrom = (c.req.query('date_from') || '').trim()
+    const dateTo = (c.req.query('date_to') || '').trim()
     const where: string[] = ['ih.deleted_at IS NULL']
     const params: any[] = []
     if (invoiceType) { where.push('ih.invoice_type=?'); params.push(invoiceType) }
+    if (status) { where.push('ih.status=?'); params.push(status) }
+    if (dateFrom) { where.push('ih.invoice_date>=?'); params.push(dateFrom) }
+    if (dateTo) { where.push('ih.invoice_date<=?'); params.push(dateTo) }
+    if (search) {
+      where.push('(ih.invoice_no LIKE ? OR ih.party_name LIKE ? OR ih.verification_code LIKE ?)')
+      const term = `%${search}%`
+      params.push(term, term, term)
+    }
     const rows = await query<any>(`
       SELECT
         ih.*,
@@ -2048,6 +2162,54 @@ app.get('/api/invoices/:id', authMiddleware, async c => {
     ...header,
     items: items.map((it: any) => ({ ...it, qty: toQty(it.qty), unit_price: toMoney(it.unit_price), amount: toMoney(it.amount) })),
   })
+})
+
+app.get('/api/invoices/:id/verify', authMiddleware, async c => {
+  const id = c.req.param('id')
+  const code = String(c.req.query('code') || '').trim().toUpperCase()
+  if (!code) return c.json({ error: 'code required' }, 400)
+  const header = await queryOne<any>('SELECT id, invoice_no, verification_code, status, party_name, grand_total, invoice_date FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
+  if (!header) return c.json({ error: 'Not found' }, 404)
+  const ok = String(header.verification_code || '').toUpperCase() === code
+  return c.json({
+    ok,
+    invoice_no: header.invoice_no,
+    status: header.status,
+    party_name: header.party_name,
+    grand_total: toMoney(header.grand_total),
+    invoice_date: header.invoice_date,
+  })
+})
+
+app.get('/api/invoices/export/csv', authMiddleware, async c => {
+  try {
+    const invoiceType = (c.req.query('type') || '').trim()
+    const where: string[] = ['ih.deleted_at IS NULL']
+    const params: any[] = []
+    if (invoiceType) { where.push('ih.invoice_type=?'); params.push(invoiceType) }
+    const rows = await query<any>(`
+      SELECT ih.invoice_no, ih.invoice_type, ih.invoice_date, ih.status, ih.party_name, ih.currency,
+             ih.total_amount, ih.tax_rate, ih.tax_amount, ih.grand_total, ih.payment_status,
+             ih.received_amount, ih.paid_amount, ih.verification_code, ih.created_at
+      FROM invoice_headers ih
+      WHERE ${where.join(' AND ')}
+      ORDER BY ih.created_at DESC
+      LIMIT 5000
+    `, params.length ? params : undefined)
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['invoice_no', 'invoice_type', 'invoice_date', 'status', 'party_name', 'currency', 'total_amount', 'tax_rate', 'tax_amount', 'grand_total', 'payment_status', 'received_amount', 'paid_amount', 'verification_code', 'created_at']
+    const lines = [header.join(',')]
+    for (const row of rows) {
+      lines.push([
+        row.invoice_no, row.invoice_type, row.invoice_date, row.status, row.party_name, row.currency,
+        toMoney(row.total_amount), row.tax_rate, toMoney(row.tax_amount), toMoney(row.grand_total),
+        row.payment_status, toMoney(row.received_amount), toMoney(row.paid_amount), row.verification_code, row.created_at,
+      ].map(esc).join(','))
+    }
+    return c.text(lines.join('\n'))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), async c => {
@@ -2117,16 +2279,18 @@ app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), 
     const taxRate = toMoney(b?.tax_rate || 0)
     const taxAmount = toMoney(totalAmount * (taxRate / 100))
     const grandTotal = toMoney(totalAmount + taxAmount)
-    const prefix = invoiceType === 'supplier' ? 'SI' : 'CI'
-    const invoiceNo = `${prefix}${Date.now()}`
+    const invoiceDate = toDateStr(b?.invoice_date || now8())
+    const identity = await nextInvoiceIdentity(invoiceType, invoiceDate)
+    const verifyCode = genVerifyCode(identity.invoiceNo)
+    const qrPayload = buildQrPayload(identity.invoiceNo, verifyCode, grandTotal)
 
     const r = await execute(`
       INSERT INTO invoice_headers
-        (invoice_no, invoice_type, invoice_date, status, party_id, party_name, currency, total_amount, tax_rate, tax_amount, grand_total, remark, created_by, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (invoice_no, invoice_type, invoice_period, invoice_seq, invoice_date, status, party_id, party_name, currency, total_amount, tax_rate, tax_amount, grand_total, verification_code, qr_payload, remark, created_by, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [
-      invoiceNo, invoiceType, b?.invoice_date || null, 'draft', partyId, partyName, b?.currency || 'VND',
-      toMoney(totalAmount), taxRate, taxAmount, grandTotal, b?.remark || '', c.get('user')?.userId || null, now8(),
+      identity.invoiceNo, invoiceType, identity.period, identity.seq, invoiceDate, 'draft', partyId, partyName, b?.currency || 'VND',
+      toMoney(totalAmount), taxRate, taxAmount, grandTotal, verifyCode, qrPayload, b?.remark || '', c.get('user')?.userId || null, now8(),
     ])
     const invoiceId = r.insertId
 
@@ -2143,8 +2307,8 @@ app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), 
       ])
     }
 
-    await audit(c.get('user'), 'CREATE', invoiceType === 'supplier' ? '供應商發票' : '客戶發票', invoiceId, invoiceNo)
-    return c.json({ id: invoiceId, invoice_no: invoiceNo }, 201)
+    await audit(c.get('user'), 'CREATE', invoiceType === 'supplier' ? '供應商發票' : '客戶發票', invoiceId, identity.invoiceNo)
+    return c.json({ id: invoiceId, invoice_no: identity.invoiceNo, verification_code: verifyCode }, 201)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }

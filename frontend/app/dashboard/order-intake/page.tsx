@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import Link from 'next/link'
 
@@ -61,6 +61,24 @@ export default function OrderIntakePage() {
 
   const { page, setPage, totalPages, paged, total } = usePagination(rows, 20)
 
+  const exportCsv = async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API}/api/order-intake/export/csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('匯出失敗')
+      const csv = await res.text()
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `order_intake_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+    } catch {}
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -69,6 +87,7 @@ export default function OrderIntakePage() {
           <p className="text-xs text-slate-500 mt-1">彙總客戶訂單到出貨與核對的在製進度。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
+          <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
           <span className="badge-gray">總項目 {summary.total}</span>
           <span className="badge-yellow">待處理 {summary.open}</span>
           <span className="badge-green">已完成 {summary.completed}</span>

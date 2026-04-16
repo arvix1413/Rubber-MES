@@ -92,6 +92,7 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
       <div><span class="lbl">對象</span>${txt(data.party_name)}</div>
       <div><span class="lbl">幣別</span>${txt(data.currency) || 'VND'}</div>
       <div><span class="lbl">狀態</span>${txt(data.status)}</div>
+      <div><span class="lbl">驗證碼</span><span class="mono">${txt(data.verification_code)}</span></div>
     </div>
   </div>
 
@@ -119,7 +120,7 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
     <div class="row"><span>Grand Total</span><span>${money(data.grand_total)}</span></div>
   </div>
 
-  <div class="note"><b>Remark:</b> ${txt(data.remark)}</div>
+  <div class="note"><b>Remark:</b> ${txt(data.remark)}<br/><b>QR Payload:</b> ${txt(data.qr_payload)}</div>
 
   <div class="sign">
     <div class="box">
