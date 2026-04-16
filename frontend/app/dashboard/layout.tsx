@@ -26,6 +26,7 @@ const NAV: NavEntry[] = [
       { href: '/dashboard/delivery-notes', label: '出貨單', icon: <IconTruck /> },
       { href: '/dashboard/shipment-reconciliation', label: '出貨核對', icon: <IconReceive /> },
       { href: '/dashboard/invoices', label: '發票管理', icon: <IconDoc /> },
+      { href: '/dashboard/invoice-verify', label: '發票驗證', icon: <IconShield /> },
       { href: '/dashboard/delivery-sheets', label: '送貨單', icon: <IconTruck /> },
     ],
     defaultOpen: true
