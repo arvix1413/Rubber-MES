@@ -42,6 +42,7 @@ export default function OrderIntakePage() {
     const params = new URLSearchParams()
     if (search.trim()) params.set('search', search.trim())
     if (nextStatus) params.set('status', nextStatus)
+    params.set('page_size', '1000')
     const data = await apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`)
     setRows(data)
     setLoading(false)

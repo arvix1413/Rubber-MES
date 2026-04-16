@@ -83,6 +83,16 @@ const toAmount = (value: any): number => {
   return Math.round(num * 100) / 100
 }
 
+const addIndexSafe = async (sql: string) => {
+  try {
+    await execute(sql)
+  } catch (e: any) {
+    const msg = String(e?.message || '').toLowerCase()
+    if (msg.includes('duplicate key name') || msg.includes('already exists')) return
+    throw e
+  }
+}
+
 const calcMargin = (netProfit: number, revenue: number): number => {
   if (revenue <= 0) return 0
   return Math.round((netProfit / revenue) * 10000) / 100
@@ -251,6 +261,10 @@ const ensureShipmentReconciliationTables = async () => {
           CONSTRAINT fk_reconcile_items_header FOREIGN KEY (reconciliation_id) REFERENCES shipment_reconciliations(id) ON DELETE CASCADE
         )
       `)
+      await addIndexSafe('CREATE INDEX idx_reconcile_status_created ON shipment_reconciliations (status, created_at)')
+      await addIndexSafe('CREATE INDEX idx_reconcile_confirmed_at ON shipment_reconciliations (confirmed_at)')
+      await addIndexSafe('CREATE INDEX idx_reconcile_items_delivery_note ON shipment_reconciliation_items (delivery_note_id)')
+      await addIndexSafe('CREATE INDEX idx_reconcile_items_order_material ON shipment_reconciliation_items (customer_order_id, material_code)')
     })().catch((e) => {
       ensureShipmentReconciliationTablesPromise = null
       throw e

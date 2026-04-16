@@ -75,8 +75,8 @@ export default function ShipmentReconciliationPage() {
   const loadAll = async () => {
     setLoading(true)
     const [pendingRows, headerRows] = await Promise.all([
-      apiFetch<PendingItem[]>('/api/reconciliations/pending-items'),
-      apiFetch<ReconciliationHeader[]>('/api/reconciliations'),
+      apiFetch<PendingItem[]>('/api/reconciliations/pending-items?page_size=1000'),
+      apiFetch<ReconciliationHeader[]>('/api/reconciliations?page_size=1000'),
     ])
     setPending(pendingRows)
     setHeaders(headerRows)

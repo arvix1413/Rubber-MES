@@ -96,6 +96,7 @@ export default function InvoicesPage() {
     setLoading(true)
     const qs = new URLSearchParams()
     qs.set('type', type)
+    qs.set('page_size', '1000')
     if (search.trim()) qs.set('search', search.trim())
     if (statusFilter) qs.set('status', statusFilter)
     if (dateFrom) qs.set('date_from', dateFrom)
