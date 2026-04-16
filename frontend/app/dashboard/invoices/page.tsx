@@ -7,6 +7,7 @@ import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany } from '@/lib/useCompany'
 import { generateInvoiceHTML } from '@/lib/printInvoice'
+import { useDebouncedValue } from '@/lib/useDebouncedValue'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -91,36 +92,47 @@ export default function InvoicesPage() {
   const [verifyTargetId, setVerifyTargetId] = useState<number | null>(null)
   const [verifyCodeInput, setVerifyCodeInput] = useState('')
   const [verifyResult, setVerifyResult] = useState<{ ok: boolean; invoice_no: string } | null>(null)
+  const debouncedSearch = useDebouncedValue(search.trim(), 350)
+  const debouncedPendingSearch = useDebouncedValue(pendingSearch.trim(), 350)
 
-  const loadHeaders = async (type: InvoiceType = invoiceType) => {
+  const loadHeaders = async (
+    type: InvoiceType = invoiceType,
+    searchText = debouncedSearch,
+    status = statusFilter,
+    from = dateFrom,
+    to = dateTo
+  ) => {
     setLoading(true)
     const qs = new URLSearchParams()
     qs.set('type', type)
     qs.set('page_size', '1000')
-    if (search.trim()) qs.set('search', search.trim())
-    if (statusFilter) qs.set('status', statusFilter)
-    if (dateFrom) qs.set('date_from', dateFrom)
-    if (dateTo) qs.set('date_to', dateTo)
+    if (searchText) qs.set('search', searchText)
+    if (status) qs.set('status', status)
+    if (from) qs.set('date_from', from)
+    if (to) qs.set('date_to', to)
     const rows = await apiFetch<InvoiceHeader[]>(`/api/invoices?${qs.toString()}`)
     setHeaders(rows)
     setLoading(false)
   }
 
-  const loadPending = async (type: InvoiceType = invoiceType) => {
+  const loadPending = async (type: InvoiceType = invoiceType, searchText = debouncedPendingSearch) => {
     const qs = new URLSearchParams()
     qs.set('type', type)
-    if (pendingSearch.trim()) qs.set('search', pendingSearch.trim())
+    if (searchText) qs.set('search', searchText)
     const rows = await apiFetch<PendingItem[]>(`/api/invoices/pending-items?${qs.toString()}`)
     setPending(rows)
   }
 
   useEffect(() => {
-    Promise.all([loadHeaders(invoiceType), loadPending(invoiceType)]).catch((e) => {
+    Promise.all([
+      loadHeaders(invoiceType, debouncedSearch, statusFilter, dateFrom, dateTo),
+      loadPending(invoiceType, debouncedPendingSearch),
+    ]).catch((e) => {
       toast(`載入失敗：${e.message}`, 'error')
       setLoading(false)
     })
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [invoiceType, search, statusFilter, dateFrom, dateTo, pendingSearch])
+  }, [invoiceType, debouncedSearch, statusFilter, dateFrom, dateTo, debouncedPendingSearch])
 
   const selectedCount = useMemo(() => Object.keys(selected).length, [selected])
   const selectedTotal = useMemo(() => Object.entries(selected).reduce((sum, [, row]) => sum + Number(row.qty || 0) * Number(row.unit_price || 0), 0), [selected])
