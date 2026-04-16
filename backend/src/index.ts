@@ -17,6 +17,8 @@ app.use('/api/*', cors({
 }))
 
 app.use('/api/*', async (_c, next) => {
+  await ensureShipmentReconciliationTables()
+  await ensureCustomerOrderTrackingColumns()
   await ensureSoftDeleteColumns()
   await next()
 })
@@ -184,6 +186,77 @@ const ensureCompanyProfitRatesColumns = async () => {
   await ensureCompanyProfitRatesPromise
 }
 
+let ensureCustomerOrderTrackingColumnsPromise: Promise<void> | null = null
+const ensureCustomerOrderTrackingColumns = async () => {
+  if (!ensureCustomerOrderTrackingColumnsPromise) {
+    ensureCustomerOrderTrackingColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE customer_order_items ADD COLUMN reconciled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
+      await alterSafe('ALTER TABLE customer_order_items ADD COLUMN settled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
+    })().catch((e) => {
+      ensureCustomerOrderTrackingColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureCustomerOrderTrackingColumnsPromise
+}
+
+let ensureShipmentReconciliationTablesPromise: Promise<void> | null = null
+const ensureShipmentReconciliationTables = async () => {
+  if (!ensureShipmentReconciliationTablesPromise) {
+    ensureShipmentReconciliationTablesPromise = (async () => {
+      await execute(`
+        CREATE TABLE IF NOT EXISTS shipment_reconciliations (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          reconciliation_no VARCHAR(100) NOT NULL UNIQUE,
+          reconcile_date DATE,
+          status VARCHAR(50) NOT NULL DEFAULT 'draft',
+          remark TEXT,
+          created_by INT,
+          confirmed_by INT,
+          confirmed_at DATETIME NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+      await execute(`
+        CREATE TABLE IF NOT EXISTS shipment_reconciliation_items (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          reconciliation_id INT NOT NULL,
+          delivery_note_id INT,
+          delivery_note_item_id INT,
+          customer_order_id INT,
+          order_item_id INT NULL,
+          po_number VARCHAR(100),
+          material_code VARCHAR(100),
+          material_name VARCHAR(255),
+          supplier_id INT NULL,
+          supplier_name VARCHAR(255),
+          unit VARCHAR(50) DEFAULT 'PCS',
+          shipped_qty DECIMAL(15,4) NOT NULL DEFAULT 0,
+          accepted_qty DECIMAL(15,4) NOT NULL DEFAULT 0,
+          difference_qty DECIMAL(15,4) NOT NULL DEFAULT 0,
+          difference_reason TEXT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uq_delivery_note_item (delivery_note_item_id),
+          INDEX idx_reconcile_id (reconciliation_id),
+          CONSTRAINT fk_reconcile_items_header FOREIGN KEY (reconciliation_id) REFERENCES shipment_reconciliations(id) ON DELETE CASCADE
+        )
+      `)
+    })().catch((e) => {
+      ensureShipmentReconciliationTablesPromise = null
+      throw e
+    })
+  }
+  await ensureShipmentReconciliationTablesPromise
+}
+
 const SOFT_DELETE_TABLES = [
   'suppliers',
   'customers',
@@ -200,6 +273,8 @@ const SOFT_DELETE_TABLES = [
   'production_orders',
   'stock_adjustments',
   'order_profit_entries',
+  'shipment_reconciliations',
+  'shipment_reconciliation_items',
 ] as const
 
 let ensureSoftDeleteColumnsPromise: Promise<void> | null = null
@@ -231,6 +306,26 @@ const ensureSoftDeleteColumns = async () => {
 
 const softDeleteById = async (table: string, id: any, userId: any) => {
   await execute(`UPDATE ${table} SET deleted_at=?, deleted_by=? WHERE id=? AND deleted_at IS NULL`, [now8(), userId || null, id])
+}
+
+const toQty = (value: any): number => {
+  const num = Number(value)
+  if (!Number.isFinite(num)) return 0
+  return Math.round(num * 10000) / 10000
+}
+
+const resolveOrderItemId = async (customerOrderId: any, materialCode: any): Promise<number | null> => {
+  if (!customerOrderId || !materialCode) return null
+  const row = await queryOne<any>(`
+    SELECT ci.id
+    FROM customer_order_items ci
+    LEFT JOIN bom b ON b.id = ci.bom_id
+    WHERE ci.order_id = ?
+      AND (b.product_sku = ? OR ci.material_code = ?)
+    ORDER BY ci.id ASC
+    LIMIT 1
+  `, [customerOrderId, materialCode, materialCode])
+  return row?.id ? Number(row.id) : null
 }
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -1365,6 +1460,375 @@ app.delete('/api/quotations/:id', authMiddleware, requirePerm('customer_order.de
   await softDeleteById('quotations', id, c.get('user')?.userId)
   await audit(c.get('user'), 'DELETE', '報價單', id, `${row?.quotation_number} / ${row?.customer_name}`)
   return c.json({ ok: true })
+})
+
+// ── Order Intake Pool + Shipment Reconciliation ─────────────────────────────
+app.get('/api/order-intake', authMiddleware, async c => {
+  try {
+    const url = new URL(c.req.url)
+    const search = (url.searchParams.get('search') || '').trim()
+    const status = (url.searchParams.get('status') || '').trim()
+    const customerId = (url.searchParams.get('customer_id') || '').trim()
+
+    const where: string[] = [
+      'co.deleted_at IS NULL',
+      "co.status <> 'cancelled'",
+    ]
+    const params: any[] = []
+
+    if (customerId) { where.push('co.customer_id=?'); params.push(customerId) }
+    if (search) {
+      where.push('(co.po_number LIKE ? OR c.customer_name LIKE ? OR b.product_sku LIKE ? OR b.product_name LIKE ?)')
+      const term = `%${search}%`
+      params.push(term, term, term, term)
+    }
+
+    const rows = await query<any>(`
+      SELECT
+        co.id as order_id,
+        co.po_number,
+        co.po_date,
+        co.status as order_status,
+        co.customer_id,
+        c.customer_name,
+        ci.id as order_item_id,
+        ci.qty as ordered_qty,
+        ci.arrived_qty as shipped_qty,
+        COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
+        COALESCE(ci.settled_qty, 0) as settled_qty,
+        b.product_sku as material_code,
+        b.product_name as material_name,
+        COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
+        COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit
+      FROM customer_order_items ci
+      JOIN customer_orders co ON co.id = ci.order_id
+      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
+      LEFT JOIN bom b ON b.id = ci.bom_id
+      WHERE ${where.join(' AND ')}
+      ORDER BY co.created_at DESC, ci.id ASC
+      LIMIT 1000
+    `, params.length ? params : undefined)
+
+    const enriched = rows.map((row: any) => {
+      const orderedQty = toQty(row.ordered_qty)
+      const shippedQty = toQty(row.shipped_qty)
+      const reconciledQty = toQty(row.reconciled_qty)
+      const pendingReconcileQty = toQty(Math.max(0, shippedQty - reconciledQty))
+      const fulfillmentRate = orderedQty > 0 ? Math.min(100, Math.round((shippedQty / orderedQty) * 10000) / 100) : 0
+      const reconcileRate = shippedQty > 0 ? Math.min(100, Math.round((reconciledQty / shippedQty) * 10000) / 100) : 0
+      return {
+        ...row,
+        ordered_qty: orderedQty,
+        shipped_qty: shippedQty,
+        reconciled_qty: reconciledQty,
+        pending_reconcile_qty: pendingReconcileQty,
+        fulfillment_rate: fulfillmentRate,
+        reconcile_rate: reconcileRate,
+      }
+    }).filter((row: any) => {
+      if (status === 'open') return row.pending_reconcile_qty > 0 || row.shipped_qty < row.ordered_qty
+      if (status === 'completed') return row.shipped_qty >= row.ordered_qty && row.pending_reconcile_qty <= 0
+      return true
+    })
+
+    return c.json(enriched)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.get('/api/order-intake/:id', authMiddleware, async c => {
+  const id = c.req.param('id')
+  const order = await queryOne<any>(`
+    SELECT co.*, c.customer_name, c.customer_code
+    FROM customer_orders co
+    LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
+    WHERE co.id=? AND co.deleted_at IS NULL
+  `, [id])
+  if (!order) return c.json({ error: 'Not found' }, 404)
+
+  const items = await query<any>(`
+    SELECT
+      ci.id as order_item_id,
+      ci.qty as ordered_qty,
+      ci.arrived_qty as shipped_qty,
+      COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
+      COALESCE(ci.settled_qty, 0) as settled_qty,
+      b.product_sku as material_code,
+      b.product_name as material_name,
+      COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
+      COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit
+    FROM customer_order_items ci
+    LEFT JOIN bom b ON b.id = ci.bom_id
+    WHERE ci.order_id=?
+    ORDER BY ci.id ASC
+  `, [id])
+
+  return c.json({
+    ...order,
+    items: items.map((it: any) => ({
+      ...it,
+      ordered_qty: toQty(it.ordered_qty),
+      shipped_qty: toQty(it.shipped_qty),
+      reconciled_qty: toQty(it.reconciled_qty),
+      settled_qty: toQty(it.settled_qty),
+      pending_reconcile_qty: toQty(Math.max(0, toQty(it.shipped_qty) - toQty(it.reconciled_qty))),
+    })),
+  })
+})
+
+app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
+  try {
+    const rows = await query<any>(`
+      SELECT
+        dni.id as delivery_note_item_id,
+        dn.id as delivery_note_id,
+        dn.dn_number,
+        dn.delivery_date,
+        dn.customer_order_id,
+        co.po_number,
+        dn.customer_name,
+        dni.material_code,
+        dni.item_name as material_name,
+        COALESCE(NULLIF(dni.spec, ''), '') as spec,
+        COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
+        COALESCE(dni.qty, 0) as shipped_qty
+      FROM delivery_note_items dni
+      JOIN delivery_notes dn ON dn.id = dni.dn_id
+      LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+      WHERE dn.status = 'shipped'
+        AND dn.deleted_at IS NULL
+        AND sri.id IS NULL
+      ORDER BY dn.delivery_date DESC, dn.id DESC, dni.id ASC
+      LIMIT 1000
+    `)
+
+    const enriched: any[] = []
+    for (const row of rows) {
+      const orderItemId = await resolveOrderItemId(row.customer_order_id, row.material_code)
+      enriched.push({
+        ...row,
+        order_item_id: orderItemId,
+        shipped_qty: toQty(row.shipped_qty),
+      })
+    }
+    return c.json(enriched)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.get('/api/reconciliations', authMiddleware, async c => {
+  const rows = await query<any>(`
+    SELECT
+      sr.id,
+      sr.reconciliation_no,
+      sr.reconcile_date,
+      sr.status,
+      sr.remark,
+      sr.created_at,
+      sr.confirmed_at,
+      uc.name as created_by_name,
+      ucf.name as confirmed_by_name,
+      COUNT(sri.id) as item_count,
+      COALESCE(SUM(sri.shipped_qty), 0) as total_shipped_qty,
+      COALESCE(SUM(sri.accepted_qty), 0) as total_accepted_qty,
+      COALESCE(SUM(sri.difference_qty), 0) as total_difference_qty
+    FROM shipment_reconciliations sr
+    LEFT JOIN shipment_reconciliation_items sri ON sri.reconciliation_id = sr.id AND sri.deleted_at IS NULL
+    LEFT JOIN users uc ON uc.id = sr.created_by
+    LEFT JOIN users ucf ON ucf.id = sr.confirmed_by
+    WHERE sr.deleted_at IS NULL
+    GROUP BY sr.id
+    ORDER BY sr.created_at DESC
+    LIMIT 500
+  `)
+  return c.json(rows.map((r: any) => ({
+    ...r,
+    total_shipped_qty: toQty(r.total_shipped_qty),
+    total_accepted_qty: toQty(r.total_accepted_qty),
+    total_difference_qty: toQty(r.total_difference_qty),
+  })))
+})
+
+app.get('/api/reconciliations/:id', authMiddleware, async c => {
+  const id = c.req.param('id')
+  const header = await queryOne<any>(`
+    SELECT sr.*, uc.name as created_by_name, ucf.name as confirmed_by_name
+    FROM shipment_reconciliations sr
+    LEFT JOIN users uc ON uc.id = sr.created_by
+    LEFT JOIN users ucf ON ucf.id = sr.confirmed_by
+    WHERE sr.id=? AND sr.deleted_at IS NULL
+  `, [id])
+  if (!header) return c.json({ error: 'Not found' }, 404)
+
+  const items = await query<any>(`
+    SELECT
+      sri.*,
+      dn.dn_number,
+      dn.delivery_date,
+      co.po_number,
+      co.status as order_status
+    FROM shipment_reconciliation_items sri
+    LEFT JOIN delivery_notes dn ON dn.id = sri.delivery_note_id AND dn.deleted_at IS NULL
+    LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
+    WHERE sri.reconciliation_id=? AND sri.deleted_at IS NULL
+    ORDER BY sri.id ASC
+  `, [id])
+
+  return c.json({
+    ...header,
+    items: items.map((row: any) => ({
+      ...row,
+      shipped_qty: toQty(row.shipped_qty),
+      accepted_qty: toQty(row.accepted_qty),
+      difference_qty: toQty(row.difference_qty),
+    })),
+  })
+})
+
+app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'), async c => {
+  try {
+    const b = await c.req.json()
+    const items = Array.isArray(b?.items) ? b.items : []
+    if (!items.length) return c.json({ error: 'items required' }, 400)
+
+    const reconciliationNo = `RC${Date.now()}`
+    const r = await execute(`
+      INSERT INTO shipment_reconciliations (reconciliation_no, reconcile_date, status, remark, created_by, created_at)
+      VALUES (?,?,?,?,?,?)
+    `, [reconciliationNo, b.reconcile_date || null, 'draft', b.remark || '', c.get('user')?.userId || null, now8()])
+    const reconciliationId = r.insertId
+
+    for (const inputItem of items) {
+      const deliveryNoteItemId = Number(inputItem?.delivery_note_item_id || 0)
+      if (!deliveryNoteItemId) continue
+      const src = await queryOne<any>(`
+        SELECT
+          dni.id as delivery_note_item_id,
+          dn.id as delivery_note_id,
+          dn.customer_order_id,
+          co.po_number,
+          dni.material_code,
+          COALESCE(NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
+          b.supplier_id,
+          s.name as supplier_name,
+          COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
+          COALESCE(dni.qty, 0) as shipped_qty
+        FROM delivery_note_items dni
+        JOIN delivery_notes dn ON dn.id = dni.dn_id
+        LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
+        LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+        LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
+        LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
+        WHERE dni.id = ?
+          AND dn.status = 'shipped'
+          AND dn.deleted_at IS NULL
+          AND sri.id IS NULL
+      `, [deliveryNoteItemId])
+      if (!src) continue
+
+      const shippedQty = toQty(src.shipped_qty)
+      let acceptedQty = inputItem?.accepted_qty === undefined ? shippedQty : toQty(inputItem.accepted_qty)
+      if (acceptedQty < 0) acceptedQty = 0
+      if (acceptedQty > shippedQty) acceptedQty = shippedQty
+      const differenceQty = toQty(shippedQty - acceptedQty)
+      const orderItemId = await resolveOrderItemId(src.customer_order_id, src.material_code)
+
+      await execute(`
+        INSERT INTO shipment_reconciliation_items
+          (reconciliation_id, delivery_note_id, delivery_note_item_id, customer_order_id, order_item_id, po_number,
+           material_code, material_name, supplier_id, supplier_name, unit, shipped_qty, accepted_qty, difference_qty, difference_reason, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `, [
+        reconciliationId, src.delivery_note_id, src.delivery_note_item_id, src.customer_order_id || null, orderItemId,
+        src.po_number || '', src.material_code || '', src.material_name || '', src.supplier_id || null, src.supplier_name || '',
+        src.unit || 'PCS', shippedQty, acceptedQty, differenceQty, inputItem?.difference_reason || '', now8(),
+      ])
+    }
+
+    const createdItems = await queryOne<any>(
+      'SELECT COUNT(*) as cnt FROM shipment_reconciliation_items WHERE reconciliation_id=? AND deleted_at IS NULL',
+      [reconciliationId]
+    )
+    if (!createdItems || Number(createdItems.cnt) <= 0) {
+      await softDeleteById('shipment_reconciliations', reconciliationId, c.get('user')?.userId)
+      return c.json({ error: 'no valid items to reconcile' }, 400)
+    }
+
+    await audit(c.get('user'), 'CREATE', '出貨核對單', reconciliationId, reconciliationNo)
+    return c.json({ id: reconciliationId, reconciliation_no: reconciliationNo }, 201)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.put('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const b = await c.req.json()
+    const header = await queryOne<any>('SELECT status FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    if (header.status !== 'draft') return c.json({ error: 'only draft reconciliation can be edited' }, 400)
+
+    await execute('UPDATE shipment_reconciliations SET reconcile_date=?, remark=? WHERE id=?', [b.reconcile_date || null, b.remark || '', id])
+    const items = Array.isArray(b?.items) ? b.items : []
+    for (const item of items) {
+      const itemId = Number(item?.id || 0)
+      if (!itemId) continue
+      const existing = await queryOne<any>('SELECT id, shipped_qty FROM shipment_reconciliation_items WHERE id=? AND reconciliation_id=? AND deleted_at IS NULL', [itemId, id])
+      if (!existing) continue
+      let acceptedQty = item?.accepted_qty === undefined ? toQty(existing.shipped_qty) : toQty(item.accepted_qty)
+      if (acceptedQty < 0) acceptedQty = 0
+      if (acceptedQty > toQty(existing.shipped_qty)) acceptedQty = toQty(existing.shipped_qty)
+      const differenceQty = toQty(toQty(existing.shipped_qty) - acceptedQty)
+      await execute(
+        'UPDATE shipment_reconciliation_items SET accepted_qty=?, difference_qty=?, difference_reason=? WHERE id=?',
+        [acceptedQty, differenceQty, item?.difference_reason || '', itemId]
+      )
+    }
+    await audit(c.get('user'), 'UPDATE', '出貨核對單', id, `id=${id}`)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('delivery.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const u = c.get('user')
+    const header = await queryOne<any>('SELECT id, status, reconciliation_no FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    if (header.status !== 'draft') return c.json({ error: 'already confirmed' }, 400)
+
+    const items = await query<any>(`
+      SELECT id, order_item_id, accepted_qty
+      FROM shipment_reconciliation_items
+      WHERE reconciliation_id=? AND deleted_at IS NULL
+    `, [id])
+    if (!items.length) return c.json({ error: 'no items' }, 400)
+
+    for (const item of items) {
+      const qty = toQty(item.accepted_qty)
+      if (!item.order_item_id || qty <= 0) continue
+      await execute(`
+        UPDATE customer_order_items
+        SET reconciled_qty = LEAST(qty, COALESCE(reconciled_qty, 0) + ?)
+        WHERE id=?
+      `, [qty, item.order_item_id])
+    }
+
+    await execute(
+      'UPDATE shipment_reconciliations SET status=?, confirmed_by=?, confirmed_at=? WHERE id=?',
+      ['confirmed', u?.userId || null, now8(), id]
+    )
+    await audit(u, 'CONFIRM', '出貨核對單', id, header.reconciliation_no || `id=${id}`)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 // ── Delivery Notes ────────────────────────────────────────────────────────────
