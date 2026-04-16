@@ -1,7 +1,7 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 
 type AR = {
@@ -63,6 +63,27 @@ export default function ReceivablesPage() {
   const totalReceived = items.filter(i => i.payment_status === 'paid').reduce((s, i) => s + (i.received_amount || 0), 0)
   const totalPending = totalInvoiced - totalReceived
 
+  const exportCsv = async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API}/api/receivables/export/csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('匯出失敗')
+      const csv = await res.text()
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `receivables_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('CSV 已下載')
+    } catch (e: any) {
+      toast(`匯出失敗：${e.message}`, 'error')
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -70,6 +91,7 @@ export default function ReceivablesPage() {
           <h1 className="text-xl font-bold text-slate-800">應收帳款管理（收款）</h1>
           <p className="text-xs text-slate-400 mt-0.5">客戶發票的收款追蹤</p>
         </div>
+        <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
       </div>
 
       {/* Summary cards */}

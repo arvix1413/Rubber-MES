@@ -1,7 +1,7 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 
 type AP = {
@@ -67,6 +67,27 @@ export default function PayablesPage() {
   const totalPaid = items.filter(i => i.payment_status === 'paid').reduce((s, i) => s + (i.paid_amount || 0), 0)
   const totalPending = totalPayable - totalPaid
 
+  const exportCsv = async () => {
+    try {
+      const token = getToken()
+      const res = await fetch(`${API}/api/payables/export/csv`, {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      })
+      if (!res.ok) throw new Error('匯出失敗')
+      const csv = await res.text()
+      const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
+      const url = URL.createObjectURL(blob)
+      const a = document.createElement('a')
+      a.href = url
+      a.download = `payables_${new Date().toISOString().slice(0, 10)}.csv`
+      a.click()
+      URL.revokeObjectURL(url)
+      toast('CSV 已下載')
+    } catch (e: any) {
+      toast(`匯出失敗：${e.message}`, 'error')
+    }
+  }
+
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
@@ -74,6 +95,7 @@ export default function PayablesPage() {
           <h1 className="text-xl font-bold text-slate-800">應付帳款管理（付款）</h1>
           <p className="text-xs text-slate-400 mt-0.5">供應商發票的付款追蹤</p>
         </div>
+        <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">

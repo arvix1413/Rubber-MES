@@ -192,6 +192,21 @@ export default function ShipmentReconciliationPage() {
     }
   }
 
+  const removeDraft = async (id: number) => {
+    if (!await confirm('確定刪除草稿核對單？', '刪除後不可恢復。', '刪除')) return
+    try {
+      setSaving(id)
+      await apiFetch(`/api/reconciliations/${id}`, { method: 'DELETE' })
+      if (expandedId === id) setExpandedId(null)
+      toast('核對單已刪除')
+      await loadAll()
+    } catch (e: any) {
+      toast(`刪除失敗：${e.message}`, 'error')
+    } finally {
+      setSaving(null)
+    }
+  }
+
   const exportCsv = async () => {
     try {
       const token = getToken()
@@ -364,6 +379,9 @@ export default function ShipmentReconciliationPage() {
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
                         {h.status === 'draft' && canWrite && (
                           <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>確認</button>
+                        )}
+                        {h.status === 'draft' && canWrite && (
+                          <button className="btn-danger" disabled={saving === h.id} onClick={() => removeDraft(h.id)}>刪除</button>
                         )}
                       </td>
                     </tr>

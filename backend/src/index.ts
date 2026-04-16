@@ -2053,6 +2053,20 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('deliv
   }
 })
 
+app.delete('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const header = await queryOne<any>('SELECT id, status, reconciliation_no FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
+    if (!header) return c.json({ error: 'Not found' }, 404)
+    if (header.status !== 'draft') return c.json({ error: 'only draft reconciliation can be deleted' }, 400)
+    await softDeleteById('shipment_reconciliations', id, c.get('user')?.userId)
+    await audit(c.get('user'), 'DELETE', '出貨核對單', id, header.reconciliation_no || `id=${id}`)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 const getInvoicedQtyByReconciliationItem = async (reconciliationItemId: number, invoiceType: string): Promise<number> => {
   const row = await queryOne<any>(`
     SELECT COALESCE(SUM(ii.qty), 0) as qty
@@ -2214,6 +2228,32 @@ app.get('/api/invoices/:id/verify', authMiddleware, async c => {
     grand_total: toMoney(header.grand_total),
     invoice_date: header.invoice_date,
   })
+})
+
+app.get('/api/public/invoices/verify', async c => {
+  try {
+    const invoiceNo = String(c.req.query('invoice_no') || '').trim()
+    const code = String(c.req.query('code') || '').trim().toUpperCase()
+    if (!invoiceNo || !code) return c.json({ error: 'invoice_no and code required' }, 400)
+    const header = await queryOne<any>(`
+      SELECT invoice_no, verification_code, status, party_name, grand_total, invoice_date
+      FROM invoice_headers
+      WHERE invoice_no=? AND deleted_at IS NULL
+      LIMIT 1
+    `, [invoiceNo])
+    if (!header) return c.json({ ok: false, reason: 'not_found' }, 404)
+    const ok = String(header.verification_code || '').toUpperCase() === code
+    return c.json({
+      ok,
+      invoice_no: header.invoice_no,
+      status: header.status,
+      party_name: header.party_name,
+      grand_total: toMoney(header.grand_total),
+      invoice_date: header.invoice_date,
+    })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 app.get('/api/invoices/export/csv', authMiddleware, async c => {
@@ -2865,6 +2905,37 @@ app.patch('/api/receivables/:id/payment', authMiddleware, async c => {
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
+app.get('/api/receivables/export/csv', authMiddleware, async c => {
+  try {
+    const rows = await query<any>(`
+      SELECT
+        ih.invoice_no,
+        ih.party_name as customer_name,
+        ih.invoice_date,
+        ih.grand_total as invoice_amount,
+        ih.received_amount,
+        ih.payment_status,
+        ih.payment_date,
+        ih.payment_note
+      FROM invoice_headers ih
+      WHERE ih.invoice_type='customer' AND ih.status='confirmed' AND ih.deleted_at IS NULL
+      ORDER BY ih.created_at DESC
+      LIMIT 5000
+    `)
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['invoice_no', 'customer_name', 'invoice_date', 'invoice_amount', 'received_amount', 'payment_status', 'payment_date', 'payment_note']
+    const lines = [header.join(',')]
+    for (const row of rows) {
+      lines.push([
+        row.invoice_no, row.customer_name, row.invoice_date, toMoney(row.invoice_amount), toMoney(row.received_amount), row.payment_status, row.payment_date, row.payment_note,
+      ].map(esc).join(','))
+    }
+    return c.text(lines.join('\n'))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── 應付帳款 (Payables) ───────────────────────────────────────────────────────
 // 來源：已確認供應商發票 → 待付款；可標記已付款
 app.get('/api/payables', authMiddleware, async c => {
@@ -2909,6 +2980,37 @@ app.patch('/api/payables/:id/payment', authMiddleware, async c => {
     await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.invoice_no} ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+})
+
+app.get('/api/payables/export/csv', authMiddleware, async c => {
+  try {
+    const rows = await query<any>(`
+      SELECT
+        ih.invoice_no,
+        ih.party_name as supplier_name,
+        ih.invoice_date,
+        ih.grand_total as payable_amount,
+        ih.paid_amount,
+        ih.payment_status,
+        ih.payment_date,
+        ih.payment_note
+      FROM invoice_headers ih
+      WHERE ih.invoice_type='supplier' AND ih.status='confirmed' AND ih.deleted_at IS NULL
+      ORDER BY ih.created_at DESC
+      LIMIT 5000
+    `)
+    const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
+    const header = ['invoice_no', 'supplier_name', 'invoice_date', 'payable_amount', 'paid_amount', 'payment_status', 'payment_date', 'payment_note']
+    const lines = [header.join(',')]
+    for (const row of rows) {
+      lines.push([
+        row.invoice_no, row.supplier_name, row.invoice_date, toMoney(row.payable_amount), toMoney(row.paid_amount), row.payment_status, row.payment_date, row.payment_note,
+      ].map(esc).join(','))
+    }
+    return c.text(lines.join('\n'))
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 // ── 報表 (Reports) ────────────────────────────────────────────────────────────
