@@ -465,18 +465,44 @@ const nextInvoiceIdentity = async (invoiceType: 'customer' | 'supplier', invoice
   return { invoiceNo, period, seq }
 }
 
-const resolveOrderItemId = async (customerOrderId: any, materialCode: any): Promise<number | null> => {
-  if (!customerOrderId || !materialCode) return null
-  const row = await queryOne<any>(`
-    SELECT ci.id
+const parsePositiveInt = (raw: any, fallback: number, max: number): number => {
+  const n = Number(raw)
+  if (!Number.isFinite(n) || n <= 0) return fallback
+  const v = Math.floor(n)
+  if (v <= 0) return fallback
+  return Math.min(v, max)
+}
+
+const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; material_code: string }>): Promise<Map<string, number>> => {
+  const keyMap = new Map<string, number>()
+  const orderIds = Array.from(new Set(pairs.map((p) => Number(p.customer_order_id)).filter((x) => Number.isFinite(x) && x > 0)))
+  const materialCodes = Array.from(new Set(pairs.map((p) => String(p.material_code || '').trim()).filter(Boolean)))
+  if (!orderIds.length || !materialCodes.length) return keyMap
+
+  const orderPlaceholders = orderIds.map(() => '?').join(',')
+  const codePlaceholders = materialCodes.map(() => '?').join(',')
+  const rows = await query<any>(`
+    SELECT
+      ci.id as order_item_id,
+      ci.order_id as customer_order_id,
+      COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '') as material_code
     FROM customer_order_items ci
     LEFT JOIN bom b ON b.id = ci.bom_id
-    WHERE ci.order_id = ?
-      AND (b.product_sku = ? OR ci.material_code = ?)
+    WHERE ci.order_id IN (${orderPlaceholders})
+      AND (
+        ci.material_code IN (${codePlaceholders})
+        OR b.product_sku IN (${codePlaceholders})
+      )
     ORDER BY ci.id ASC
-    LIMIT 1
-  `, [customerOrderId, materialCode, materialCode])
-  return row?.id ? Number(row.id) : null
+  `, [...orderIds, ...materialCodes, ...materialCodes])
+  for (const row of rows) {
+    const orderId = Number(row.customer_order_id || 0)
+    const materialCode = String(row.material_code || '').trim()
+    if (!orderId || !materialCode) continue
+    const key = `${orderId}::${materialCode}`
+    if (!keyMap.has(key)) keyMap.set(key, Number(row.order_item_id))
+  }
+  return keyMap
 }
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -1620,6 +1646,9 @@ app.get('/api/order-intake', authMiddleware, async c => {
     const search = (url.searchParams.get('search') || '').trim()
     const status = (url.searchParams.get('status') || '').trim()
     const customerId = (url.searchParams.get('customer_id') || '').trim()
+    const page = parsePositiveInt(url.searchParams.get('page'), 1, 1000000)
+    const pageSize = parsePositiveInt(url.searchParams.get('page_size'), 200, 1000)
+    const offset = (page - 1) * pageSize
 
     const where: string[] = [
       'co.deleted_at IS NULL',
@@ -1632,6 +1661,11 @@ app.get('/api/order-intake', authMiddleware, async c => {
       where.push('(co.po_number LIKE ? OR c.customer_name LIKE ? OR b.product_sku LIKE ? OR b.product_name LIKE ?)')
       const term = `%${search}%`
       params.push(term, term, term, term)
+    }
+    if (status === 'open') {
+      where.push('(COALESCE(ci.arrived_qty, 0) > COALESCE(ci.reconciled_qty, 0) OR COALESCE(ci.arrived_qty, 0) < COALESCE(ci.qty, 0))')
+    } else if (status === 'completed') {
+      where.push('(COALESCE(ci.arrived_qty, 0) >= COALESCE(ci.qty, 0) AND COALESCE(ci.arrived_qty, 0) <= COALESCE(ci.reconciled_qty, 0))')
     }
 
     const rows = await query<any>(`
@@ -1657,8 +1691,8 @@ app.get('/api/order-intake', authMiddleware, async c => {
       LEFT JOIN bom b ON b.id = ci.bom_id
       WHERE ${where.join(' AND ')}
       ORDER BY co.created_at DESC, ci.id ASC
-      LIMIT 1000
-    `, params.length ? params : undefined)
+      LIMIT ? OFFSET ?
+    `, [...params, pageSize, offset])
 
     const enriched = rows.map((row: any) => {
       const orderedQty = toQty(row.ordered_qty)
@@ -1676,10 +1710,6 @@ app.get('/api/order-intake', authMiddleware, async c => {
         fulfillment_rate: fulfillmentRate,
         reconcile_rate: reconcileRate,
       }
-    }).filter((row: any) => {
-      if (status === 'open') return row.pending_reconcile_qty > 0 || row.shipped_qty < row.ordered_qty
-      if (status === 'completed') return row.shipped_qty >= row.ordered_qty && row.pending_reconcile_qty <= 0
-      return true
     })
 
     return c.json(enriched)
@@ -1772,6 +1802,9 @@ app.get('/api/order-intake/export/csv', authMiddleware, async c => {
 
 app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
   try {
+    const page = parsePositiveInt(c.req.query('page'), 1, 1000000)
+    const pageSize = parsePositiveInt(c.req.query('page_size'), 200, 1000)
+    const offset = (page - 1) * pageSize
     const rows = await query<any>(`
       SELECT
         dni.id as delivery_note_item_id,
@@ -1794,12 +1827,20 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
         AND dn.deleted_at IS NULL
         AND sri.id IS NULL
       ORDER BY dn.delivery_date DESC, dn.id DESC, dni.id ASC
-      LIMIT 1000
-    `)
+      LIMIT ? OFFSET ?
+    `, [pageSize, offset])
+
+    const orderItemIdMap = await buildOrderItemIdMap(
+      rows.map((row: any) => ({
+        customer_order_id: Number(row.customer_order_id || 0),
+        material_code: String(row.material_code || ''),
+      }))
+    )
 
     const enriched: any[] = []
     for (const row of rows) {
-      const orderItemId = await resolveOrderItemId(row.customer_order_id, row.material_code)
+      const key = `${Number(row.customer_order_id || 0)}::${String(row.material_code || '').trim()}`
+      const orderItemId = orderItemIdMap.get(key) || null
       enriched.push({
         ...row,
         order_item_id: orderItemId,
@@ -1813,6 +1854,19 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
 })
 
 app.get('/api/reconciliations', authMiddleware, async c => {
+  const page = parsePositiveInt(c.req.query('page'), 1, 1000000)
+  const pageSize = parsePositiveInt(c.req.query('page_size'), 200, 1000)
+  const offset = (page - 1) * pageSize
+  const status = String(c.req.query('status') || '').trim()
+  const search = String(c.req.query('search') || '').trim()
+  const where: string[] = ['sr.deleted_at IS NULL']
+  const params: any[] = []
+  if (status) { where.push('sr.status=?'); params.push(status) }
+  if (search) {
+    where.push('(sr.reconciliation_no LIKE ? OR sr.remark LIKE ?)')
+    const term = `%${search}%`
+    params.push(term, term)
+  }
   const rows = await query<any>(`
     SELECT
       sr.id,
@@ -1832,11 +1886,11 @@ app.get('/api/reconciliations', authMiddleware, async c => {
     LEFT JOIN shipment_reconciliation_items sri ON sri.reconciliation_id = sr.id AND sri.deleted_at IS NULL
     LEFT JOIN users uc ON uc.id = sr.created_by
     LEFT JOIN users ucf ON ucf.id = sr.confirmed_by
-    WHERE sr.deleted_at IS NULL
+    WHERE ${where.join(' AND ')}
     GROUP BY sr.id
     ORDER BY sr.created_at DESC
-    LIMIT 500
-  `)
+    LIMIT ? OFFSET ?
+  `, [...params, pageSize, offset])
   return c.json(rows.map((r: any) => ({
     ...r,
     total_shipped_qty: toQty(r.total_shipped_qty),
@@ -1921,6 +1975,14 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
     const b = await c.req.json()
     const items = Array.isArray(b?.items) ? b.items : []
     if (!items.length) return c.json({ error: 'items required' }, 400)
+    const deliveryNoteItemIds = Array.from(
+      new Set<number>(
+        items
+          .map((it: any) => Number(it?.delivery_note_item_id || 0))
+          .filter((id: number) => Number.isFinite(id) && id > 0)
+      )
+    )
+    if (!deliveryNoteItemIds.length) return c.json({ error: 'no valid delivery_note_item_id' }, 400)
 
     const reconciliationNo = `RC${Date.now()}`
     const r = await execute(`
@@ -1929,32 +1991,43 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
     `, [reconciliationNo, b.reconcile_date || null, 'draft', b.remark || '', c.get('user')?.userId || null, now8()])
     const reconciliationId = r.insertId
 
+    const placeholders = deliveryNoteItemIds.map(() => '?').join(',')
+    const sources = await query<any>(`
+      SELECT
+        dni.id as delivery_note_item_id,
+        dn.id as delivery_note_id,
+        dn.customer_order_id,
+        co.po_number,
+        dni.material_code,
+        COALESCE(NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
+        b.supplier_id,
+        s.name as supplier_name,
+        COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
+        COALESCE(dni.qty, 0) as shipped_qty
+      FROM delivery_note_items dni
+      JOIN delivery_notes dn ON dn.id = dni.dn_id
+      LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+      LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
+      LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
+      WHERE dni.id IN (${placeholders})
+        AND dn.status = 'shipped'
+        AND dn.deleted_at IS NULL
+        AND sri.id IS NULL
+    `, deliveryNoteItemIds)
+    const sourceMap = new Map<number, any>()
+    for (const src of sources) sourceMap.set(Number(src.delivery_note_item_id), src)
+    const orderItemIdMap = await buildOrderItemIdMap(
+      sources.map((src: any) => ({
+        customer_order_id: Number(src.customer_order_id || 0),
+        material_code: String(src.material_code || ''),
+      }))
+    )
+
     for (const inputItem of items) {
       const deliveryNoteItemId = Number(inputItem?.delivery_note_item_id || 0)
       if (!deliveryNoteItemId) continue
-      const src = await queryOne<any>(`
-        SELECT
-          dni.id as delivery_note_item_id,
-          dn.id as delivery_note_id,
-          dn.customer_order_id,
-          co.po_number,
-          dni.material_code,
-          COALESCE(NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
-          b.supplier_id,
-          s.name as supplier_name,
-          COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
-          COALESCE(dni.qty, 0) as shipped_qty
-        FROM delivery_note_items dni
-        JOIN delivery_notes dn ON dn.id = dni.dn_id
-        LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
-        LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
-        LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
-        LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
-        WHERE dni.id = ?
-          AND dn.status = 'shipped'
-          AND dn.deleted_at IS NULL
-          AND sri.id IS NULL
-      `, [deliveryNoteItemId])
+      const src = sourceMap.get(deliveryNoteItemId)
       if (!src) continue
 
       const shippedQty = toQty(src.shipped_qty)
@@ -1962,7 +2035,7 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
       if (acceptedQty < 0) acceptedQty = 0
       if (acceptedQty > shippedQty) acceptedQty = shippedQty
       const differenceQty = toQty(shippedQty - acceptedQty)
-      const orderItemId = await resolveOrderItemId(src.customer_order_id, src.material_code)
+      const orderItemId = orderItemIdMap.get(`${Number(src.customer_order_id || 0)}::${String(src.material_code || '').trim()}`) || null
 
       await execute(`
         INSERT INTO shipment_reconciliation_items
@@ -2184,6 +2257,9 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
 
 app.get('/api/invoices', authMiddleware, async c => {
   try {
+    const page = parsePositiveInt(c.req.query('page'), 1, 1000000)
+    const pageSize = parsePositiveInt(c.req.query('page_size'), 200, 1000)
+    const offset = (page - 1) * pageSize
     const invoiceType = (c.req.query('type') || '').trim()
     const status = (c.req.query('status') || '').trim()
     const search = (c.req.query('search') || '').trim()
@@ -2214,8 +2290,8 @@ app.get('/api/invoices', authMiddleware, async c => {
       WHERE ${where.join(' AND ')}
       GROUP BY ih.id
       ORDER BY ih.created_at DESC
-      LIMIT 1000
-    `, params.length ? params : undefined)
+      LIMIT ? OFFSET ?
+    `, [...params, pageSize, offset])
     return c.json(rows.map((r: any) => ({ ...r, total_qty: toQty(r.total_qty) })))
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
