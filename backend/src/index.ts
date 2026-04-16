@@ -212,6 +212,11 @@ const ensureCustomerOrderTrackingColumns = async () => {
       }
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN reconciled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN settled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
+      await addIndexSafe('CREATE INDEX idx_customer_orders_status_created ON customer_orders (status, created_at)')
+      await addIndexSafe('CREATE INDEX idx_customer_orders_customer ON customer_orders (customer_id)')
+      await addIndexSafe('CREATE INDEX idx_customer_order_items_order ON customer_order_items (order_id)')
+      await addIndexSafe('CREATE INDEX idx_customer_order_items_reconcile ON customer_order_items (arrived_qty, reconciled_qty, qty)')
+      await addIndexSafe('CREATE INDEX idx_bom_product_sku ON bom (product_sku)')
     })().catch((e) => {
       ensureCustomerOrderTrackingColumnsPromise = null
       throw e
