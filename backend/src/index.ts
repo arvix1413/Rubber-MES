@@ -2599,15 +2599,27 @@ app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('customer_ord
     if (!items.length) return c.json({ error: 'no items' }, 400)
 
     if (header.invoice_type === 'customer') {
+      const settleMap = new Map<number, number>()
       for (const item of items) {
         const orderItemId = Number(item.order_item_id || 0)
         const qty = toQty(item.qty)
         if (!orderItemId || qty <= 0) continue
+        settleMap.set(orderItemId, toQty((settleMap.get(orderItemId) || 0) + qty))
+      }
+      const orderItemIds = Array.from(settleMap.keys())
+      if (orderItemIds.length) {
+        const caseClause = orderItemIds.map(() => 'WHEN ? THEN ?').join(' ')
+        const inClause = orderItemIds.map(() => '?').join(',')
+        const params: any[] = []
+        for (const oid of orderItemIds) {
+          params.push(oid, settleMap.get(oid) || 0)
+        }
+        params.push(...orderItemIds)
         await execute(`
           UPDATE customer_order_items
-          SET settled_qty = LEAST(COALESCE(reconciled_qty, qty), COALESCE(settled_qty, 0) + ?)
-          WHERE id=?
-        `, [qty, orderItemId])
+          SET settled_qty = LEAST(COALESCE(reconciled_qty, qty), COALESCE(settled_qty, 0) + CASE id ${caseClause} ELSE 0 END)
+          WHERE id IN (${inClause})
+        `, params)
       }
     }
 
