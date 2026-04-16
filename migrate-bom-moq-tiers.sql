@@ -1,0 +1,2 @@
+ALTER TABLE bom
+  ADD COLUMN moq_tiers TEXT NULL COMMENT 'MOQ阶梯价格(JSON)';

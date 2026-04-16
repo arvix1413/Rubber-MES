@@ -1,0 +1,17 @@
+name = "oms-backend"
+main = "src/index.ts"
+compatibility_date = "2024-01-15"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+JWT_SECRET = "oms_v2_jwt_secret_2026"
+CDN_DOMAIN = "https://oms-backend.arvix1413.workers.dev/images"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "oms-v2-db"
+database_id = "3c2c3a3c-429f-4060-b4a2-d410d4594d6c"
+
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "oms-v2"
