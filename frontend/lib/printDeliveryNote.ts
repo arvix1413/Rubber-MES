@@ -35,19 +35,18 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
 </head>
 <body>
 <div class="page">
-  <div class="title">出貨單</div>
-  <div class="subtitle">PHIẾU GIAO HÀNG / DELIVERY NOTE</div>
+  <div class="title">PHIẾU GIAO HÀNG</div>
 
   <div class="meta-grid">
     <div class="card">
-      <div class="row"><span class="label">收貨方</span><span>${txt(data.customer_name)}</span></div>
-      <div class="row"><span class="label">出貨公司</span><span>${txt(co.company_name)}</span></div>
-      <div class="row"><span class="label">地址</span><span>${txt(data.address || co.address)}</span></div>
+      <div class="row"><span class="label">Địa điểm nhận hàng</span><span>${txt(data.customer_name)}</span></div>
+      <div class="row"><span class="label">Công ty giao hàng</span><span>${txt(co.company_name)}</span></div>
+      <div class="row"><span class="label">Địa chỉ</span><span>${txt(data.address || co.address)}</span></div>
     </div>
     <div class="card">
-      <div class="row"><span class="label">出貨單號</span><span class="mono">${txt(data.dn_number)}</span></div>
-      <div class="row"><span class="label">出貨日期</span><span>${formatDate(data.delivery_date)}</span></div>
-      <div class="row"><span class="label">公司代碼</span><span>2211</span></div>
+      <div class="row"><span class="label">Số phiếu/No</span><span class="mono">${txt(data.dn_number)}</span></div>
+      <div class="row"><span class="label">Năm/Tháng/Ngày</span><span>${formatDate(data.delivery_date)}</span></div>
+      <div class="row"><span class="label">Mã số Công Ty giao hàng</span><span>2211</span></div>
     </div>
   </div>
 
@@ -69,12 +68,12 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
 
   <div class="sign-grid">
     <div class="sign-box">
-      <div class="sign-title">收貨方確認</div>
+      <div class="sign-title">Người nhận hàng</div>
       <div class="sign-img-wrap"></div>
       <div class="sign-line">${txt(data.customer_name)}</div>
     </div>
     <div class="sign-box">
-      <div class="sign-title">出貨方確認</div>
+      <div class="sign-title">Người giao hàng</div>
       <div class="sign-img-wrap">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
       <div class="sign-line">${txt(co.contact_person || co.company_name)}</div>
     </div>
