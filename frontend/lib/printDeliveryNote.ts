@@ -42,6 +42,7 @@ body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-se
 table{width:100%;border-collapse:collapse;margin-top:6px}
 th,td{border:1px solid #333;padding:3px 4px}
 th{background:#f2f2f2;text-align:center;font-size:9.6px}
+td{text-align:center}
 .c{text-align:center}
 .mono{font-family:Consolas,Menlo,monospace}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:16mm}

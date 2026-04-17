@@ -49,6 +49,7 @@ body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-se
 table{width:100%;border-collapse:collapse;margin-top:8px}
 th,td{border:1px solid #333;padding:5px;vertical-align:middle}
 th{background:#f2f2f2;text-align:center;font-size:10px}
+td{text-align:center}
 .c{text-align:center}
 .r{text-align:right}
 .note{margin-top:8px;border:1px solid #333;padding:6px 8px;min-height:36px;line-height:1.45}
