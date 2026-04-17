@@ -51,22 +51,22 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
 <title>Purchase Order ${txt(data.po_number)}</title>
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:10.5px;color:#111;margin:0;background:#fff}
+.page{width:210mm;min-height:297mm;padding:8.5mm 9mm 9mm;margin:0 auto}
 .h{display:flex;justify-content:space-between;align-items:flex-start}
-.title{font-size:40px;font-weight:800;text-align:center;line-height:1.05;margin-bottom:6px}
-.small{font-size:11px;line-height:1.45}
+.title{font-size:32px;font-weight:800;text-align:center;line-height:1.02;margin-bottom:5px;letter-spacing:.3px}
+.small{font-size:10.5px;line-height:1.35}
 .mono{font-family:Consolas,Menlo,monospace}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #333;padding:5px;vertical-align:top}
-th{background:#f2f2f2;font-size:10px;text-align:center}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border:1px solid #333;padding:4px 5px;vertical-align:top}
+th{background:#f2f2f2;font-size:9.8px;text-align:center}
 .c{text-align:center}
 .r{text-align:right}
-.note{margin-top:8px;border:1px solid #333;padding:6px 8px;line-height:1.45;min-height:72px}
-.foot{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:74px;padding:6px;text-align:center}
+.note{margin-top:7px;border:1px solid #333;padding:5px 7px;line-height:1.36;min-height:66px}
+.foot{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:15mm}
+.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
 .box .t{font-weight:700}
-.box .line{margin-top:42px;border-top:1px solid #333;padding-top:4px;font-size:10px}
+.box .line{margin-top:52px;border-top:1px solid #333;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>

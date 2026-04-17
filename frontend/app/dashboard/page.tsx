@@ -28,14 +28,14 @@ export default function DashboardPage() {
   const flow = useMemo(() => {
     const invoicePending = (health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0)
     return [
-      { step: '01', title: '客户下单', desc: '建立客户订单与交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '订单数' },
-      { step: '02', title: '收集订单', desc: '统一订单收集池追踪', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '跟踪中' },
-      { step: '03', title: '采购下单', desc: '按客户进度切分PO', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO数' },
-      { step: '04', title: '安排出货', desc: '生成出货单并回写数量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出货单' },
-      { step: '05', title: '数量核对', desc: '核对实际出货与订单', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核对' },
-      { step: '06', title: '开立发票', desc: '客户/供应商双向发票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待开票' },
-      { step: '07', title: '供应商付款', desc: '处理应付并跟踪状态', href: '/dashboard/payables', metric: fmt(health?.overdue_payables?.invoice_count || 0), tag: '逾期笔数' },
-      { step: '08', title: '库存扣减', desc: '根据出货数量更新库存', href: '/dashboard/inventory', metric: fmt(stats?.low_stock_count || 0), tag: '低库存' },
+      { step: '01', title: '客戶下單', desc: '建立客戶訂單與交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '訂單數' },
+      { step: '02', title: '收集訂單', desc: '統一訂單收集池追蹤', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
+      { step: '03', title: '採購下單', desc: '按客戶進度切分 PO', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
+      { step: '04', title: '安排出貨', desc: '建立出貨單並回寫數量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出貨單' },
+      { step: '05', title: '數量核對', desc: '核對實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核對' },
+      { step: '06', title: '開立發票', desc: '客戶/供應商雙向發票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待開票' },
+      { step: '07', title: '供應商付款', desc: '處理應付並追蹤狀態', href: '/dashboard/payables', metric: fmt(health?.overdue_payables?.invoice_count || 0), tag: '逾期筆數' },
+      { step: '08', title: '庫存扣減', desc: '依出貨數量更新庫存', href: '/dashboard/inventory', metric: fmt(stats?.low_stock_count || 0), tag: '低庫存' },
     ]
   }, [stats, health])
 
@@ -47,18 +47,18 @@ export default function DashboardPage() {
             <div className="mb-2 inline-flex rounded-full border border-[#d8b58f] bg-[#fff2e1] px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-[#7d5832]">
               FLOW ONLY MODE
             </div>
-            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制台</h1>
+            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制臺</h1>
             <p className="mt-2 text-sm text-[#6c5440]">
-              仅保留与参考流程相关页面：客户订单 → 订单收集 → PO下单 → 出货 → 核对 → 开票 → 付款 → 库存扣减
+              僅保留與參考流程相關頁面：客戶訂單 → 訂單收集 → PO 下單 → 出貨 → 核對 → 開票 → 付款 → 庫存扣減
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right">
             <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
-              <div className="text-[11px] text-[#8a6b49]">总销售额</div>
+              <div className="text-[11px] text-[#8a6b49]">總銷售額</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.total_sales || 0)}</div>
             </div>
             <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
-              <div className="text-[11px] text-[#8a6b49]">本月订单</div>
+              <div className="text-[11px] text-[#8a6b49]">本月訂單</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.month_orders || 0)}</div>
             </div>
           </div>
@@ -85,36 +85,36 @@ export default function DashboardPage() {
 
       <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
         <div className="rubber-card p-5 xl:col-span-2">
-          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">流程异常提醒</h2>
+          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">流程異常提醒</h2>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Link href="/dashboard/shipment-reconciliation" className="rounded-xl border border-[#e7c4ba] bg-[#fff4f1] p-3">
-              <div className="text-xs text-[#9f5946]">待核对数量</div>
+              <div className="text-xs text-[#9f5946]">待核對數量</div>
               <div className="mt-1 text-xl font-bold text-[#8b3f2a]">{fmt(health?.pending_reconciliation_items || 0)}</div>
             </Link>
             <Link href="/dashboard/invoices" className="rounded-xl border border-[#e4cfb3] bg-[#fff7eb] p-3">
-              <div className="text-xs text-[#8f6941]">待开票项目</div>
+              <div className="text-xs text-[#8f6941]">待開票項目</div>
               <div className="mt-1 text-xl font-bold text-[#744b1f]">
                 {fmt((health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0))}
               </div>
             </Link>
             <Link href="/dashboard/payables" className="rounded-xl border border-[#e6d0c3] bg-[#fff6ef] p-3">
-              <div className="text-xs text-[#95624c]">逾期应付</div>
+              <div className="text-xs text-[#95624c]">逾期應付</div>
               <div className="mt-1 text-xl font-bold text-[#7e4027]">{fmt(health?.overdue_payables?.outstanding_amount || 0)}</div>
             </Link>
             <Link href="/dashboard/invoices" className="rounded-xl border border-[#d9d0be] bg-[#f9f5ee] p-3">
-              <div className="text-xs text-[#756652]">逾期应收</div>
+              <div className="text-xs text-[#756652]">逾期應收</div>
               <div className="mt-1 text-xl font-bold text-[#5a4d3b]">{fmt(health?.overdue_receivables?.outstanding_amount || 0)}</div>
             </Link>
           </div>
         </div>
 
         <div className="rubber-card p-5">
-          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">主档维护</h2>
-          <p className="mt-1 text-xs text-[#7d6d5a]">流程依赖主数据，保留最小必要页面。</p>
+          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">主檔維護</h2>
+          <p className="mt-1 text-xs text-[#7d6d5a]">流程依賴主資料，保留最小必要頁面。</p>
           <div className="mt-4 space-y-2">
-            <Link href="/dashboard/bom" className="btn-ghost w-full justify-between">产品规格/BOM <span>→</span></Link>
-            <Link href="/dashboard/customers" className="btn-ghost w-full justify-between">客户资料 <span>→</span></Link>
-            <Link href="/dashboard/suppliers" className="btn-ghost w-full justify-between">供应商资料 <span>→</span></Link>
+            <Link href="/dashboard/bom" className="btn-ghost w-full justify-between">產品規格/BOM <span>→</span></Link>
+            <Link href="/dashboard/customers" className="btn-ghost w-full justify-between">客戶資料 <span>→</span></Link>
+            <Link href="/dashboard/suppliers" className="btn-ghost w-full justify-between">供應商資料 <span>→</span></Link>
           </div>
         </div>
       </section>

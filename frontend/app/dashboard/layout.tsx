@@ -12,29 +12,29 @@ type NavEntry = NavItem | NavGroup
 const isGroup = (n: NavEntry): n is NavGroup => 'children' in n
 
 const NAV: NavEntry[] = [
-  { href: '/dashboard', label: '流程总览', icon: <IconGrid />, exact: true },
+  { href: '/dashboard', label: '流程總覽', icon: <IconGrid />, exact: true },
   {
-    label: '流程执行',
+    label: '流程執行',
     icon: <IconFlow />,
     defaultOpen: true,
     children: [
-      { href: '/dashboard/order-intake', label: '订单收集', icon: <IconList /> },
-      { href: '/dashboard/customer-orders', label: '客户订单', icon: <IconDoc /> },
-      { href: '/dashboard/po', label: '采购下单', icon: <IconCart /> },
-      { href: '/dashboard/delivery-notes', label: '出货单', icon: <IconTruck /> },
-      { href: '/dashboard/shipment-reconciliation', label: '数量核对', icon: <IconCheck /> },
-      { href: '/dashboard/invoices', label: '发票管理', icon: <IconInvoice /> },
-      { href: '/dashboard/payables', label: '供应商付款', icon: <IconPay /> },
-      { href: '/dashboard/inventory', label: '库存扣减', icon: <IconWarehouse /> },
+      { href: '/dashboard/order-intake', label: '訂單收集', icon: <IconList /> },
+      { href: '/dashboard/customer-orders', label: '客戶訂單', icon: <IconDoc /> },
+      { href: '/dashboard/po', label: '採購下單', icon: <IconCart /> },
+      { href: '/dashboard/delivery-notes', label: '出貨單', icon: <IconTruck /> },
+      { href: '/dashboard/shipment-reconciliation', label: '數量核對', icon: <IconCheck /> },
+      { href: '/dashboard/invoices', label: '發票管理', icon: <IconInvoice /> },
+      { href: '/dashboard/payables', label: '供應商付款', icon: <IconPay /> },
+      { href: '/dashboard/inventory', label: '庫存扣減', icon: <IconWarehouse /> },
     ],
   },
   {
-    label: '基础主档',
+    label: '基礎主檔',
     icon: <IconBox />,
     children: [
-      { href: '/dashboard/bom', label: '产品规格/BOM', icon: <IconLayers /> },
-      { href: '/dashboard/customers', label: '客户资料', icon: <IconUsers /> },
-      { href: '/dashboard/suppliers', label: '供应商资料', icon: <IconBuilding /> },
+      { href: '/dashboard/bom', label: '產品規格/BOM', icon: <IconLayers /> },
+      { href: '/dashboard/customers', label: '客戶資料', icon: <IconUsers /> },
+      { href: '/dashboard/suppliers', label: '供應商資料', icon: <IconBuilding /> },
     ],
   },
 ]
@@ -88,7 +88,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程执行']))
+  const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
 
   useEffect(() => {
@@ -145,7 +145,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       else allItems.push(n)
     })
     const hit = allItems.find((i) => isActive(i.href, i.exact))
-    return hit?.label || '流程总览'
+    return hit?.label || '流程總覽'
   }, [pathname])
 
   return (
@@ -216,7 +216,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           </Link>
           <button onClick={logout} className="flex w-full items-center gap-1.5 rounded-lg px-2 py-1.5 text-[12px] text-[#ccb59f] transition-colors hover:bg-white/7 hover:text-[#ffe4c2]">
             <IconLogout />
-            退出登录
+            登出系統
           </button>
         </div>
       </aside>
@@ -226,7 +226,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <div className="flex items-center justify-between">
             <button onClick={() => setSidebarOpen((v) => !v)} className="btn-ghost px-2.5 py-1.5">
               {sidebarOpen ? <IconClose /> : <IconMenu />}
-              {sidebarOpen ? '关闭' : '菜单'}
+              {sidebarOpen ? '關閉' : '選單'}
             </button>
             <div className="brand-font text-[11px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
           </div>

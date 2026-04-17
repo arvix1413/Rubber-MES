@@ -242,7 +242,7 @@ export default function DeliveryNotesPage() {
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">
-                待出货订单 *
+                待出貨訂單 *
                 {(selectedCustomerId || poSearch) && pendingOrders.length === 0 && (
                   <span className="text-orange-500 ml-1">（無待出貨訂單）</span>
                 )}

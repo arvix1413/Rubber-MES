@@ -68,27 +68,27 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
 <title>採購單 ${txt(data.po_number)}</title>
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
-.h1{font-size:42px;font-weight:800;letter-spacing:.5px;text-align:center;line-height:1}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:10.5px;color:#111;margin:0;background:#fff}
+.page{width:210mm;min-height:297mm;padding:8mm 9mm 9mm;margin:0 auto}
+.h1{font-size:36px;font-weight:800;letter-spacing:.4px;text-align:center;line-height:1}
 .h2{font-size:15px;font-weight:700;text-align:center;margin-top:3px}
-.head{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px}
-.meta{border:1px solid #333;padding:6px 8px;line-height:1.45}
+.head{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
+.meta{border:1px solid #333;padding:5px 7px;line-height:1.36}
 .lbl{display:inline-block;width:95px;color:#333;font-weight:700}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #333;padding:4px 5px;vertical-align:middle}
-th{background:#f3f3f3;text-align:center;font-size:10px}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border:1px solid #333;padding:3px 4px;vertical-align:middle}
+th{background:#f3f3f3;text-align:center;font-size:9.6px}
 .c{text-align:center}
 .r{text-align:right}
 .mono{font-family:Consolas,Menlo,monospace}
-.sum{margin-top:6px;margin-left:auto;width:260px;border:1px solid #333}
-.sum .row{display:flex;justify-content:space-between;padding:5px 8px;border-bottom:1px solid #ddd}
+.sum{margin-top:5px;margin-left:auto;width:262px;border:1px solid #333}
+.sum .row{display:flex;justify-content:space-between;padding:4px 7px;border-bottom:1px solid #ddd}
 .sum .row:last-child{border-bottom:none;font-weight:800}
-.notes{margin-top:8px;border:1px solid #333;padding:6px 8px;min-height:68px;line-height:1.4}
-.sign{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:72px;padding:6px;text-align:center}
+.notes{margin-top:6px;border:1px solid #333;padding:5px 7px;min-height:66px;line-height:1.34}
+.sign{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:16mm}
+.box{border:1px solid #333;min-height:88px;padding:6px;text-align:center}
 .box .t{font-weight:700;font-size:11px}
-.box .line{margin-top:42px;border-top:1px solid #444;padding-top:4px;font-size:10px}
+.box .line{margin-top:56px;border-top:1px solid #444;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>

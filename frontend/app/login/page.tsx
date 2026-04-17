@@ -38,10 +38,10 @@ export default function LoginPage() {
           <p className="mt-2 text-sm text-[#b7d4df]">Factory Workflow Command Station</p>
           <div className="mt-8 space-y-3 text-xs">
             <div className="rounded-xl border border-white/20 bg-white/10 p-3">
-              即时监控接单、生产、出货与收付款状态
+              即時監控接單、生產、出貨與收付款狀態
             </div>
             <div className="rounded-xl border border-white/20 bg-white/10 p-3">
-              单据与库存联动，流程中断点可追踪
+              單據與庫存連動，流程中斷點可追蹤
             </div>
           </div>
         </div>
@@ -72,7 +72,7 @@ export default function LoginPage() {
               />
             </div>
             <div>
-              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#6f665b]">密码</label>
+              <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#6f665b]">密碼</label>
               <div className="relative">
                 <input
                   type={showPw ? 'text' : 'password'}
@@ -87,17 +87,17 @@ export default function LoginPage() {
                   onClick={() => setShowPw(!showPw)}
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-[#8b7d6d] transition-colors hover:text-[#4f463a]"
                 >
-                  {showPw ? '隐藏' : '显示'}
+                  {showPw ? '隱藏' : '顯示'}
                 </button>
               </div>
             </div>
             <button type="submit" disabled={loading} className="btn-primary mt-2 w-full justify-center py-2.5">
-              {loading ? '登入中...' : '进入系统'}
+              {loading ? '登入中...' : '進入系統'}
             </button>
           </form>
 
           <div className="mt-7 rounded-xl border border-[#e5d7c6] bg-[#faf3e9] p-3 text-[11px] text-[#7a6d5f]">
-            默认账号：admin@rubber.local · admin123
+            預設帳號：admin@rubber.local · admin123
           </div>
         </div>
       </div>

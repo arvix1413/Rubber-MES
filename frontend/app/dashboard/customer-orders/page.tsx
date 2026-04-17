@@ -258,7 +258,7 @@ export default function CustomerOrdersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">客户订单（对齐单据）</h1>
+          <h1 className="text-xl font-bold text-slate-800">客戶訂單（對齊單據）</h1>
           <p className="section-hint">點選訂單列展開檢視品項明細</p>
         </div>
         {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-primary">+ 新增訂單</button>}

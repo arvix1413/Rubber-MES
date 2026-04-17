@@ -41,21 +41,21 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
 <title>PHIEU GIAO HANG ${txt(data.dn_number)}</title>
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
-.title{font-size:42px;font-weight:800;text-align:center;line-height:1}
-.meta{display:flex;justify-content:space-between;align-items:flex-start;margin-top:6px}
-.left{font-size:11px;line-height:1.45}
-.right{font-size:11px;line-height:1.5;text-align:right}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #333;padding:5px}
-th{background:#f2f2f2;text-align:center;font-size:10px}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:10.5px;color:#111;margin:0;background:#fff}
+.page{width:210mm;min-height:297mm;padding:8mm 9mm 9mm;margin:0 auto}
+.title{font-size:36px;font-weight:800;text-align:center;line-height:1.02}
+.meta{display:flex;justify-content:space-between;align-items:flex-start;margin-top:5px}
+.left{font-size:10.5px;line-height:1.35}
+.right{font-size:10.5px;line-height:1.35;text-align:right}
+table{width:100%;border-collapse:collapse;margin-top:6px}
+th,td{border:1px solid #333;padding:3px 4px}
+th{background:#f2f2f2;text-align:center;font-size:9.6px}
 .c{text-align:center}
 .mono{font-family:Consolas,Menlo,monospace}
-.sign{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:70px;padding:6px;text-align:center}
+.sign{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:17mm}
+.box{border:1px solid #333;min-height:88px;padding:6px;text-align:center}
 .box .t{font-weight:700}
-.box .line{margin-top:40px;border-top:1px solid #333;padding-top:4px;font-size:10px}
+.box .line{margin-top:56px;border-top:1px solid #333;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>
