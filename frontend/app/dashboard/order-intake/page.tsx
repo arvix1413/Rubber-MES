@@ -95,15 +95,15 @@ export default function OrderIntakePage() {
         </div>
       </div>
 
-      <div className="oms-card p-4 mb-4">
+      <div className="rubber-card p-4 mb-4">
         <div className="grid md:grid-cols-5 gap-3">
           <input
-            className="oms-input md:col-span-3"
+            className="rubber-input md:col-span-3"
             placeholder="搜尋客戶、訂單號、料號、品名"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
-          <select className="oms-input" value={status} onChange={(e) => setStatus(e.target.value)}>
+          <select className="rubber-input" value={status} onChange={(e) => setStatus(e.target.value)}>
             <option value="">全部狀態</option>
             <option value="open">進行中</option>
             <option value="completed">已完成</option>
@@ -112,7 +112,7 @@ export default function OrderIntakePage() {
         </div>
       </div>
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">

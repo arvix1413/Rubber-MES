@@ -45,7 +45,7 @@ test.beforeAll(async () => {
   const data = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@oms.com', password: 'admin123' })
+    body: JSON.stringify({ email: 'admin@rubber.local', password: 'admin123' })
   }).then(r => r.json())
   token = data.token
   console.log('✅ 登入成功')
@@ -302,7 +302,7 @@ test('Step 11: 前端UI驗證庫存顯示', async ({ page }) => {
   await page.goto(BASE)
   await page.evaluate(() => localStorage.clear())
   await page.goto(`${BASE}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })

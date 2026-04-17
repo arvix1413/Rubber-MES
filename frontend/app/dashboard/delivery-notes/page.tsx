@@ -211,7 +211,7 @@ export default function DeliveryNotesPage() {
     d.dn_number.toLowerCase().includes(search.toLowerCase()) ||
     (d.customer_name||'').toLowerCase().includes(search.toLowerCase()))
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
-  const inp = 'oms-input text-xs py-1.5'
+  const inp = 'rubber-input text-xs py-1.5'
 
   return (
     <div>
@@ -221,14 +221,14 @@ export default function DeliveryNotesPage() {
       </div>
 
       {creating && canWrite && (
-        <div className="oms-card p-6 mb-5">
+        <div className="rubber-card p-6 mb-5">
           <h2 className="font-semibold text-slate-800 mb-5">新增出貨單</h2>
 
           {/* Step 1: Select customer or search by PO number */}
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">客戶</label>
-              <select className="oms-input" value={selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)}>
+              <select className="rubber-input" value={selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)}>
                 <option value="">-- 選擇客戶 --</option>
                 {customers.map(c => (
                   <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
@@ -236,18 +236,18 @@ export default function DeliveryNotesPage() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1.5">或直接搜尋客戶訂單號</label>
-              <input className="oms-input" placeholder="輸入客戶訂單號..." value={poSearch}
+              <label className="block text-[11px] text-slate-500 mb-1.5">Số đơn đặt hàng（Order No）</label>
+              <input className="rubber-input" placeholder="輸入 Order No..." value={poSearch}
                 onChange={e => onSearchPO(e.target.value)} />
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">
-                待出貨訂單 *
+                待出货订单 *
                 {(selectedCustomerId || poSearch) && pendingOrders.length === 0 && (
                   <span className="text-orange-500 ml-1">（無待出貨訂單）</span>
                 )}
               </label>
-              <select className="oms-input" value={selectedOrderId} onChange={e => onSelectOrder(e.target.value)}
+              <select className="rubber-input" value={selectedOrderId} onChange={e => onSelectOrder(e.target.value)}
                 disabled={pendingOrders.length === 0}>
                 <option value="">-- 選擇訂單 --</option>
                 {pendingOrders.map(o => (
@@ -257,25 +257,25 @@ export default function DeliveryNotesPage() {
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">出貨日期</label>
-              <input type="date" className="oms-input" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
+              <input type="date" className="rubber-input" value={deliveryDate} onChange={e => setDeliveryDate(e.target.value)} />
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">備註（交易條件、特殊要求等）</label>
-              <textarea className="oms-input" rows={3} value={remark} onChange={e => setRemark(e.target.value)} placeholder="可輸入交易條件、付款方式、交貨要求等資訊..." />
+              <textarea className="rubber-input" rows={3} value={remark} onChange={e => setRemark(e.target.value)} placeholder="可輸入交易條件、付款方式、交貨要求等資訊..." />
             </div>
           </div>
 
           {/* Step 2: Order items with shipped qty */}
           {orderItems.length > 0 && (
             <div className="mb-5">
-              <div className="text-xs font-semibold text-slate-600 mb-2">出貨明細（可修改實際出貨數量）</div>
+              <div className="text-xs font-semibold text-slate-600 mb-2">PHIẾU GIAO HÀNG 明细</div>
               <div className="border border-slate-200 rounded-lg overflow-hidden">
                 <table className="w-full text-xs">
                   <thead><tr className="bg-slate-50 border-b border-slate-200">
-                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">品名</th>
-                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">物料編號</th>
-                    <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">訂單數量</th>
-                    <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">本次出貨</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Tên vật liệu</th>
+                    <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mã số</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Số lượng đặt</th>
+                    <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Số lượng giao</th>
                   </tr></thead>
                   <tbody>
                     {orderItems.map(item => (
@@ -305,7 +305,7 @@ export default function DeliveryNotesPage() {
       )}
 
       {editing && canWrite && (
-        <div className="oms-card p-6 mb-5">
+        <div className="rubber-card p-6 mb-5">
             <div className="flex items-center justify-between mb-4">
               <h2 className="text-base font-bold">編輯出貨單 {editing.dn_number}</h2>
               <button onClick={() => setEditing(null)} className="btn-ghost border border-slate-200">返回列表</button>
@@ -313,11 +313,11 @@ export default function DeliveryNotesPage() {
             <div className="grid grid-cols-2 gap-3 mb-4">
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">出貨日期</label>
-                <input type="date" className="oms-input" value={editForm.delivery_date} onChange={e => setEditForm(p => ({ ...p, delivery_date: e.target.value }))} />
+                <input type="date" className="rubber-input" value={editForm.delivery_date} onChange={e => setEditForm(p => ({ ...p, delivery_date: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">備註</label>
-                <input className="oms-input" value={editForm.remark} onChange={e => setEditForm(p => ({ ...p, remark: e.target.value }))} />
+                <input className="rubber-input" value={editForm.remark} onChange={e => setEditForm(p => ({ ...p, remark: e.target.value }))} />
               </div>
             </div>
             <div className="border border-slate-200 rounded-lg overflow-hidden mb-4">
@@ -334,12 +334,12 @@ export default function DeliveryNotesPage() {
                       <td className="px-3 py-2 text-slate-700">{item.item_name}</td>
                       <td className="px-3 py-2 font-mono text-xs text-blue-600">{item.material_code}</td>
                       <td className="px-3 py-2 text-right">
-                        <input type="number" className="oms-input text-xs py-1 w-20 text-right" min={0}
+                        <input type="number" className="rubber-input text-xs py-1 w-20 text-right" min={0}
                           value={item.qty}
                           onChange={e => setEditForm(p => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, qty: Number(e.target.value) } : it) }))} />
                       </td>
                       <td className="px-3 py-2">
-                        <input className="oms-input text-xs py-1" value={item.remark || ''}
+                        <input className="rubber-input text-xs py-1" value={item.remark || ''}
                           onChange={e => setEditForm(p => ({ ...p, items: p.items.map((it, idx) => idx === i ? { ...it, remark: e.target.value } : it) }))} />
                       </td>
                     </tr>
@@ -357,10 +357,10 @@ export default function DeliveryNotesPage() {
       {!creating && !editing && (
         <>
           <div className="mb-4">
-            <input className="oms-input w-64" placeholder="搜尋出貨單號或客戶..." value={search} onChange={e => setSearch(e.target.value)} />
+            <input className="rubber-input w-64" placeholder="搜尋出貨單號或客戶..." value={search} onChange={e => setSearch(e.target.value)} />
           </div>
 
-          <div className="oms-card overflow-hidden">
+          <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
             <table className="w-full text-sm">

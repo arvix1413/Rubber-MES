@@ -1,5 +1,5 @@
 -- Add po_ref and thickness fields to delivery_note_items table
-USE oms_db;
+USE rubber_db;
 
 ALTER TABLE delivery_note_items 
 ADD COLUMN po_ref VARCHAR(100) COMMENT '订单编号' AFTER remark,

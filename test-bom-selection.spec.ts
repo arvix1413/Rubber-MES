@@ -7,7 +7,7 @@ test('测试BOM选择和自动填充', async ({ page }) => {
   
   // 登录
   await page.goto(`${FRONTEND_URL}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard')
@@ -32,7 +32,7 @@ test('测试BOM选择和自动填充', async ({ page }) => {
   await page.screenshot({ path: 'test-results/bom-test-01-supplier-selected.png', fullPage: true })
   
   // 点击BOM选择器
-  const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+  const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
   await bomSelector.click()
   await page.waitForTimeout(1000)
   console.log('✓ 点击BOM选择器')
@@ -122,7 +122,7 @@ test('测试BOM选择和自动填充', async ({ page }) => {
   console.log('✓ 已选择客户')
   
   // 点击BOM选择器
-  const coBomSelector = page.locator('.oms-input.cursor-pointer').first()
+  const coBomSelector = page.locator('.rubber-input.cursor-pointer').first()
   await coBomSelector.click()
   await page.waitForTimeout(1000)
   console.log('✓ 点击BOM选择器')

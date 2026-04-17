@@ -1,9 +1,9 @@
--- 將 admin@oms.com 角色從 admin 改為 manager
--- 執行方式：在伺服器上 docker exec -i oms-mysql mysql -u root -p oms_db < migrate-admin-to-manager.sql
+-- 將 admin@rubber.local 角色從 admin 改為 manager
+-- 執行方式：在伺服器上 docker exec -i rubber-mysql mysql -u root -p rubber_db < migrate-admin-to-manager.sql
 
-USE oms_db;
+USE rubber_db;
 
-UPDATE users SET role = 'manager' WHERE email = 'admin@oms.com' AND role = 'admin';
+UPDATE users SET role = 'manager' WHERE email = 'admin@rubber.local' AND role = 'admin';
 
 -- 確認 manager 角色在 role_permissions 表有全部權限
 INSERT INTO role_permissions (role, permission, allowed) VALUES
@@ -26,4 +26,4 @@ INSERT INTO role_permissions (role, permission, allowed) VALUES
   ('manager', 'audit.view', 1)
 ON DUPLICATE KEY UPDATE allowed = 1;
 
-SELECT email, role FROM users WHERE email = 'admin@oms.com';
+SELECT email, role FROM users WHERE email = 'admin@rubber.local';

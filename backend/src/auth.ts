@@ -1,7 +1,7 @@
 import { SignJWT, jwtVerify } from 'jose'
 import crypto from 'crypto'
 
-const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'oms_jwt_secret_2026')
+const secret = new TextEncoder().encode(process.env.JWT_SECRET || 'rubber_jwt_secret_2026')
 
 export function hashPw(pw: string): string {
   return crypto.createHash('sha256').update(pw).digest('hex')

@@ -4,7 +4,7 @@ import { normalizeRole } from './permissions'
 function getCurrentRole(): string | null {
   if (typeof window === 'undefined') return null
   try {
-    const user = JSON.parse(localStorage.getItem('oms_user') || 'null')
+    const user = JSON.parse(localStorage.getItem('rubber_user') || 'null')
     return user?.role ? normalizeRole(user.role) : null
   } catch {
     return null
@@ -15,7 +15,7 @@ function getCurrentRole(): string | null {
 export function getPermissions(): string[] {
   if (typeof window === 'undefined') return []
   try {
-    return JSON.parse(localStorage.getItem('oms_permissions') || '[]')
+    return JSON.parse(localStorage.getItem('rubber_permissions') || '[]')
   } catch { return [] }
 }
 

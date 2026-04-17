@@ -5,7 +5,7 @@
 
 ## 测试环境
 - 前端URL: http://43.133.56.234
-- 后端API: https://oms-backend.arvix1413.workers.dev
+- 后端API: https://rubber-backend.arvix1413.workers.dev
 - 测试工具: Playwright
 
 ## 测试结果总结
@@ -140,8 +140,8 @@ BOM选项数: 2
 ### 优先级1: 修复提交按钮问题 🔴
 
 **需要检查的代码位置**:
-- `oms-instance-v2/frontend/app/dashboard/po/page.tsx` - `save()` 函数
-- `oms-instance-v2/frontend/app/dashboard/customer-orders/page.tsx` - `save()` 函数
+- `Rubber-MES/frontend/app/dashboard/po/page.tsx` - `save()` 函数
+- `Rubber-MES/frontend/app/dashboard/customer-orders/page.tsx` - `save()` 函数
 
 **检查项**:
 1. 表单验证逻辑是否正确
@@ -190,7 +190,7 @@ WHERE b.id IS NULL;
 
 ```bash
 # 运行完整E2E测试
-cd oms-instance-v2
+cd Rubber-MES
 npx playwright test e2e-final.spec.ts --reporter=list
 
 # 查看测试截图

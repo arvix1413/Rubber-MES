@@ -1,5 +1,5 @@
-CREATE DATABASE IF NOT EXISTS oms_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
-USE oms_db;
+CREATE DATABASE IF NOT EXISTS rubber_db CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+USE rubber_db;
 
 CREATE TABLE IF NOT EXISTS users (
   id INT AUTO_INCREMENT PRIMARY KEY,
@@ -328,12 +328,12 @@ CREATE TABLE IF NOT EXISTS company_settings (
   id INT AUTO_INCREMENT PRIMARY KEY,
   company_name VARCHAR(255) NOT NULL DEFAULT 'FAN YONG CO., LTD',
   company_name_local VARCHAR(255) DEFAULT 'CÔNG TY TNHH FAN YONG VIỆT NAM',
-  address TEXT DEFAULT '152 Hà Huy Tập, P. Tân Hưng, TP. HCM',
+  address TEXT,
   phone VARCHAR(255) DEFAULT '0909883372',
   contact_person VARCHAR(255) DEFAULT 'Danny Lin',
   email VARCHAR(255) DEFAULT '',
   tax_id VARCHAR(100) DEFAULT '',
-  logo_url TEXT DEFAULT NULL,
+  logo_url TEXT,
   operating_cost_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '營運成本比例(%)',
   vat_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '營業稅比例(%)',
   cit_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '所得稅比例(%)',
@@ -346,4 +346,4 @@ INSERT IGNORE INTO company_settings (id, company_name, company_name_local, addre
 
 -- Default manager user (password: admin123)
 INSERT IGNORE INTO users (email, password_hash, name, role) VALUES
-('admin@oms.com', SHA2('admin123', 256), 'Admin', 'manager');
+('admin@rubber.local', SHA2('admin123', 256), 'Admin', 'manager');

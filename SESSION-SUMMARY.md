@@ -1,20 +1,20 @@
-# OMS-Instance-V2 開發記錄 — Session Summary
+# Rubber MES-Instance-V2 開發記錄 — Session Summary
 
 ## 項目基本信息
 
 - **項目**：FAN YONG CO., LTD 內部訂單管理系統
-- **倉庫**：`oms-instance-v2/` (GitHub: arvix1413/oms-instance-v2)
+- **倉庫**：`Rubber-MES/` (GitHub: arvix1413/Rubber-MES)
 - **線上地址**：http://43.133.56.234
 - **後端 API**：http://43.133.56.234/api
-- **預設帳號**：`admin@oms.com` / `admin123`（角色：manager）
+- **預設帳號**：`admin@rubber.local` / `admin123`（角色：manager）
 - **伺服器**：43.133.56.234，SSH user: ubuntu，密碼在 `.env.server`
-- **部署方式**：push main → GitHub Actions → Docker Hub → 伺服器 `bash /opt/oms/deploy.sh`
+- **部署方式**：push main → GitHub Actions → Docker Hub → 伺服器 `bash /opt/rubber/deploy.sh`
 
 ## 技術棧
 
 - **前端**：Next.js 14 靜態導出 + TypeScript + Tailwind CSS
 - **後端**：Hono + Node.js + MySQL（Docker）
-- **部署**：Docker Compose（oms-frontend, oms-backend, oms-mysql）
+- **部署**：Docker Compose（rubber-frontend, rubber-backend, rubber-mysql）
 
 ## 角色系統
 
@@ -112,14 +112,14 @@ company_settings (id=1, 單行配置)
 
 ```bash
 # 手動部署（SSH）
-sshpass -p 'Www.950pp.com' ssh ubuntu@43.133.56.234 "cd /opt/oms && bash deploy.sh"
+sshpass -p 'Www.950pp.com' ssh ubuntu@43.133.56.234 "cd /opt/rubber && bash deploy.sh"
 
 # 數據庫操作
-docker exec oms-mysql mysql -u root -poms_mysql_2026 oms_db -e "SQL..."
+docker exec rubber-mysql mysql -u root -p<MYSQL_ROOT_PASSWORD> rubber_db -e "SQL..."
 
 # 本地開發
-cd oms-instance-v2/backend && npm run dev   # port 3001
-cd oms-instance-v2/frontend && npm run dev  # port 3000
+cd Rubber-MES/backend && npm run dev   # port 3001
+cd Rubber-MES/frontend && npm run dev  # port 3000
 ```
 
 ## 下次開發待辦

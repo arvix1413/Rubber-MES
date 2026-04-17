@@ -1,12 +1,12 @@
-export const API = process.env.NEXT_PUBLIC_API_URL || 'https://oms-backend.arvix1413.workers.dev'
+export const API = process.env.NEXT_PUBLIC_API_URL || 'https://rubber-backend.arvix1413.workers.dev'
 
 export function getToken() {
   if (typeof window === 'undefined') return null
-  return localStorage.getItem('oms_token')
+  return localStorage.getItem('rubber_token')
 }
 
-export function setToken(t: string) { localStorage.setItem('oms_token', t) }
-export function clearToken() { localStorage.removeItem('oms_token') }
+export function setToken(t: string) { localStorage.setItem('rubber_token', t) }
+export function clearToken() { localStorage.removeItem('rubber_token') }
 
 function mapApiErrorMessage(raw: string, status: number): string {
   const msg = String(raw || '').trim()
@@ -59,7 +59,7 @@ function mapApiErrorMessage(raw: string, status: number): string {
 export function getSignatureUrl(): string | null {
   if (typeof window === 'undefined') return null
   try {
-    const user = JSON.parse(localStorage.getItem('oms_user') || 'null')
+    const user = JSON.parse(localStorage.getItem('rubber_user') || 'null')
     if (!user?.signature_url) return null
     return user.signature_url.startsWith('http') ? user.signature_url : `${API}${user.signature_url}`
   } catch { return null }

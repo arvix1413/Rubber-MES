@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 async function login(page: any) {
   await page.goto('http://localhost:3000')
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -12,7 +12,7 @@ async function login(page: any) {
 // ─── 1. Login / Logout ───────────────────────────────────────────────────────
 test('1. 登入 / 登出', async ({ page }) => {
   await page.goto('http://localhost:3000')
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -36,7 +36,7 @@ test('2. 個人資料頁面 + 修改密碼驗證', async ({ page }) => {
   // 確認頁面元素
   await expect(page.locator('h1:has-text("個人資料")')).toBeVisible()
   await expect(page.locator('h2:has-text("修改密碼")')).toBeVisible()
-  await expect(page.locator('text=admin@oms.com').first()).toBeVisible()
+  await expect(page.locator('text=admin@rubber.local').first()).toBeVisible()
   console.log('✅ Profile 頁面正常')
 
   // 測試密碼不一致
@@ -120,7 +120,7 @@ test('4. 客戶訂單 - 建立', async ({ page }) => {
     await poInput.fill(`TEST-CO-${ts}`)
   } else {
     // fallback: 找第二個 text input
-    await page.locator('input.oms-input').nth(1).fill(`TEST-CO-${ts}`)
+    await page.locator('input.rubber-input').nth(1).fill(`TEST-CO-${ts}`)
   }
 
   // 選客戶

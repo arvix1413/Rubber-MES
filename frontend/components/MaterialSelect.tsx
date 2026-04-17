@@ -99,7 +99,7 @@ export function MaterialSelect({ value, onChange, placeholder = '輸入料號或
     <div className="relative">
       <input
         ref={inputRef}
-        className={`oms-input ${className}`}
+        className={`rubber-input ${className}`}
         value={query}
         placeholder={placeholder}
         onChange={e => { setQuery(e.target.value); updatePos(); setOpen(true); onChange(null, e.target.value) }}

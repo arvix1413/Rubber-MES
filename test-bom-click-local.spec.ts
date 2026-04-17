@@ -13,7 +13,7 @@ test('Test BOM selection click event locally', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // Login
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   
@@ -43,7 +43,7 @@ test('Test BOM selection click event locally', async ({ page }) => {
   console.log('\n=== Step 4: Opening BOM dropdown ===')
   
   // Find and click the BOM dropdown
-  const bomDropdown = page.locator('.oms-input.cursor-pointer').first()
+  const bomDropdown = page.locator('.rubber-input.cursor-pointer').first()
   await bomDropdown.click()
   await page.waitForTimeout(1000)
   

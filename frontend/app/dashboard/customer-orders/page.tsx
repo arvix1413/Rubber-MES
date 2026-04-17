@@ -25,7 +25,7 @@ function getCOActions(status: string) {
   return []
 }
 
-type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
+type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
 type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string }
 type Customer = { id:number; customer_code:string; customer_name:string }
@@ -41,7 +41,7 @@ type ProfitOrderSummary = {
   net_profit: number
   net_margin: number
 }
-const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, remark:'', spec:'', unit:'' })
+const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, rta_date:'', remark:'', spec:'', unit:'' })
 
 const STATUS_BADGE: Record<string,string> = { pending:'badge-yellow', completed:'badge-green', delay:'badge-red', partial:'badge-blue' }
 const STATUS_LABEL: Record<string,string> = { pending:'待出貨', completed:'已完成', delay:'延遲', partial:'部分到貨' }
@@ -121,7 +121,7 @@ export default function CustomerOrdersPage() {
   }
 
   const save = async () => {
-    if (!form.po_number) { toast('請填寫採購單號', 'error'); return }
+    if (!form.po_number) { toast('請填寫客戶訂單號', 'error'); return }
     if (!form.customer_id) { toast('請選擇客戶', 'error'); return }
     const validItems = form.items.filter(i => i.bom_id)
     if (!validItems.length) { toast('請至少選擇一個 BOM 品項', 'error'); return }
@@ -158,6 +158,7 @@ export default function CustomerOrdersPage() {
           bom_id: i.bom_id ?? matchedBom?.id ?? null,
           qty: Number(i.qty),
           unit_price: Number(i.unit_price) || Number(matchedBom?.company_price) || 0,
+          rta_date: (i as any).rta_date ? String((i as any).rta_date).slice(0,10) : '',
           remark: (i as any).remark || '',
           spec: i.spec || matchedBom?.spec || '',
           unit: i.unit || matchedBom?.unit || '',
@@ -249,7 +250,7 @@ export default function CustomerOrdersPage() {
   })
   
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
-  const inp = 'oms-input text-xs py-1.5'
+  const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
   const money = (v?: number) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
 
@@ -257,23 +258,23 @@ export default function CustomerOrdersPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">客戶訂單明細</h1>
+          <h1 className="text-xl font-bold text-slate-800">客户订单（对齐单据）</h1>
           <p className="section-hint">點選訂單列展開檢視品項明細</p>
         </div>
         {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-primary">+ 新增訂單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="oms-card p-6 mb-5">
+        <div className="rubber-card p-6 mb-5">
           <h2 className="text-sm font-semibold text-slate-800 mb-4">{editingId ? '編輯客戶訂單' : '新增客戶訂單'}</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1.5">採購日期</label>
+              <label className="block text-[11px] text-slate-500 mb-1.5">PO Date</label>
               <input type="date" className={inp} value={form.po_date} onChange={e=>setForm(p=>({...p,po_date:e.target.value}))} />
             </div>
             <div>
               <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
-                採購單號 *
+                Order No *
                 {editingId !== null && <FieldLockHint />}
               </label>
               <input
@@ -297,7 +298,7 @@ export default function CustomerOrdersPage() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1.5">交貨日期</label>
+              <label className="block text-[11px] text-slate-500 mb-1.5">RTA Default</label>
               <input type="date" className={inp} value={form.delivery_date} onChange={e=>setForm(p=>({...p,delivery_date:e.target.value}))} />
             </div>
             <div>
@@ -327,32 +328,25 @@ export default function CustomerOrdersPage() {
           </div>
 
           <div className="flex items-center justify-between mb-2">
-            <span className="text-xs font-semibold text-slate-600">訂單品項</span>
+            <span className="text-xs font-semibold text-slate-600">Purchase Order Rows</span>
             <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增品項</button>
           </div>
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">圖片</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">品名（BOM）</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">規格</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">單位</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">數量</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">單價</th>
-                <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">小計</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Unit</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Price</th>
+                <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Amount</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">RTA</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Remark</th>
                 <th className="w-8" />
               </tr></thead>
               <tbody>
                 {form.items.map((item,i)=>(
                   <tr key={i} className="border-b border-slate-100 last:border-0">
-                    <td className="p-1.5">
-                      {item.image_url ? (
-                        <img src={item.image_url} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" onError={e=>{(e.target as HTMLImageElement).style.display='none'}} />
-                      ) : (
-                        <div className="w-10 h-10 bg-slate-100 rounded flex items-center justify-center text-slate-300 text-xs">無</div>
-                      )}
-                    </td>
                     <td className="p-1.5 min-w-[260px]">
                       <SearchableSelect
                         options={boms}
@@ -367,20 +361,23 @@ export default function CustomerOrdersPage() {
                         }
                       />
                     </td>
-                    <td className="p-1.5 min-w-[120px]">
-                      <input className={lockedInp} value={item.spec||''} onChange={e=>updateItem(i,'spec',e.target.value)} placeholder="規格" readOnly />
-                    </td>
-                    <td className="p-1.5 w-20">
-                      <input className={lockedInp} value={item.unit||''} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly />
+                    <td className="p-1.5 min-w-[180px]">
+                      <input className={lockedInp} value={`${item.product_name || ''} ${item.spec || ''}`.trim()} readOnly />
                     </td>
                     <td className="p-1.5 w-24">
                       <input type="number" className={inp} value={item.qty||''} onChange={e=>updateItem(i,'qty',Number(e.target.value))} />
+                    </td>
+                    <td className="p-1.5 w-20">
+                      <input className={lockedInp} value={item.unit||''} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly />
                     </td>
                     <td className="p-1.5 w-28">
                       <input type="number" className={inp} value={item.unit_price||''} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} />
                     </td>
                     <td className="p-1.5 w-28 text-right">
                       <span className="font-semibold text-slate-700">{((item.qty||0) * (item.unit_price||0)).toLocaleString()}</span>
+                    </td>
+                    <td className="p-1.5 w-36">
+                      <input type="date" className={inp} value={item.rta_date || form.delivery_date || ''} onChange={e=>updateItem(i,'rta_date',e.target.value)} />
                     </td>
                     <td className="p-1.5 min-w-[180px]">
                       <input className={inp} value={item.remark || ''} onChange={e=>updateItem(i,'remark',e.target.value)} placeholder="Remark" />
@@ -413,7 +410,7 @@ export default function CustomerOrdersPage() {
       {!creating && editingId === null && (
         <>
           <div className="list-controls">
-            <input className="list-search" placeholder="搜尋採購單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} />
+            <input className="list-search" placeholder="搜尋客戶訂單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} />
             <div className="flex gap-1">
               {[['', '全部'], ['pending', '待出貨'], ['partial', '部分'], ['delay', '延遲'], ['completed', '已完成']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
@@ -424,7 +421,7 @@ export default function CustomerOrdersPage() {
             </div>
           </div>
 
-          <div className="oms-card overflow-hidden">
+          <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
             <table className="w-full text-sm">
@@ -512,10 +509,11 @@ export default function CustomerOrdersPage() {
                               ) : (
                                 <table className="w-full text-xs">
                                   <thead><tr className="border-b border-slate-100">
-                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">料號</th>
-                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">品名</th>
-                                    <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">數量</th>
-                                    <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">單價</th>
+                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Mtl No</th>
+                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Description</th>
+                                    <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Qty</th>
+                                    <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Price</th>
+                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">RTA</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Remark</th>
                                     <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">已到數量</th>
                                     <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">結餘</th>
@@ -528,6 +526,7 @@ export default function CustomerOrdersPage() {
                                         <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
                                         <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
                                         <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{(item as any).rta_date ? String((item as any).rta_date).slice(0,10) : '—'}</td>
                                         <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
                                         <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
                                         <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.balance||0).toLocaleString()}</td>

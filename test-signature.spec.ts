@@ -4,7 +4,7 @@ import fs from 'fs'
 
 async function login(page: any) {
   await page.goto('http://localhost:3000')
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -83,11 +83,11 @@ test('4. 后端API - signature_url保存到localStorage', async ({ page }) => {
 
   // 检查localStorage中的user对象
   const user = await page.evaluate(() => {
-    return JSON.parse(localStorage.getItem('oms_user') || 'null')
+    return JSON.parse(localStorage.getItem('rubber_user') || 'null')
   })
   console.log('localStorage user:', JSON.stringify(user))
   expect(user).not.toBeNull()
-  expect(user.email).toBe('admin@oms.com')
+  expect(user.email).toBe('admin@rubber.local')
   // signature_url字段存在（可以是null）
   expect('signature_url' in user || user.signature_url === undefined).toBeTruthy()
   console.log('✅ localStorage user结构正常，signature_url字段:', user.signature_url)

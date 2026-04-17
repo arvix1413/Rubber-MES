@@ -27,7 +27,7 @@
 
 // 替换为
 <select
-  className="oms-input text-xs py-1.5 w-full"
+  className="rubber-input text-xs py-1.5 w-full"
   value={item.bom_id || ''}
   onChange={e => selectBOM(i, e.target.value)}
   disabled={!form.supplier_id}
@@ -64,7 +64,7 @@
 
 // 替换为
 <select
-  className="oms-input text-xs py-1.5 w-full"
+  className="rubber-input text-xs py-1.5 w-full"
   value={item.bom_id || ''}
   onChange={e => onSelectBom(i, e.target.value)}
 >

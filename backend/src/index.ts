@@ -534,7 +534,7 @@ async function audit(user: any, action: string, resource: string, resourceId: an
   } catch {}
 }
 
-app.get('/', c => c.json({ name: 'OMS Backend', version: '2.0.0' }))
+app.get('/', c => c.json({ name: 'RUBBER MES Backend', version: '2.0.0' }))
 
 // ── All Permissions (defined early, used in login + role-permissions) ─────────
 const ALL_PERMISSIONS = [
@@ -1153,7 +1153,7 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
       for (const item of b.items) {
         if (!item.bom_id) continue  // skip items without BOM
         await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?)',
-          [orderId, item.bom_id, item.qty||0, item.unit_price||0, null, item.remark||'', 0, item.qty||0, 'pending'])
+          [orderId, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.remark||'', 0, item.qty||0, 'pending'])
       }
     }
     await audit(c.get('user'), 'CREATE', '客戶訂單', orderId, `${b.po_number} / ${cust?.customer_name||b.customer_id}`)
@@ -1211,7 +1211,7 @@ app.put('/api/customer-orders/:id', authMiddleware, requirePerm('customer_order.
       for (const item of b.items) {
         if (!item.bom_id) continue
         await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?)',
-          [id, item.bom_id, item.qty||0, item.unit_price||0, null, item.remark||'', 0, item.qty||0, 'pending'])
+          [id, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.remark||'', 0, item.qty||0, 'pending'])
       }
     }
     await audit(u, 'UPDATE', '客戶訂單', id, existing.po_number)
@@ -3237,6 +3237,116 @@ app.get('/api/reports', authMiddleware, async c => {
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
+// ── Process Health (流程健康度) ──────────────────────────────────────────────
+app.get('/api/process-health', authMiddleware, async c => {
+  try {
+    const overdueDays = Math.min(parsePositiveInt(c.req.query('overdue_days'), 30, 365), 365)
+
+    const [pendingReconcile, pendingCustomerInvoice, pendingSupplierInvoice, overdueReceivable, overduePayable, draftCounts] = await Promise.all([
+      queryOne<any>(`
+        SELECT COUNT(*) as cnt
+        FROM delivery_note_items dni
+        JOIN delivery_notes dn ON dn.id = dni.dn_id
+        LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+        WHERE dn.status = 'shipped'
+          AND dn.deleted_at IS NULL
+          AND sri.id IS NULL
+      `),
+      queryOne<any>(`
+        SELECT
+          COUNT(*) as item_count,
+          COALESCE(SUM(GREATEST(0, COALESCE(sri.accepted_qty, 0) - COALESCE(inv.qty, 0))), 0) as remaining_qty
+        FROM shipment_reconciliation_items sri
+        JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+        LEFT JOIN (
+          SELECT ii.reconciliation_item_id, COALESCE(SUM(ii.qty), 0) as qty
+          FROM invoice_items ii
+          JOIN invoice_headers ih ON ih.id = ii.invoice_id
+          WHERE ih.invoice_type = 'customer'
+            AND ih.status = 'confirmed'
+            AND ih.deleted_at IS NULL
+            AND ii.deleted_at IS NULL
+          GROUP BY ii.reconciliation_item_id
+        ) inv ON inv.reconciliation_item_id = sri.id
+        WHERE sr.status = 'confirmed'
+          AND sr.deleted_at IS NULL
+          AND sri.deleted_at IS NULL
+          AND GREATEST(0, COALESCE(sri.accepted_qty, 0) - COALESCE(inv.qty, 0)) > 0
+      `),
+      queryOne<any>(`
+        SELECT
+          COUNT(*) as item_count,
+          COALESCE(SUM(GREATEST(0, COALESCE(sri.accepted_qty, 0) - COALESCE(inv.qty, 0))), 0) as remaining_qty
+        FROM shipment_reconciliation_items sri
+        JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+        LEFT JOIN (
+          SELECT ii.reconciliation_item_id, COALESCE(SUM(ii.qty), 0) as qty
+          FROM invoice_items ii
+          JOIN invoice_headers ih ON ih.id = ii.invoice_id
+          WHERE ih.invoice_type = 'supplier'
+            AND ih.status = 'confirmed'
+            AND ih.deleted_at IS NULL
+            AND ii.deleted_at IS NULL
+          GROUP BY ii.reconciliation_item_id
+        ) inv ON inv.reconciliation_item_id = sri.id
+        WHERE sr.status = 'confirmed'
+          AND sr.deleted_at IS NULL
+          AND sri.deleted_at IS NULL
+          AND GREATEST(0, COALESCE(sri.accepted_qty, 0) - COALESCE(inv.qty, 0)) > 0
+      `),
+      queryOne<any>(`
+        SELECT
+          COUNT(*) as invoice_count,
+          COALESCE(SUM(GREATEST(0, COALESCE(ih.grand_total, 0) - COALESCE(ih.received_amount, 0))), 0) as outstanding_amount
+        FROM invoice_headers ih
+        WHERE ih.invoice_type = 'customer'
+          AND ih.status = 'confirmed'
+          AND ih.deleted_at IS NULL
+          AND COALESCE(ih.payment_status, 'pending') != 'paid'
+          AND DATEDIFF(CURDATE(), COALESCE(ih.invoice_date, DATE(ih.created_at))) > ?
+      `, [overdueDays]),
+      queryOne<any>(`
+        SELECT
+          COUNT(*) as invoice_count,
+          COALESCE(SUM(GREATEST(0, COALESCE(ih.grand_total, 0) - COALESCE(ih.paid_amount, 0))), 0) as outstanding_amount
+        FROM invoice_headers ih
+        WHERE ih.invoice_type = 'supplier'
+          AND ih.status = 'confirmed'
+          AND ih.deleted_at IS NULL
+          AND COALESCE(ih.payment_status, 'pending') != 'paid'
+          AND DATEDIFF(CURDATE(), COALESCE(ih.invoice_date, DATE(ih.created_at))) > ?
+      `, [overdueDays]),
+      queryOne<any>(`
+        SELECT
+          (SELECT COUNT(*) FROM shipment_reconciliations sr WHERE sr.status='draft' AND sr.deleted_at IS NULL) as draft_reconciliations,
+          (SELECT COUNT(*) FROM invoice_headers ih WHERE ih.status='draft' AND ih.deleted_at IS NULL) as draft_invoices
+      `),
+    ])
+
+    return c.json({
+      generated_at: now8(),
+      overdue_days: overdueDays,
+      pending_reconciliation_items: Number(pendingReconcile?.cnt || 0),
+      pending_customer_invoice_items: Number(pendingCustomerInvoice?.item_count || 0),
+      pending_customer_invoice_qty: toQty(pendingCustomerInvoice?.remaining_qty || 0),
+      pending_supplier_invoice_items: Number(pendingSupplierInvoice?.item_count || 0),
+      pending_supplier_invoice_qty: toQty(pendingSupplierInvoice?.remaining_qty || 0),
+      overdue_receivables: {
+        invoice_count: Number(overdueReceivable?.invoice_count || 0),
+        outstanding_amount: toMoney(overdueReceivable?.outstanding_amount || 0),
+      },
+      overdue_payables: {
+        invoice_count: Number(overduePayable?.invoice_count || 0),
+        outstanding_amount: toMoney(overduePayable?.outstanding_amount || 0),
+      },
+      draft_reconciliations: Number(draftCounts?.draft_reconciliations || 0),
+      draft_invoices: Number(draftCounts?.draft_invoices || 0),
+    })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── Goods Receipts (進貨單) ───────────────────────────────────────────────────
 app.get('/api/goods-receipts', authMiddleware, async c => {
   const rows = await query(`
@@ -3605,7 +3715,7 @@ app.get('/uploads/*', async c => {
 
 // ── Start server ──────────────────────────────────────────────────────────────
 const port = parseInt(process.env.PORT || '3001')
-console.log(`OMS Backend starting on port ${port}`)
+console.log(`RUBBER MES Backend starting on port ${port}`)
 serve({ fetch: app.fetch, port }, info => {
   console.log(`✓ Server running at http://localhost:${info.port}`)
 })

@@ -11,7 +11,7 @@ export default function ProfilePage() {
   const [saving, setSaving] = useState(false)
   const [showCurrent, setShowCurrent] = useState(false)
   const [showNew, setShowNew] = useState(false)
-  const storedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('oms_user') || 'null') : null
+  const storedUser = typeof window !== 'undefined' ? JSON.parse(localStorage.getItem('rubber_user') || 'null') : null
   const [signatureUrl, setSignatureUrl] = useState<string>(storedUser?.signature_url || '')
   const [uploadingSign, setUploadingSign] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
@@ -42,7 +42,7 @@ export default function ProfilePage() {
       const res = await apiFetch<{ url: string }>('/api/upload', { method: 'POST', body: form })
       const result = await apiFetch<{ ok: boolean; user: any }>('/api/auth/signature', { method: 'POST', body: JSON.stringify({ signature_url: res.url }) })
       setSignatureUrl(res.url)
-      if (result.user) localStorage.setItem('oms_user', JSON.stringify(result.user))
+      if (result.user) localStorage.setItem('rubber_user', JSON.stringify(result.user))
       toast('簽名已儲存')
     } catch (e: any) { toast(e.message || '上傳失敗', 'error') }
     finally { setUploadingSign(false); if (fileInputRef.current) fileInputRef.current.value = '' }
@@ -52,14 +52,14 @@ export default function ProfilePage() {
     try {
       const result = await apiFetch<{ ok: boolean; user: any }>('/api/auth/signature', { method: 'POST', body: JSON.stringify({ signature_url: null }) })
       setSignatureUrl('')
-      if (result.user) localStorage.setItem('oms_user', JSON.stringify(result.user))
+      if (result.user) localStorage.setItem('rubber_user', JSON.stringify(result.user))
       toast('簽名已移除')
     } catch (e: any) { toast(e.message, 'error') }
   }
 
   if (!me) return null
-  const inp = 'oms-input'
-  const apiBase = API || 'https://oms-backend.arvix1413.workers.dev'
+  const inp = 'rubber-input'
+  const apiBase = API || 'https://rubber-backend.arvix1413.workers.dev'
   const fullSignUrl = signatureUrl ? (signatureUrl.startsWith('http') ? signatureUrl : `${apiBase}${signatureUrl}`) : ''
 
   return (
@@ -80,7 +80,7 @@ export default function ProfilePage() {
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <div className="oms-card p-6">
+        <div className="rubber-card p-6">
           <div className="flex items-center gap-2 mb-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-blue-500">
               <path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/>
@@ -126,7 +126,7 @@ export default function ProfilePage() {
           <input ref={fileInputRef} type="file" accept="image/*" className="hidden" onChange={handleSignatureUpload} />
         </div>
 
-        <div className="oms-card p-6">
+        <div className="rubber-card p-6">
           <div className="flex items-center gap-2 mb-1">
             <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="w-4 h-4 text-blue-500">
               <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>

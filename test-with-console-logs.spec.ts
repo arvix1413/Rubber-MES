@@ -24,7 +24,7 @@ test('测试BOM选择并捕获所有console日志', async ({ page }) => {
   
   // 登录
   await page.goto(`${FRONTEND_URL}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard')
@@ -52,7 +52,7 @@ test('测试BOM选择并捕获所有console日志', async ({ page }) => {
   console.log('\n--- 准备选择BOM，开始监听console ---\n')
   
   // 点击BOM选择器
-  const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+  const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
   await bomSelector.click()
   await page.waitForTimeout(1000)
   console.log('✓ 点击BOM选择器')

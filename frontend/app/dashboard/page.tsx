@@ -1,239 +1,123 @@
 'use client'
-import { useEffect, useState } from 'react'
-import { apiFetch } from '@/lib/api'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
+import { apiFetch } from '@/lib/api'
 
-type ReportData = {
-  receivables: { month: string; invoiced: number; received: number; count: number }[]
-  payables: { month: string; total: number; paid: number; count: number }[]
-  summary: {
-    total_invoiced: number; total_received: number; total_outstanding_receivable: number
-    total_payable: number; total_paid: number; total_outstanding_payable: number
-  }
-  year: string
+type ProcessHealth = {
+  generated_at: string
+  pending_reconciliation_items: number
+  pending_customer_invoice_items: number
+  pending_customer_invoice_qty: number
+  pending_supplier_invoice_items: number
+  pending_supplier_invoice_qty: number
+  overdue_receivables: { invoice_count: number; outstanding_amount: number }
+  overdue_payables: { invoice_count: number; outstanding_amount: number }
 }
 
-const MONTHS = ['01','02','03','04','05','06','07','08','09','10','11','12']
+const fmt = (n: number) => Number(n || 0).toLocaleString()
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
-  const [report, setReport] = useState<ReportData | null>(null)
-  const [tab, setTab] = useState<'overview' | 'report'>('overview')
-  const [year, setYear] = useState(new Date().getFullYear().toString())
-  const now = new Date()
-  const monthLabel = `${now.getFullYear()}年${now.getMonth()+1}月`
+  const [health, setHealth] = useState<ProcessHealth | null>(null)
 
   useEffect(() => {
     apiFetch<any>('/api/stats').then(setStats).catch(() => {})
+    apiFetch<ProcessHealth>('/api/process-health').then(setHealth).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (tab === 'report') {
-      apiFetch<ReportData>(`/api/reports?year=${year}`).then(setReport).catch(() => {})
-    }
-  }, [tab, year])
-
-  const fmt = (n: number) => {
-    if (!n) return '0'
-    if (n >= 1_000_000_000) return (n/1_000_000_000).toFixed(2)+'B'
-    if (n >= 1_000_000) return (n/1_000_000).toFixed(1)+'M'
-    if (n >= 1000) return (n/1000).toFixed(0)+'K'
-    return n.toLocaleString()
-  }
-
-  const kpis = [
-    { label: '客戶數', value: stats?.customers ?? '—', icon: '👥', color: 'text-blue-700', bg: 'bg-blue-100', border: 'border-blue-200' },
-    { label: '料號數', value: stats?.materials ?? '—', icon: '🔩', color: 'text-violet-700', bg: 'bg-violet-100', border: 'border-violet-200' },
-    { label: '供應商', value: stats?.suppliers ?? '—', icon: '🏭', color: 'text-amber-700', bg: 'bg-amber-100', border: 'border-amber-200' },
-    { label: '客戶訂單', value: stats?.orders_count ?? '—', icon: '📦', color: 'text-emerald-700', bg: 'bg-emerald-100', border: 'border-emerald-200' },
-    { label: '零庫存品項', value: stats?.low_stock_count ?? '—', icon: '⚠️', color: stats?.low_stock_count > 0 ? 'text-red-600' : 'text-emerald-700', bg: stats?.low_stock_count > 0 ? 'bg-red-100' : 'bg-emerald-100', border: stats?.low_stock_count > 0 ? 'border-red-200' : 'border-emerald-200', href: '/dashboard/inventory' },
-  ]
-
-  const quick = [
-    // { href: '/dashboard/materials', label: '新增料號', desc: '建立物料主檔' }, // 暫時隱藏
-    { href: '/dashboard/bom', label: '建立 BOM', desc: '產品物料清單' },
-    { href: '/dashboard/po', label: '建立採購單', desc: '向供應商採購' },
-    { href: '/dashboard/customer-orders', label: '新增客戶訂單', desc: '記錄客戶需求' },
-  ]
-
-  const hasMonthSales = stats?.month_sales > 0
-  const salesValue = hasMonthSales ? stats.month_sales : stats?.total_sales
-  const salesLabel = hasMonthSales ? `${monthLabel} 銷售金額` : '累計銷售金額'
-  const salesSub = hasMonthSales
-    ? `本月共 ${stats.month_orders} 筆訂單`
-    : stats?.sales_date_range ? `訂單期間：${stats.sales_date_range}` : `共 ${stats?.orders_count ?? 0} 筆訂單`
-
-  const s = report?.summary
+  const flow = useMemo(() => {
+    const invoicePending = (health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0)
+    return [
+      { step: '01', title: '客户下单', desc: '建立客户订单与交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '订单数' },
+      { step: '02', title: '收集订单', desc: '统一订单收集池追踪', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '跟踪中' },
+      { step: '03', title: '采购下单', desc: '按客户进度切分PO', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO数' },
+      { step: '04', title: '安排出货', desc: '生成出货单并回写数量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出货单' },
+      { step: '05', title: '数量核对', desc: '核对实际出货与订单', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核对' },
+      { step: '06', title: '开立发票', desc: '客户/供应商双向发票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待开票' },
+      { step: '07', title: '供应商付款', desc: '处理应付并跟踪状态', href: '/dashboard/payables', metric: fmt(health?.overdue_payables?.invoice_count || 0), tag: '逾期笔数' },
+      { step: '08', title: '库存扣减', desc: '根据出货数量更新库存', href: '/dashboard/inventory', metric: fmt(stats?.low_stock_count || 0), tag: '低库存' },
+    ]
+  }, [stats, health])
 
   return (
-    <div>
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-xl font-bold text-slate-800">系統總覽</h1>
-          <p className="text-sm text-slate-500 mt-0.5">FAN YONG CO., LTD · 歡迎回來</p>
+    <div className="space-y-6">
+      <section className="overflow-hidden rounded-3xl border border-[#d7c8b4] bg-[linear-gradient(140deg,#fff7ec_0%,#f5e7d5_48%,#ecd6bd_100%)] p-6 shadow-[0_20px_50px_rgba(113,80,45,0.2)]">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <div className="mb-2 inline-flex rounded-full border border-[#d8b58f] bg-[#fff2e1] px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-[#7d5832]">
+              FLOW ONLY MODE
+            </div>
+            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制台</h1>
+            <p className="mt-2 text-sm text-[#6c5440]">
+              仅保留与参考流程相关页面：客户订单 → 订单收集 → PO下单 → 出货 → 核对 → 开票 → 付款 → 库存扣减
+            </p>
+          </div>
+          <div className="grid grid-cols-2 gap-2 text-right">
+            <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
+              <div className="text-[11px] text-[#8a6b49]">总销售额</div>
+              <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.total_sales || 0)}</div>
+            </div>
+            <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
+              <div className="text-[11px] text-[#8a6b49]">本月订单</div>
+              <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.month_orders || 0)}</div>
+            </div>
+          </div>
         </div>
-        {/* Tabs */}
-        <div className="flex bg-slate-100 rounded-lg p-1 gap-1">
-          <button onClick={() => setTab('overview')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === 'overview' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            概覽
-          </button>
-          <button onClick={() => setTab('report')}
-            className={`px-4 py-1.5 rounded-md text-sm font-medium transition-all ${tab === 'report' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            財務報表
-          </button>
+      </section>
+
+      <section className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-4">
+        {flow.map((item) => (
+          <Link
+            key={item.step}
+            href={item.href}
+            className="group rounded-2xl border border-[#dccfbe] bg-[linear-gradient(180deg,#fffdfa_0%,#f5eee4_100%)] p-4 shadow-sm transition-all hover:-translate-y-0.5 hover:border-[#c59e70] hover:shadow-[0_16px_26px_rgba(86,63,39,0.18)]"
+          >
+            <div className="mb-2 flex items-center justify-between">
+              <span className="rounded-full border border-[#e2c6a3] bg-[#fff4e6] px-2 py-0.5 text-[10px] font-bold text-[#9b632b]">STEP {item.step}</span>
+              <span className="text-[11px] font-semibold text-[#7c6a57]">{item.tag}</span>
+            </div>
+            <div className="text-base font-bold text-[#372c21]">{item.title}</div>
+            <div className="mt-1 text-xs leading-5 text-[#7d6d5a]">{item.desc}</div>
+            <div className="mt-3 text-2xl font-extrabold text-[#4f351d]">{item.metric}</div>
+          </Link>
+        ))}
+      </section>
+
+      <section className="grid grid-cols-1 gap-4 xl:grid-cols-3">
+        <div className="rubber-card p-5 xl:col-span-2">
+          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">流程异常提醒</h2>
+          <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+            <Link href="/dashboard/shipment-reconciliation" className="rounded-xl border border-[#e7c4ba] bg-[#fff4f1] p-3">
+              <div className="text-xs text-[#9f5946]">待核对数量</div>
+              <div className="mt-1 text-xl font-bold text-[#8b3f2a]">{fmt(health?.pending_reconciliation_items || 0)}</div>
+            </Link>
+            <Link href="/dashboard/invoices" className="rounded-xl border border-[#e4cfb3] bg-[#fff7eb] p-3">
+              <div className="text-xs text-[#8f6941]">待开票项目</div>
+              <div className="mt-1 text-xl font-bold text-[#744b1f]">
+                {fmt((health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0))}
+              </div>
+            </Link>
+            <Link href="/dashboard/payables" className="rounded-xl border border-[#e6d0c3] bg-[#fff6ef] p-3">
+              <div className="text-xs text-[#95624c]">逾期应付</div>
+              <div className="mt-1 text-xl font-bold text-[#7e4027]">{fmt(health?.overdue_payables?.outstanding_amount || 0)}</div>
+            </Link>
+            <Link href="/dashboard/invoices" className="rounded-xl border border-[#d9d0be] bg-[#f9f5ee] p-3">
+              <div className="text-xs text-[#756652]">逾期应收</div>
+              <div className="mt-1 text-xl font-bold text-[#5a4d3b]">{fmt(health?.overdue_receivables?.outstanding_amount || 0)}</div>
+            </Link>
+          </div>
         </div>
-      </div>
 
-      {tab === 'overview' && (
-        <>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-            <div className="md:col-span-2 rounded-xl p-6 bg-gradient-to-br from-blue-600 to-blue-700 text-white shadow-sm">
-              <div className="text-xs font-semibold text-blue-200 uppercase tracking-wider mb-1">{salesLabel}</div>
-              <div className="text-4xl font-bold mb-1">
-                {stats ? fmt(salesValue || 0) : '—'}
-                <span className="text-lg font-normal text-blue-200 ml-2">VND</span>
-              </div>
-              <div className="text-sm text-blue-200">{stats ? salesSub : '載入中...'}</div>
-              <div className="mt-4 pt-4 border-t border-blue-500/40 flex items-center justify-between text-xs text-blue-200">
-                <span>已收貨採購額：{stats ? fmt(stats.po_total || 0) : '—'} VND</span>
-                <Link href="/dashboard/customer-orders" className="hover:text-white transition-colors">檢視訂單 →</Link>
-              </div>
-            </div>
-            <div className="oms-card p-5 flex flex-col justify-between">
-              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-3">採購概況</div>
-              <div>
-                <div className="text-3xl font-bold text-slate-800 mb-0.5">{stats?.po_count ?? '—'}</div>
-                <div className="text-sm text-slate-600">已確認採購單</div>
-              </div>
-              <div className="mt-4 pt-4 border-t border-slate-100">
-                <div className="text-xs text-slate-500 font-medium">採購總額</div>
-                <div className="text-lg font-bold text-slate-800">{stats ? fmt(stats.po_total || 0) : '—'} <span className="text-xs font-normal text-slate-500">VND</span></div>
-              </div>
-            </div>
+        <div className="rubber-card p-5">
+          <h2 className="brand-font text-lg font-bold text-[#3c2f24]">主档维护</h2>
+          <p className="mt-1 text-xs text-[#7d6d5a]">流程依赖主数据，保留最小必要页面。</p>
+          <div className="mt-4 space-y-2">
+            <Link href="/dashboard/bom" className="btn-ghost w-full justify-between">产品规格/BOM <span>→</span></Link>
+            <Link href="/dashboard/customers" className="btn-ghost w-full justify-between">客户资料 <span>→</span></Link>
+            <Link href="/dashboard/suppliers" className="btn-ghost w-full justify-between">供应商资料 <span>→</span></Link>
           </div>
-
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6">
-            {kpis.map(c => (
-              <div key={c.label} className={`oms-card p-4 border ${c.border} ${(c as any).href ? 'cursor-pointer hover:shadow-md transition-shadow' : ''}`}
-                onClick={() => (c as any).href && (window.location.href = (c as any).href)}>
-                <div className={`w-9 h-9 rounded-lg ${c.bg} flex items-center justify-center text-lg mb-3`}>{c.icon}</div>
-                <div className={`text-2xl font-bold ${c.color} mb-0.5`}>{c.value}</div>
-                <div className="text-xs text-slate-600 font-semibold">{c.label}</div>
-              </div>
-            ))}
-          </div>
-
-          <div className="oms-card p-5">
-            <div className="text-xs font-semibold text-slate-500 uppercase tracking-widest mb-4">快速操作</div>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              {quick.map(a => (
-                <Link key={a.href} href={a.href}
-                  className="group p-4 rounded-lg border border-slate-200 hover:border-blue-300 hover:bg-blue-50 transition-all">
-                  <div className="text-sm font-semibold text-slate-700 group-hover:text-blue-700 mb-1">{a.label}</div>
-                  <div className="text-xs text-slate-500">{a.desc}</div>
-                </Link>
-              ))}
-            </div>
-          </div>
-        </>
-      )}
-
-      {tab === 'report' && (
-        <>
-          <div className="flex items-center justify-between mb-4">
-            <span className="text-sm font-semibold text-slate-700">財務收支報表</span>
-            <select className="oms-input w-28" value={year} onChange={e => setYear(e.target.value)}>
-              {[2024, 2025, 2026, 2027].map(y => <option key={y}>{y}</option>)}
-            </select>
-          </div>
-
-          {/* Summary cards */}
-          <div className="grid grid-cols-2 md:grid-cols-3 gap-4 mb-6">
-            <div className="oms-card p-5">
-              <div className="text-xs text-slate-400 mb-1">應收總額（客戶訂單）</div>
-              <div className="text-2xl font-bold text-slate-800">{(s?.total_invoiced||0).toLocaleString()}</div>
-              <div className="text-xs text-slate-400 mt-1">已收 {(s?.total_received||0).toLocaleString()}</div>
-            </div>
-            <div className="oms-card p-5">
-              <div className="text-xs text-slate-400 mb-1">待收款</div>
-              <div className="text-2xl font-bold text-amber-500">{(s?.total_outstanding_receivable||0).toLocaleString()}</div>
-            </div>
-            <div className="oms-card p-5">
-              <div className="text-xs text-slate-400 mb-1">應付總額（採購單）</div>
-              <div className="text-2xl font-bold text-slate-800">{(s?.total_payable||0).toLocaleString()}</div>
-              <div className="text-xs text-slate-400 mt-1">已付 {(s?.total_paid||0).toLocaleString()}</div>
-            </div>
-            <div className="oms-card p-5">
-              <div className="text-xs text-slate-400 mb-1">待付款</div>
-              <div className="text-2xl font-bold text-red-500">{(s?.total_outstanding_payable||0).toLocaleString()}</div>
-            </div>
-            <div className="oms-card p-5 col-span-2">
-              <div className="text-xs text-slate-400 mb-1">淨收益（已收 - 已付）</div>
-              <div className={`text-2xl font-bold ${(s?.total_received||0)-(s?.total_paid||0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                {((s?.total_received||0)-(s?.total_paid||0)).toLocaleString()}
-              </div>
-            </div>
-          </div>
-
-          {/* Monthly table */}
-          <div className="oms-card overflow-hidden">
-            <div className="px-5 py-3 border-b border-slate-100">
-              <span className="text-sm font-semibold text-slate-700">{year} 年月度明細</span>
-            </div>
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase">月份</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase">應收（訂單）</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-emerald-600 uppercase">已收款</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase">應付（採購）</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-red-500 uppercase">已付款</th>
-                    <th className="px-4 py-3 text-right text-[11px] font-semibold text-blue-600 uppercase">月淨收益</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {MONTHS.map(m => {
-                    const ar = report?.receivables.find(r => r.month === `${year}-${m}`)
-                    const ap = report?.payables.find(r => r.month === `${year}-${m}`)
-                    const invoiced = ar?.invoiced || 0
-                    const received = ar?.received || 0
-                    const payable = ap?.total || 0
-                    const paid = ap?.paid || 0
-                    const net = received - paid
-                    const hasData = invoiced > 0 || payable > 0
-                    return (
-                      <tr key={m} className={`border-b border-slate-100 ${hasData ? '' : 'opacity-40'}`}>
-                        <td className="px-4 py-3 font-medium text-slate-700">{year}-{m}</td>
-                        <td className="px-4 py-3 text-right text-slate-600">{invoiced > 0 ? invoiced.toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 text-right text-emerald-600 font-medium">{received > 0 ? received.toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 text-right text-slate-600">{payable > 0 ? payable.toLocaleString() : '—'}</td>
-                        <td className="px-4 py-3 text-right text-red-500 font-medium">{paid > 0 ? paid.toLocaleString() : '—'}</td>
-                        <td className={`px-4 py-3 text-right font-bold ${net > 0 ? 'text-emerald-600' : net < 0 ? 'text-red-500' : 'text-slate-400'}`}>
-                          {hasData ? net.toLocaleString() : '—'}
-                        </td>
-                      </tr>
-                    )
-                  })}
-                </tbody>
-                <tfoot>
-                  <tr className="border-t-2 border-slate-200 bg-slate-50">
-                    <td className="px-4 py-3 font-bold text-slate-700">全年合計</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-700">{(s?.total_invoiced||0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-bold text-emerald-600">{(s?.total_received||0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-bold text-slate-700">{(s?.total_payable||0).toLocaleString()}</td>
-                    <td className="px-4 py-3 text-right font-bold text-red-500">{(s?.total_paid||0).toLocaleString()}</td>
-                    <td className={`px-4 py-3 text-right font-bold ${(s?.total_received||0)-(s?.total_paid||0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
-                      {((s?.total_received||0)-(s?.total_paid||0)).toLocaleString()}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
+        </div>
+      </section>
     </div>
   )
 }

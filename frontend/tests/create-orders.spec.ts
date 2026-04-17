@@ -57,7 +57,7 @@ test.describe('创建订单测试', () => {
     await page.waitForTimeout(1000)
     
     // 查找BOM选择器（在表格中）
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(500)
     
@@ -138,7 +138,7 @@ test.describe('创建订单测试', () => {
     await page.waitForTimeout(1000)
     
     // 查找BOM选择器（在表格中）
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(500)
     
@@ -213,7 +213,7 @@ test.describe('创建订单测试', () => {
     
     // 测试SearchableSelect
     console.log('点击BOM选择器...')
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(500)
     

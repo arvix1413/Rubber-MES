@@ -2,7 +2,7 @@ import { test, expect } from '@playwright/test'
 
 test('库存查询显示BOM数据 + 料号管理已隐藏', async ({ page }) => {
   await page.goto('http://localhost:3000')
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })

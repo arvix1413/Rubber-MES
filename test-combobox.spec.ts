@@ -5,7 +5,7 @@ test('combobox: 单输入框 + 搜索 + 选择', async ({ page }) => {
   page.on('console', msg => logs.push(msg.text()))
 
   await page.goto('http://localhost:3000')
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })

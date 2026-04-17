@@ -331,34 +331,34 @@ export default function InvoicesPage() {
         </div>
       </div>
 
-      <div className="oms-card p-3 mb-4">
+      <div className="rubber-card p-3 mb-4">
         <div className="grid md:grid-cols-6 gap-2">
-          <input className="oms-input md:col-span-2" placeholder="搜尋發票號/對象/驗證碼" value={search} onChange={(e) => setSearch(e.target.value)} />
-          <select className="oms-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
+          <input className="rubber-input md:col-span-2" placeholder="搜尋發票號/對象/驗證碼" value={search} onChange={(e) => setSearch(e.target.value)} />
+          <select className="rubber-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">全部狀態</option>
             <option value="draft">草稿</option>
             <option value="confirmed">已確認</option>
           </select>
-          <input type="date" className="oms-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
-          <input type="date" className="oms-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
-          <input className="oms-input" placeholder="待開票列表搜尋" value={pendingSearch} onChange={(e) => setPendingSearch(e.target.value)} />
+          <input type="date" className="rubber-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
+          <input type="date" className="rubber-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
+          <input className="rubber-input" placeholder="待開票列表搜尋" value={pendingSearch} onChange={(e) => setPendingSearch(e.target.value)} />
         </div>
       </div>
 
       {creating && canWrite && (
-        <div className="oms-card p-4 mb-5 space-y-4">
+        <div className="rubber-card p-4 mb-5 space-y-4">
           <div className="grid md:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs text-slate-500 mb-1">發票日期</label>
-              <input type="date" className="oms-input" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
+              <input type="date" className="rubber-input" value={invoiceDate} onChange={(e) => setInvoiceDate(e.target.value)} />
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">稅率 %</label>
-              <input type="number" className="oms-input" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value || 0))} />
+              <input type="number" className="rubber-input" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value || 0))} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-slate-500 mb-1">備註</label>
-              <input className="oms-input" value={remark} onChange={(e) => setRemark(e.target.value)} />
+              <input className="rubber-input" value={remark} onChange={(e) => setRemark(e.target.value)} />
             </div>
           </div>
 
@@ -390,7 +390,7 @@ export default function InvoicesPage() {
                         <input
                           type="number"
                           step="0.0001"
-                          className="oms-input text-right w-28 ml-auto"
+                          className="rubber-input text-right w-28 ml-auto"
                           disabled={!checked}
                           value={row?.qty ?? ''}
                           onChange={(e) => {
@@ -402,7 +402,7 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2 text-right">
                         <input
                           type="number"
-                          className="oms-input text-right w-28 ml-auto"
+                          className="rubber-input text-right w-28 ml-auto"
                           disabled={!checked}
                           value={row?.unit_price ?? ''}
                           onChange={(e) => {
@@ -429,7 +429,7 @@ export default function InvoicesPage() {
         </div>
       )}
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
@@ -480,7 +480,7 @@ export default function InvoicesPage() {
                               <label className="block text-xs text-slate-500 mb-1">發票日期</label>
                               <input
                                 type="date"
-                                className="oms-input"
+                                className="rubber-input"
                                 disabled={detail.status !== 'draft'}
                                 value={detail.invoice_date ? String(detail.invoice_date).slice(0, 10) : ''}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, invoice_date: e.target.value } }))}
@@ -490,7 +490,7 @@ export default function InvoicesPage() {
                               <label className="block text-xs text-slate-500 mb-1">稅率 %</label>
                               <input
                                 type="number"
-                                className="oms-input"
+                                className="rubber-input"
                                 disabled={detail.status !== 'draft'}
                                 value={detail.tax_rate || 0}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, tax_rate: Number(e.target.value || 0) } }))}
@@ -499,7 +499,7 @@ export default function InvoicesPage() {
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">備註</label>
                               <input
-                                className="oms-input"
+                                className="rubber-input"
                                 disabled={detail.status !== 'draft'}
                                 value={detail.remark || ''}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, remark: e.target.value } }))}
@@ -527,7 +527,7 @@ export default function InvoicesPage() {
                                       <input
                                         type="number"
                                         step="0.0001"
-                                        className="oms-input text-right w-24 ml-auto"
+                                        className="rubber-input text-right w-24 ml-auto"
                                         disabled={detail.status !== 'draft'}
                                         value={i.qty}
                                         onChange={(e) => {
@@ -539,7 +539,7 @@ export default function InvoicesPage() {
                                     <td className="px-3 py-2 text-right">
                                       <input
                                         type="number"
-                                        className="oms-input text-right w-28 ml-auto"
+                                        className="rubber-input text-right w-28 ml-auto"
                                         disabled={detail.status !== 'draft'}
                                         value={i.unit_price}
                                         onChange={(e) => {
@@ -583,7 +583,7 @@ export default function InvoicesPage() {
           <div className="bg-white border border-slate-200 rounded-2xl shadow-xl p-6 w-full max-w-md">
             <h3 className="text-sm font-semibold text-slate-800 mb-3">發票驗證</h3>
             <label className="block text-xs text-slate-500 mb-1">驗證碼</label>
-            <input className="oms-input mb-3" value={verifyCodeInput} onChange={(e) => setVerifyCodeInput(e.target.value)} placeholder="輸入 12 碼驗證碼" />
+            <input className="rubber-input mb-3" value={verifyCodeInput} onChange={(e) => setVerifyCodeInput(e.target.value)} placeholder="輸入 12 碼驗證碼" />
             {verifyResult && (
               <div className={`text-xs mb-3 ${verifyResult.ok ? 'text-emerald-700' : 'text-red-600'}`}>
                 {verifyResult.ok ? `驗證成功：${verifyResult.invoice_no}` : '驗證失敗：驗證碼不匹配'}

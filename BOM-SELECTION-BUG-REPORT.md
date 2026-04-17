@@ -89,7 +89,7 @@ Updating form with BOM data: { material_code: "YBCZKA01268", material_name: "WGD
 
 运行测试：
 ```bash
-cd oms-instance-v2
+cd Rubber-MES
 npx playwright test test-bom-selection.spec.ts
 ```
 
@@ -157,20 +157,20 @@ const selectBOM = (i: number, bomId: string) => {
 ### 1. 等待部署完成
 
 GitHub Actions正在自动部署新代码。可以在这里查看进度：
-https://github.com/arvix1413/oms-instance-v2/actions
+https://github.com/arvix1413/Rubber-MES/actions
 
 ### 2. 验证部署
 
 部署完成后，运行验证脚本：
 ```bash
-cd oms-instance-v2
+cd Rubber-MES
 ./verify-deployment.sh
 ```
 
 ### 3. 手动测试
 
 1. 访问 http://43.133.56.234
-2. 登录（admin@oms.com / admin123）
+2. 登录（admin@rubber.local / admin123）
 3. 创建采购单
 4. 打开开发者工具Console
 5. 选择供应商

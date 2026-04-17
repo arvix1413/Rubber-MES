@@ -58,7 +58,7 @@ test.describe('手动测试订单创建', () => {
     console.log('✓ 已填写备注')
     
     // 6. 检查BOM下拉框是否启用
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     const isDisabled = await bomSelector.evaluate(el => el.classList.contains('bg-slate-100'))
     console.log(`  BOM选择器状态: ${isDisabled ? '禁用' : '启用'}`)
     
@@ -151,7 +151,7 @@ test.describe('手动测试订单创建', () => {
     }
     
     // 7. 检查BOM下拉框
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(500)
     console.log('✓ 点击BOM选择器')
@@ -202,7 +202,7 @@ test.describe('手动测试订单创建', () => {
     console.log(`页面上的textarea元素数量: ${textareas}`)
     
     // 检查SearchableSelect组件
-    const searchableSelects = await page.locator('.oms-input.cursor-pointer').count()
+    const searchableSelects = await page.locator('.rubber-input.cursor-pointer').count()
     console.log(`SearchableSelect组件数量: ${searchableSelects}`)
     
     // 检查按钮

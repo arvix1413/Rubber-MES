@@ -23,7 +23,7 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="zh-TW">
-      <body className={`${bodyFont.variable} ${brandFont.variable} bg-gray-50 text-gray-900`}>
+      <body className={`${bodyFont.variable} ${brandFont.variable}`}>
         <DialogProvider>{children}</DialogProvider>
       </body>
     </html>

@@ -13,7 +13,7 @@ test('Test BOM selection without supplier filter', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // Login
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -31,7 +31,7 @@ test('Test BOM selection without supplier filter', async ({ page }) => {
   console.log('\n=== Opening BOM dropdown (no supplier filter) ===')
   
   // Open BOM dropdown (should show all BOMs)
-  const bomDropdown = page.locator('.oms-input.cursor-pointer').first()
+  const bomDropdown = page.locator('.rubber-input.cursor-pointer').first()
   await bomDropdown.click()
   await page.waitForTimeout(1000)
   

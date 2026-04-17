@@ -13,7 +13,7 @@ async function testRefresh() {
   const loginRes = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@oms.com', password: 'admin123' })
+    body: JSON.stringify({ email: 'admin@rubber.local', password: 'admin123' })
   })
   const { token } = await loginRes.json()
   const headers = {

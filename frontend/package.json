@@ -1,5 +1,5 @@
 {
-  "name": "oms-frontend",
+  "name": "rubber-frontend",
   "version": "1.0.0",
   "private": true,
   "scripts": {
@@ -7,7 +7,7 @@
     "build": "next build",
     "start": "next start",
     "pages:build": "npx @cloudflare/next-on-pages",
-    "deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static --project-name oms-frontend"
+    "deploy": "npm run pages:build && wrangler pages deploy .vercel/output/static --project-name rubber-frontend"
   },
   "dependencies": {
     "next": "14.2.29",

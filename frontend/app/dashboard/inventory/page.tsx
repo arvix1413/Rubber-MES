@@ -71,15 +71,15 @@ export default function InventoryPage() {
 
       {/* Stats */}
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">BOM 品項總數</div>
           <div className="text-2xl font-bold text-slate-800">{items.length}</div>
         </div>
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">篩選結果庫存總量</div>
           <div className="text-2xl font-bold text-blue-600">{totalStock.toLocaleString()}</div>
         </div>
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">零庫存品項</div>
           <div className={`text-2xl font-bold ${lowStock > 0 ? 'text-red-500' : 'text-emerald-600'}`}>{lowStock}</div>
         </div>
@@ -99,7 +99,7 @@ export default function InventoryPage() {
 
       {/* Filters */}
       <div className="flex gap-3 mb-4">
-        <input className="oms-input w-64" placeholder="搜尋料號、品名、規格、供應商..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="rubber-input w-64" placeholder="搜尋料號、品名、規格、供應商..." value={search} onChange={e => setSearch(e.target.value)} />
         <div className="flex gap-1">
           {(['all', 'ok', 'low'] as const).map(f => (
             <button key={f} onClick={() => setStockFilter(f)}
@@ -110,7 +110,7 @@ export default function InventoryPage() {
         </div>
       </div>
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div>
         ) : (

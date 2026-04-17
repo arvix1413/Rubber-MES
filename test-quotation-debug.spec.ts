@@ -5,7 +5,7 @@ test.use({ baseURL: 'http://43.133.56.234' })
 async function login(page: any) {
   await page.goto('/login')
   await page.waitForSelector('input[type="email"]', { timeout: 10000 })
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -33,7 +33,7 @@ test('Debug quotation create form', async ({ page }) => {
   console.log('Console errors:', errors)
 
   // Check creating state via DOM
-  const card = page.locator('.oms-card').count()
+  const card = page.locator('.rubber-card').count()
   console.log('Card count:', await card)
 
   await page.screenshot({ path: 'qt-debug-after-click.png', fullPage: true })

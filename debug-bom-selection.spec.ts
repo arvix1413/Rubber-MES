@@ -15,7 +15,7 @@ test('调试BOM选择 - 检查数据和函数调用', async ({ page }) => {
   
   // 登录
   await page.goto(`${FRONTEND_URL}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard')
@@ -46,11 +46,11 @@ test('调试BOM选择 - 检查数据和函数调用', async ({ page }) => {
   })
   
   // 点击BOM选择器
-  const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+  const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
   
   // 在点击前添加事件监听
   await page.evaluate(() => {
-    const selector = document.querySelector('.oms-input.cursor-pointer')
+    const selector = document.querySelector('.rubber-input.cursor-pointer')
     if (selector) {
       console.log('找到BOM选择器元素')
       selector.addEventListener('click', () => {

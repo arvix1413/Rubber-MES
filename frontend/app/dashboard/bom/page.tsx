@@ -118,7 +118,7 @@ export default function BomPage() {
     return matchSearch && matchCat
   })
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
-  const inp = 'oms-input'
+  const inp = 'rubber-input'
 
   return (
     <div>
@@ -268,14 +268,14 @@ export default function BomPage() {
 
       {/* Filters */}
       <div className="flex gap-3 mb-4">
-        <input className="oms-input w-64" placeholder="搜尋物料編號、產品名稱..." value={search} onChange={e=>setSearch(e.target.value)} />
-        <select className="oms-input w-40" value={catFilter} onChange={e=>setCatFilter(e.target.value)}>
+        <input className="rubber-input w-64" placeholder="搜尋物料編號、產品名稱..." value={search} onChange={e=>setSearch(e.target.value)} />
+        <select className="rubber-input w-40" value={catFilter} onChange={e=>setCatFilter(e.target.value)}>
           <option value="">全部分類</option>
           {categories.map(c=><option key={c} value={c}>{c}</option>)}
         </select>
       </div>
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         {loading ? (
           <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div>
         ) : (

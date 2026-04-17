@@ -260,7 +260,7 @@ export default function PoPage() {
     return matchSearch && matchStatus
   })
   const { page, setPage, totalPages, paged, total } = usePagination(filteredPos, 20)
-  const inp = 'oms-input text-xs py-1.5'
+  const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
 
   return (
@@ -274,7 +274,7 @@ export default function PoPage() {
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="oms-card p-6 mb-5">
+        <div className="rubber-card p-6 mb-5">
           <h2 className="text-sm font-semibold text-slate-800 mb-4">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div>
@@ -304,7 +304,7 @@ export default function PoPage() {
           <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200">
             <table className="w-full text-xs" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
-                {['圖片','PO訂單編號','物料編號（BOM）','材料名稱','規格','單位','數量','單價','小計','稅率','幣別','備註',''].map(h=>(
+                {['Item','PO NO','MTL NO（BOM）','Products','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
                   <th key={h} className="px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">{h}</th>
                 ))}
               </tr></thead>
@@ -382,7 +382,7 @@ export default function PoPage() {
       {!creating && editingId === null && (
         <>
           <div className="list-controls">
-            <input className="list-search" placeholder="搜尋採購單號或供應商..." value={search} onChange={e=>setSearch(e.target.value)} />
+            <input className="list-search" placeholder="搜尋 PO NO 或供應商..." value={search} onChange={e=>setSearch(e.target.value)} />
             <div className="flex gap-1">
               {[['', '全部'], ['draft', '草稿'], ['approved', '已核准'], ['sent', '已送出'], ['received', '已收貨']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
@@ -393,7 +393,7 @@ export default function PoPage() {
             </div>
           </div>
 
-          <div className="oms-card overflow-hidden">
+          <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div> : (
           <>
             <table className="w-full text-sm">

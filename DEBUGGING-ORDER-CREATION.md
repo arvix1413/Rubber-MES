@@ -34,28 +34,28 @@ ssh ubuntu@43.133.56.234
 docker ps
 
 # 检查前端容器日志
-docker logs oms-frontend --tail 50
+docker logs rubber-frontend --tail 50
 
 # 检查后端容器日志
-docker logs oms-backend --tail 50
+docker logs rubber-backend --tail 50
 
 # 检查数据库容器日志
-docker logs oms-mysql --tail 50
+docker logs rubber-mysql --tail 50
 ```
 
 ### 步骤2: 本地测试
 
 ```bash
 # 1. 启动后端
-cd oms-instance-v2/backend
+cd Rubber-MES/backend
 npm run dev
 
 # 2. 启动前端（新终端）
-cd oms-instance-v2/frontend
+cd Rubber-MES/frontend
 npm run dev
 
 # 3. 运行手动测试（新终端）
-cd oms-instance-v2/frontend
+cd Rubber-MES/frontend
 npx playwright test manual-test-orders.spec.ts --headed
 ```
 
@@ -93,7 +93,7 @@ npx playwright test manual-test-orders.spec.ts --headed
 使用提供的测试脚本：
 
 ```bash
-cd oms-instance-v2
+cd Rubber-MES
 node test-order-creation.js
 ```
 
@@ -212,7 +212,7 @@ SELECT * FROM customer_orders ORDER BY created_at DESC LIMIT 5;
 ## 前端代码关键点
 
 ### SearchableSelect组件
-位置: `oms-instance-v2/frontend/components/SearchableSelect.tsx`
+位置: `Rubber-MES/frontend/components/SearchableSelect.tsx`
 
 关键功能:
 - Fixed定位确保下拉框不被遮挡
@@ -221,7 +221,7 @@ SELECT * FROM customer_orders ORDER BY created_at DESC LIMIT 5;
 - 点击外部关闭
 
 ### 采购单页面
-位置: `oms-instance-v2/frontend/app/dashboard/po/page.tsx`
+位置: `Rubber-MES/frontend/app/dashboard/po/page.tsx`
 
 关键逻辑:
 - `onSelectSupplier`: 选择供应商后重置items
@@ -230,7 +230,7 @@ SELECT * FROM customer_orders ORDER BY created_at DESC LIMIT 5;
 - `save`: 提交表单到后端
 
 ### 客户订单页面
-位置: `oms-instance-v2/frontend/app/dashboard/customer-orders/page.tsx`
+位置: `Rubber-MES/frontend/app/dashboard/customer-orders/page.tsx`
 
 关键逻辑:
 - `onSelectBom`: 选择BOM后自动填充字段
@@ -239,7 +239,7 @@ SELECT * FROM customer_orders ORDER BY created_at DESC LIMIT 5;
 ## 后端代码关键点
 
 ### 采购单创建
-位置: `oms-instance-v2/backend/src/index.ts` (line 302)
+位置: `Rubber-MES/backend/src/index.ts` (line 302)
 
 验证:
 - 必须有items
@@ -247,7 +247,7 @@ SELECT * FROM customer_orders ORDER BY created_at DESC LIMIT 5;
 - 计算总金额
 
 ### 客户订单创建
-位置: `oms-instance-v2/backend/src/index.ts` (line 453)
+位置: `Rubber-MES/backend/src/index.ts` (line 453)
 
 验证:
 - po_number必填

@@ -110,7 +110,7 @@ export default function CustomersPage() {
                   {key === 'customer_code' && !!editing.id && <FieldLockHint />}
                 </label>
                 <input
-                  className="oms-input"
+                  className="rubber-input"
                   value={(editing as any)[key]||''}
                   onChange={e=>setEditing(p=>({...p,[key]:e.target.value}))}
                   disabled={key === 'customer_code' && !!editing.id}
@@ -120,7 +120,7 @@ export default function CustomersPage() {
             ))}
             <div className="col-span-2">
               <label className="block text-[11px] text-slate-500 mb-1.5">地址</label>
-              <input className="oms-input" value={editing.address||''} onChange={e=>setEditing(p=>({...p,address:e.target.value}))} />
+              <input className="rubber-input" value={editing.address||''} onChange={e=>setEditing(p=>({...p,address:e.target.value}))} />
             </div>
           </div>
           <div className="flex gap-2 mt-5">
@@ -130,13 +130,13 @@ export default function CustomersPage() {
         </Modal>
       )}
 
-      <div className="mb-4"><input className="oms-input w-64" placeholder="搜尋客戶名稱或編號..." value={search} onChange={e=>setSearch(e.target.value)} /></div>
+      <div className="mb-4"><input className="rubber-input w-64" placeholder="搜尋客戶名稱或編號..." value={search} onChange={e=>setSearch(e.target.value)} /></div>
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
             <div className="overflow-x-auto">
-              <table className="oms-table">
+              <table className="rubber-table">
                 <thead><tr><th>客戶編號</th><th>客戶名稱</th><th>聯絡人</th><th>電話</th><th>付款方式</th><th>狀態</th><th>操作</th></tr></thead>
                 <tbody>
                   {paged.map(c=>(

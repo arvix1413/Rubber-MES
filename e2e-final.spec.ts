@@ -11,7 +11,7 @@ test.describe('订单创建完整E2E测试', () => {
     await page.goto(`${FRONTEND_URL}/login`)
     await page.waitForLoadState('networkidle')
     
-    await page.fill('input[type="email"]', 'admin@oms.com')
+    await page.fill('input[type="email"]', 'admin@rubber.local')
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button[type="submit"]')
     
@@ -50,7 +50,7 @@ test.describe('订单创建完整E2E测试', () => {
     await page.fill('textarea', 'E2E完整测试采购单')
     
     // 点击BOM选择器
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(1000)
     console.log('✓ 点击BOM选择器')
@@ -194,7 +194,7 @@ test.describe('订单创建完整E2E测试', () => {
     await page.locator('input').filter({ hasText: '' }).nth(4).fill('测试地址')
     
     // 选择BOM
-    const bomSelector = page.locator('.oms-input.cursor-pointer').first()
+    const bomSelector = page.locator('.rubber-input.cursor-pointer').first()
     await bomSelector.click()
     await page.waitForTimeout(1000)
     console.log('✓ 点击BOM选择器')

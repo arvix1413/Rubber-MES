@@ -187,7 +187,7 @@ test('manager - 可新增/删除/核准，不能管理用户', async ({ page }) 
 
 // ─── admin 角色 ───────────────────────────────────────────────────────────────
 test('admin - 全部权限', async ({ page }) => {
-  await loginAs(page, 'admin@oms.com', 'admin123')
+  await loginAs(page, 'admin@rubber.local', 'admin123')
 
   // 採購單：全部按钮
   await page.goto(`${BASE}/dashboard/po`)
@@ -218,7 +218,7 @@ test('admin - 全部权限', async ({ page }) => {
 
 // ─── 清理测试用户 ─────────────────────────────────────────────────────────────
 test('cleanup - 删除测试用户', async ({ page }) => {
-  await loginAs(page, 'admin@oms.com', 'admin123')
+  await loginAs(page, 'admin@rubber.local', 'admin123')
   await page.goto(`${BASE}/dashboard/users`)
   await page.waitForTimeout(1500)
 

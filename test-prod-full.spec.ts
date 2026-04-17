@@ -5,7 +5,7 @@ const th = 'text-[10px] font-semibold text-slate-500'
 
 async function login(page: any) {
   await page.goto(PROD)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 15000 })

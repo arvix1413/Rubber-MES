@@ -4,7 +4,7 @@ test('验证下拉框位置 - 应该在输入框下方', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // 登录
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -19,7 +19,7 @@ test('验证下拉框位置 - 应该在输入框下方', async ({ page }) => {
   await page.waitForTimeout(1000)
   
   // 获取BOM输入框的位置
-  const bomInput = page.locator('.oms-input.cursor-pointer').first()
+  const bomInput = page.locator('.rubber-input.cursor-pointer').first()
   const inputBox = await bomInput.boundingBox()
   
   console.log('\n=== 输入框位置 ===')

@@ -24,7 +24,7 @@ async function api(method, token, path, data) {
 
 async function uiLogin(page) {
   await page.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' })
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard**', { timeout: 20000 })
@@ -63,7 +63,7 @@ async function main() {
   const login = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@oms.com', password: 'admin123' }),
+    body: JSON.stringify({ email: 'admin@rubber.local', password: 'admin123' }),
   })
   if (!login.ok) throw new Error(`login failed: ${login.status}`)
   const token = (await login.json()).token
@@ -222,7 +222,7 @@ async function main() {
   await uiSelectRow(page, '/dashboard/stock-adjustments', adjNo); push(report.selected, { key: 'stock_adjustments', marker: adjNo, ok: true })
 
   // 13) user
-  const userEmail = `${tag.toLowerCase()}@oms.com`
+  const userEmail = `${tag.toLowerCase()}@rubber.local`
   const cUser = await api('POST', token, '/api/users', { email: userEmail, password: 'admin123', name: `${tag}-USER`, role: 'employee' })
   if (!cUser.ok) throw new Error(`create user fail: ${JSON.stringify(cUser.body)}`)
   const userId = Number(cUser.body.id)

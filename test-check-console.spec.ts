@@ -9,7 +9,7 @@ test('查看console输出', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // 登录
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -26,7 +26,7 @@ test('查看console输出', async ({ page }) => {
   console.log('\n=== 准备点击BOM下拉框 ===')
   
   // 打开BOM下拉框
-  const bomInput = page.locator('.oms-input.cursor-pointer').first()
+  const bomInput = page.locator('.rubber-input.cursor-pointer').first()
   await bomInput.click()
   await page.waitForTimeout(2000)
   

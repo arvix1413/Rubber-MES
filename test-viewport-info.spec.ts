@@ -4,7 +4,7 @@ test('检查视口信息', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // 登录
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -32,7 +32,7 @@ test('检查视口信息', async ({ page }) => {
   console.log(JSON.stringify(viewportInfo, null, 2))
   
   // 获取输入框位置
-  const bomInput = page.locator('.oms-input.cursor-pointer').first()
+  const bomInput = page.locator('.rubber-input.cursor-pointer').first()
   const inputBox = await bomInput.boundingBox()
   
   console.log('\n=== 输入框位置 ===')

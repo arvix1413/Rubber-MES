@@ -13,14 +13,14 @@ async function loginAs(page: any, email: string, password = 'test123') {
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
   await page.waitForTimeout(800)
-  const perms = await page.evaluate(() => JSON.parse(localStorage.getItem('oms_permissions') || '[]'))
+  const perms = await page.evaluate(() => JSON.parse(localStorage.getItem('rubber_permissions') || '[]'))
   console.log(`  [${email}] permissions loaded: ${perms.length} items`)
   return perms as string[]
 }
 
 // ─── 1. admin - 全部权限 ──────────────────────────────────────────────────────
 test('1. admin - 全部权限 + 用户管理', async ({ page }) => {
-  const perms = await loginAs(page, 'admin@oms.com', 'admin123')
+  const perms = await loginAs(page, 'admin@rubber.local', 'admin123')
   expect(perms).toContain('user.manage')
   expect(perms).toContain('po.approve')
   expect(perms).toContain('po.delete')
@@ -104,8 +104,8 @@ test('3. employee - 动态权限验证', async ({ page }) => {
 // ─── 4. 动态权限变更测试 ──────────────────────────────────────────────────────
 test('4. 动态权限变更 - 修改后重新登录立即生效', async ({ page }) => {
   // Step 1: admin 通过 API 移除 employee 的 po.create 权限
-  await loginAs(page, 'admin@oms.com', 'admin123')
-  const adminToken = await page.evaluate(() => localStorage.getItem('oms_token'))
+  await loginAs(page, 'admin@rubber.local', 'admin123')
+  const adminToken = await page.evaluate(() => localStorage.getItem('rubber_token'))
 
   await page.evaluate(async (token: string) => {
     await fetch('http://localhost:3001/api/role-permissions', {
@@ -118,7 +118,7 @@ test('4. 动态权限变更 - 修改后重新登录立即生效', async ({ page 
 
   // Step 2: employee 重新登录，验证权限已更新
   await loginAs(page, 'employee@test.com')
-  const perms = await page.evaluate(() => JSON.parse(localStorage.getItem('oms_permissions') || '[]'))
+  const perms = await page.evaluate(() => JSON.parse(localStorage.getItem('rubber_permissions') || '[]'))
   const hasPoCreate = perms.includes('po.create')
   expect(hasPoCreate).toBe(false)
   console.log(`✅ employee 重新登录后 po.create: ${hasPoCreate ? '有（错误）' : '无（正确）'}`)
@@ -131,8 +131,8 @@ test('4. 动态权限变更 - 修改后重新登录立即生效', async ({ page 
   console.log('✅ employee 採購單建立按钮已隐藏（权限生效）')
 
   // Step 4: admin 恢复权限
-  await loginAs(page, 'admin@oms.com', 'admin123')
-  const adminToken2 = await page.evaluate(() => localStorage.getItem('oms_token'))
+  await loginAs(page, 'admin@rubber.local', 'admin123')
+  const adminToken2 = await page.evaluate(() => localStorage.getItem('rubber_token'))
   await page.evaluate(async (token: string) => {
     await fetch('http://localhost:3001/api/role-permissions', {
       method: 'PUT',
@@ -145,7 +145,7 @@ test('4. 动态权限变更 - 修改后重新登录立即生效', async ({ page 
 
 // ─── 5. 角色管理页面 UI ───────────────────────────────────────────────────────
 test('5. 角色管理页面 - 权限矩阵显示', async ({ page }) => {
-  await loginAs(page, 'admin@oms.com', 'admin123')
+  await loginAs(page, 'admin@rubber.local', 'admin123')
   await page.goto(`${BASE}/dashboard/roles`)
   await page.waitForTimeout(2000)
 
@@ -170,7 +170,7 @@ test('5. 角色管理页面 - 权限矩阵显示', async ({ page }) => {
 
 // ─── cleanup ──────────────────────────────────────────────────────────────────
 test('cleanup', async ({ page }) => {
-  await loginAs(page, 'admin@oms.com', 'admin123')
+  await loginAs(page, 'admin@rubber.local', 'admin123')
   await page.goto(`${BASE}/dashboard/users`)
   await page.waitForTimeout(1500)
   for (const name of ['主管測試', '員工測試']) {

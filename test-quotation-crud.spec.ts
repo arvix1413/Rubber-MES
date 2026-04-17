@@ -6,7 +6,7 @@ test.use({ baseURL: 'http://43.133.56.234' })
 async function login(page: any) {
   await page.goto('/login')
   await page.waitForSelector('input[type="email"]', { timeout: 10000 })
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard', { timeout: 10000 })

@@ -41,7 +41,7 @@ export const PERMISSIONS = {
 export function getUser(): { id: number; email: string; name: string; role: Role; signature_url?: string } | null {
   if (typeof window === 'undefined') return null
   try {
-    const u = JSON.parse(localStorage.getItem('oms_user') || 'null')
+    const u = JSON.parse(localStorage.getItem('rubber_user') || 'null')
     if (!u) return null
     return { ...u, role: normalizeRole(u.role) }
   } catch { return null }

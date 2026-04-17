@@ -249,15 +249,15 @@ export default function ShipmentReconciliationPage() {
       </div>
 
       {creating && canWrite && (
-        <div className="oms-card p-4 mb-5 space-y-4">
+        <div className="rubber-card p-4 mb-5 space-y-4">
           <div className="grid md:grid-cols-4 gap-3">
             <div>
               <label className="block text-xs text-slate-500 mb-1">核對日期</label>
-              <input type="date" className="oms-input" value={reconcileDate} onChange={(e) => setReconcileDate(e.target.value)} />
+              <input type="date" className="rubber-input" value={reconcileDate} onChange={(e) => setReconcileDate(e.target.value)} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-slate-500 mb-1">備註</label>
-              <input className="oms-input" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="可選" />
+              <input className="rubber-input" value={remark} onChange={(e) => setRemark(e.target.value)} placeholder="可選" />
             </div>
             <div className="flex items-end justify-end text-xs text-slate-600">已選 {selectedCount} 筆</div>
           </div>
@@ -294,7 +294,7 @@ export default function ShipmentReconciliationPage() {
                         <input
                           type="number"
                           step="0.0001"
-                          className="oms-input text-right w-28 ml-auto"
+                          className="rubber-input text-right w-28 ml-auto"
                           disabled={!checked}
                           value={selectedRow?.accepted_qty ?? ''}
                           onChange={(e) => {
@@ -311,7 +311,7 @@ export default function ShipmentReconciliationPage() {
                       </td>
                       <td className="px-3 py-2">
                         <input
-                          className="oms-input"
+                          className="rubber-input"
                           disabled={!checked}
                           value={selectedRow?.difference_reason || ''}
                           onChange={(e) => {
@@ -346,7 +346,7 @@ export default function ShipmentReconciliationPage() {
         </div>
       )}
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
@@ -393,7 +393,7 @@ export default function ShipmentReconciliationPage() {
                               <label className="block text-xs text-slate-500 mb-1">核對日期</label>
                               <input
                                 type="date"
-                                className="oms-input"
+                                className="rubber-input"
                                 disabled={detail.status !== 'draft'}
                                 value={detail.reconcile_date ? String(detail.reconcile_date).slice(0, 10) : ''}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, reconcile_date: e.target.value } }))}
@@ -402,7 +402,7 @@ export default function ShipmentReconciliationPage() {
                             <div className="md:col-span-2">
                               <label className="block text-xs text-slate-500 mb-1">備註</label>
                               <input
-                                className="oms-input"
+                                className="rubber-input"
                                 disabled={detail.status !== 'draft'}
                                 value={detail.remark || ''}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, remark: e.target.value } }))}
@@ -431,7 +431,7 @@ export default function ShipmentReconciliationPage() {
                                       <input
                                         type="number"
                                         step="0.0001"
-                                        className="oms-input text-right w-28 ml-auto"
+                                        className="rubber-input text-right w-28 ml-auto"
                                         disabled={detail.status !== 'draft'}
                                         value={i.accepted_qty}
                                         onChange={(e) => {
@@ -453,7 +453,7 @@ export default function ShipmentReconciliationPage() {
                                     <td className="px-3 py-2 text-right text-amber-700">{i.difference_qty}</td>
                                     <td className="px-3 py-2">
                                       <input
-                                        className="oms-input"
+                                        className="rubber-input"
                                         disabled={detail.status !== 'draft'}
                                         value={i.difference_reason || ''}
                                         onChange={(e) => {

@@ -107,7 +107,7 @@ export function SearchableSelect<T extends { id: number | string }>({
         <input
           ref={inputRef}
           type="text"
-          className={`oms-input pr-8 ${disabled ? 'bg-slate-100 cursor-not-allowed' : 'cursor-text'} ${className}`}
+          className={`rubber-input pr-8 ${disabled ? 'bg-slate-100 cursor-not-allowed' : 'cursor-text'} ${className}`}
           placeholder={placeholder}
           value={displayValue}
           disabled={disabled}

@@ -59,7 +59,7 @@ async function main() {
   const loginResp = await fetch(`${API}/api/auth/login`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ email: 'admin@oms.com', password: 'admin123' }),
+    body: JSON.stringify({ email: 'admin@rubber.local', password: 'admin123' }),
   })
   assert(loginResp.ok, `login failed: ${loginResp.status}`)
   const loginJson = await loginResp.json()
@@ -69,7 +69,7 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1400, height: 900 } })
 
   await page.goto(`${WEB}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard**', { timeout: 20000 })
@@ -150,7 +150,7 @@ async function main() {
   const adj = await apiPost(token, '/api/stock-adjustments', { adj_type: 'count', remark: adjMarker, items: [{ material_code: bomMarker, material_name: `${tag}-BOM`, unit: 'PCS', actual_qty: 1 }] })
   created.push({ key: 'stock_adjustment', table: 'stock_adjustments', id: Number(adj.id), marker: String(adj.adj_number || adjMarker) })
 
-  const userEmail = `${tag.toLowerCase()}@oms.com`
+  const userEmail = `${tag.toLowerCase()}@rubber.local`
   const user = await apiPost(token, '/api/users', { email: userEmail, password: 'admin123', name: `${tag}-USER`, role: 'employee' })
   created.push({ key: 'user', table: 'users', id: Number(user.id), marker: userEmail })
 

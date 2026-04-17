@@ -6,7 +6,7 @@ test.describe('BOM Image Upload', () => {
   test.beforeEach(async ({ page }) => {
     // Login
     await page.goto(`${BASE_URL}/login`)
-    await page.fill('input[type="email"]', 'admin@oms.com')
+    await page.fill('input[type="email"]', 'admin@rubber.local')
     await page.fill('input[type="password"]', 'admin123')
     await page.click('button[type="submit"]')
     await page.waitForURL(`${BASE_URL}/dashboard`)

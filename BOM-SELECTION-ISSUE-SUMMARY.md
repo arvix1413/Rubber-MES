@@ -88,10 +88,10 @@ GitHub Actions会自动构建和部署。通常需要5-15分钟。
 检查部署状态：
 ```bash
 # 查看GitHub Actions
-https://github.com/arvix1413/oms-instance-v2/actions
+https://github.com/arvix1413/Rubber-MES/actions
 
 # 或者检查Docker Hub
-https://hub.docker.com/r/[username]/oms-frontend/tags
+https://hub.docker.com/r/[username]/rubber-frontend/tags
 ```
 
 ### 方案2: 手动部署
@@ -103,7 +103,7 @@ https://hub.docker.com/r/[username]/oms-frontend/tags
 ssh ubuntu@43.133.56.234
 
 # 进入部署目录
-cd /opt/oms
+cd /opt/rubber
 
 # 拉取最新镜像
 docker-compose pull
@@ -130,7 +130,7 @@ cd frontend
 npm run dev
 
 # 运行测试（新终端）
-cd oms-instance-v2
+cd Rubber-MES
 npx playwright test test-with-console-logs.spec.ts --headed
 ```
 
@@ -141,7 +141,7 @@ npx playwright test test-with-console-logs.spec.ts --headed
 部署完成后，运行以下测试验证：
 
 ```bash
-cd oms-instance-v2
+cd Rubber-MES
 npx playwright test test-with-console-logs.spec.ts --reporter=list
 ```
 

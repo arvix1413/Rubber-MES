@@ -5,7 +5,7 @@ test('Check BOM data and supplier association', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // Login
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   
@@ -37,7 +37,7 @@ test('Check BOM data and supplier association', async ({ page }) => {
     await page.waitForTimeout(500)
     
     // Open BOM dropdown
-    const bomDropdown = page.locator('.oms-input.cursor-pointer').first()
+    const bomDropdown = page.locator('.rubber-input.cursor-pointer').first()
     await bomDropdown.click()
     await page.waitForTimeout(500)
     

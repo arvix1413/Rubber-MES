@@ -104,11 +104,11 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
       <div><span class="lbl">稅號</span>${txt((co as any).tax_id)}</div>
     </div>
     <div class="meta">
-      <div><span class="lbl">採購單號</span>${txt(data.po_number)}</div>
-      <div><span class="lbl">建立日期</span>${txt(String(data.created_at || '').slice(0, 10))}</div>
-      <div><span class="lbl">供應商</span>${txt(data.supplier_name)}</div>
-      <div><span class="lbl">幣別</span>${txt(data.currency || 'VND')}</div>
-      <div><span class="lbl">稅率</span>${taxRate}%</div>
+      <div><span class="lbl">採購號碼</span>${txt(data.po_number)}</div>
+      <div><span class="lbl">採購日期 Issue date</span>${txt(String(data.created_at || '').slice(0, 10))}</div>
+      <div><span class="lbl">供應商 Company</span>${txt(data.supplier_name)}</div>
+      <div><span class="lbl">聯絡人 Contact</span>${txt((data as any).supplier_contact || '')}</div>
+      <div><span class="lbl">幣別 / 稅率</span>${txt(data.currency || 'VND')} / ${taxRate}%</div>
     </div>
   </div>
 

@@ -4,7 +4,7 @@ const BASE = 'http://43.133.56.234'
 
 async function login(p: Page) {
   await p.goto(`${BASE}/login`)
-  await p.fill('input[type="email"]', 'admin@oms.com')
+  await p.fill('input[type="email"]', 'admin@rubber.local')
   await p.fill('input[type="password"]', 'admin123')
   await p.click('button[type="submit"]')
   await p.waitForURL(`${BASE}/dashboard**`, { timeout: 15000 })
@@ -34,8 +34,8 @@ test('02. BOM CRUD', async ({ page }) => {
   // Create
   await page.locator('div.flex button.btn-primary').click()
   await page.waitForTimeout(600)
-  await page.locator('input.oms-input').nth(0).fill(sku)
-  await page.locator('input.oms-input').nth(1).fill('E2E BOM 測試')
+  await page.locator('input.rubber-input').nth(0).fill(sku)
+  await page.locator('input.rubber-input').nth(1).fill('E2E BOM 測試')
   await page.locator('.rounded-b-2xl button.btn-primary').click()
   await waitMsg(page)
   await page.waitForTimeout(800)
@@ -56,7 +56,7 @@ test('02. BOM CRUD', async ({ page }) => {
   await bomRow.locator('button', { hasText: '編輯' }).click()
   await page.waitForTimeout(600)
   // Fill product name (index 1 in modal)
-  const nameInput = page.locator('.fixed.inset-0 input.oms-input').nth(1)
+  const nameInput = page.locator('.fixed.inset-0 input.rubber-input').nth(1)
   await nameInput.fill('E2E BOM Updated')
   await page.locator('.rounded-b-2xl button.btn-primary').click()
   await waitMsg(page)
@@ -85,7 +85,7 @@ test('03. Customer Orders CRUD', async ({ page }) => {
   await page.waitForTimeout(400)
 
   // Fill PO number (first text input after date)
-  await page.locator('input.oms-input').nth(0).fill('PO-E2E-UI-001')
+  await page.locator('input.rubber-input').nth(0).fill('PO-E2E-UI-001')
 
   // Select first customer from dropdown
   const custSelect = page.locator('select').first()
@@ -188,7 +188,7 @@ test('06. Delivery Notes CRUD', async ({ page }) => {
   await page.locator('button', { hasText: '新增出貨單' }).click()
   await page.waitForTimeout(400)
   // Fill customer name - it's the first non-date input
-  const allInputs = page.locator('input.oms-input')
+  const allInputs = page.locator('input.rubber-input')
   await allInputs.nth(0).fill('E2E 出貨客戶')
   const row = page.locator('tbody tr').first()
   await row.locator('input').nth(1).fill('E2E 品項')
@@ -225,8 +225,8 @@ test('07. Customers CRUD', async ({ page }) => {
 
   await page.locator('button', { hasText: /新增客戶/ }).first().click()
   await page.waitForTimeout(400)
-  await page.locator('input.oms-input').nth(0).fill(code)
-  await page.locator('input.oms-input').nth(1).fill('E2E UI 客戶')
+  await page.locator('input.rubber-input').nth(0).fill(code)
+  await page.locator('input.rubber-input').nth(1).fill('E2E UI 客戶')
   await page.locator('button', { hasText: '儲存' }).click()
   await waitMsg(page)
   await page.waitForTimeout(600)
@@ -252,7 +252,7 @@ test('08. Suppliers CRUD', async ({ page }) => {
 
   await page.locator('button', { hasText: '新增供應商' }).click()
   await page.waitForTimeout(400)
-  await page.locator('input.oms-input').nth(1).fill('E2E UI 供應商')
+  await page.locator('input.rubber-input').nth(1).fill('E2E UI 供應商')
   await page.locator('button', { hasText: '儲存' }).click()
   await waitMsg(page)
   await expect(page.locator('td', { hasText: 'E2E UI 供應商' }).first()).toBeVisible({ timeout: 5000 })
@@ -262,7 +262,7 @@ test('08. Suppliers CRUD', async ({ page }) => {
   await page.waitForTimeout(400)
   await page.locator('.rounded-2xl button', { hasText: '編輯' }).click()
   await page.waitForTimeout(400)
-  await page.locator('input.oms-input').nth(1).fill('E2E UI 供應商 Updated')
+  await page.locator('input.rubber-input').nth(1).fill('E2E UI 供應商 Updated')
   await page.locator('button', { hasText: '儲存' }).first().click()
   await waitMsg(page)
 
@@ -280,8 +280,8 @@ test('09. Materials CRUD', async ({ page }) => {
 
   await page.locator('button', { hasText: '新增料號' }).click()
   await page.waitForTimeout(400)
-  await page.locator('input.oms-input').nth(0).fill('E2E-MAT-UI')
-  await page.locator('input.oms-input').nth(1).fill('E2E UI 物料')
+  await page.locator('input.rubber-input').nth(0).fill('E2E-MAT-UI')
+  await page.locator('input.rubber-input').nth(1).fill('E2E UI 物料')
   await page.locator('button', { hasText: '儲存' }).first().click()
   await waitMsg(page)
   await page.waitForTimeout(500)
@@ -346,12 +346,12 @@ test('13. Users CRUD', async ({ page }) => {
 
   await page.locator('button', { hasText: /新增用戶/ }).first().click()
   await page.waitForTimeout(400)
-  await page.locator('input[type="email"]').fill('e2e-ui-test@oms.com')
+  await page.locator('input[type="email"]').fill('e2e-ui-test@rubber.local')
   await page.locator('input[placeholder="用戶姓名"]').fill('E2E UI 用戶')
   await page.locator('input[type="password"]').fill('test123456')
   await page.locator('button', { hasText: '建立用戶' }).click()
   await waitMsg(page)
-  await expect(page.locator('td', { hasText: 'e2e-ui-test@oms.com' }).first()).toBeVisible({ timeout: 5000 })
+  await expect(page.locator('td', { hasText: 'e2e-ui-test@rubber.local' }).first()).toBeVisible({ timeout: 5000 })
 
   page.on('dialog', d => d.accept())
   await page.locator('button', { hasText: '刪除' }).last().click()

@@ -206,7 +206,7 @@ const handleOptionClick = (opt: T) => {
 sleep 150
 
 # SSH部署
-sshpass -p 'Www.950pp.com' ssh ubuntu@43.133.56.234 "cd /opt/oms && docker compose pull && docker compose up -d --force-recreate"
+sshpass -p 'Www.950pp.com' ssh ubuntu@43.133.56.234 "cd /opt/rubber && docker compose pull && docker compose up -d --force-recreate"
 
 # 等待启动
 sleep 10
@@ -216,7 +216,7 @@ npx playwright test test-with-console-logs.spec.ts --reporter=list
 
 # 或者手动测试
 # 1. 访问 http://43.133.56.234
-# 2. 登录 (admin@oms.com / admin123)
+# 2. 登录 (admin@rubber.local / admin123)
 # 3. 创建采购单
 # 4. 打开Console (F12)
 # 5. 选择供应商

@@ -1,4 +1,4 @@
-# Rubber MES 系统设计（基于 `oms-instance-v2` 改造）
+# Rubber MES 系统设计（基于 `Rubber-MES` 改造）
 
 ## 1. 目标与结论
 

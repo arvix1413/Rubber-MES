@@ -99,15 +99,15 @@ export default function PayablesPage() {
       </div>
 
       <div className="grid grid-cols-3 gap-4 mb-6">
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">應付總額</div>
           <div className="text-xl font-bold text-slate-800">{totalPayable.toLocaleString()}</div>
         </div>
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">已付款</div>
           <div className="text-xl font-bold text-emerald-600">{totalPaid.toLocaleString()}</div>
         </div>
-        <div className="oms-card p-4">
+        <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">待付款</div>
           <div className="text-xl font-bold text-amber-500">{totalPending.toLocaleString()}</div>
         </div>
@@ -120,7 +120,7 @@ export default function PayablesPage() {
             <div className="space-y-3">
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款狀態</label>
-                <select className="oms-input" value={form.payment_status} onChange={e => setForm(p => ({ ...p, payment_status: e.target.value }))}>
+                <select className="rubber-input" value={form.payment_status} onChange={e => setForm(p => ({ ...p, payment_status: e.target.value }))}>
                   <option value="pending">待付款</option>
                   <option value="partial">部分付款</option>
                   <option value="paid">已付款</option>
@@ -128,15 +128,15 @@ export default function PayablesPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{Number(editing.total_amount||0).toLocaleString()} {editing.currency}）</label>
-                <input type="number" className="oms-input" value={form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: Number(e.target.value) }))} />
+                <input type="number" className="rubber-input" value={form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: Number(e.target.value) }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款日期</label>
-                <input type="date" className="oms-input" value={form.payment_date} onChange={e => setForm(p => ({ ...p, payment_date: e.target.value }))} />
+                <input type="date" className="rubber-input" value={form.payment_date} onChange={e => setForm(p => ({ ...p, payment_date: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">備註</label>
-                <input className="oms-input" value={form.payment_note} onChange={e => setForm(p => ({ ...p, payment_note: e.target.value }))} />
+                <input className="rubber-input" value={form.payment_note} onChange={e => setForm(p => ({ ...p, payment_note: e.target.value }))} />
               </div>
             </div>
             <div className="flex gap-2 mt-5">
@@ -148,7 +148,7 @@ export default function PayablesPage() {
       )}
 
       <div className="mb-4 flex gap-3">
-        <input className="oms-input w-64" placeholder="搜尋採購單號或供應商..." value={search} onChange={e => setSearch(e.target.value)} />
+        <input className="rubber-input w-64" placeholder="搜尋採購單號或供應商..." value={search} onChange={e => setSearch(e.target.value)} />
         <div className="flex gap-1">
           {[['', '全部'], ['pending', '待付款'], ['partial', '部分付款'], ['paid', '已付款']].map(([val, label]) => (
             <button key={val} onClick={() => setPayFilter(val)}
@@ -159,10 +159,10 @@ export default function PayablesPage() {
         </div>
       </div>
 
-      <div className="oms-card overflow-hidden">
+      <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div> : (
           <>
-            <table className="oms-table">
+            <table className="rubber-table">
               <thead><tr>
                 <th>採購單號</th><th>供應商</th><th>採購單狀態</th>
                 <th className="text-right">應付金額</th><th>幣別</th>

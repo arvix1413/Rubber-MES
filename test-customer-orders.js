@@ -6,7 +6,7 @@ async function test() {
     host: process.env.DB_HOST || 'localhost',
     user: process.env.DB_USER || 'root',
     password: process.env.DB_PASSWORD || 'root',
-    database: process.env.DB_NAME || 'oms'
+    database: process.env.DB_NAME || 'rubber'
   });
 
   console.log('✅ Connected to database');
@@ -18,7 +18,7 @@ async function test() {
     FROM INFORMATION_SCHEMA.COLUMNS
     WHERE TABLE_SCHEMA = ? AND TABLE_NAME = 'customer_orders'
     ORDER BY ORDINAL_POSITION
-  `, [process.env.DB_NAME || 'oms']);
+  `, [process.env.DB_NAME || 'rubber']);
   
   console.table(columns);
 

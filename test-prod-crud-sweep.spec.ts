@@ -4,7 +4,7 @@ const PROD = 'http://43.133.56.234'
 
 async function login(page: Page) {
   await page.goto(`${PROD}/login`)
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button[type="submit"]')
   await page.waitForURL('**/dashboard', { timeout: 15000 })
@@ -142,7 +142,7 @@ test('D. 用户管理 CRUD', async ({ page }) => {
   await page.goto(`${PROD}/dashboard/users`)
   await page.click('button:has-text("新增用戶")')
 
-  const form = page.locator('.oms-card', { hasText: '新增用戶' }).first()
+  const form = page.locator('.rubber-card', { hasText: '新增用戶' }).first()
   await form.locator('input[type="email"]').fill(email)
   await form.locator('input[placeholder="用戶姓名"]').fill(name)
   await form.locator('select').first().selectOption('manager')
@@ -156,7 +156,7 @@ test('D. 用户管理 CRUD', async ({ page }) => {
   await expect(row).toBeVisible()
 
   await row.locator('button:has-text("編輯")').click()
-  const editForm = page.locator('.oms-card', { hasText: '編輯用戶資料' }).first()
+  const editForm = page.locator('.rubber-card', { hasText: '編輯用戶資料' }).first()
   await editForm.locator('input[placeholder="用戶姓名"]').fill(name2)
   await editForm.locator('button:has-text("儲存變更")').click()
 

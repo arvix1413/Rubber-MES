@@ -1,4 +1,4 @@
-# OMS - Order Management System
+# Rubber MES - Manufacturing Execution System
 
 FAN YONG CO., LTD 訂單管理系統，部署在 VPS 雲端伺服器，使用 Docker 容器化運行。
 
@@ -7,7 +7,7 @@ FAN YONG CO., LTD 訂單管理系統，部署在 VPS 雲端伺服器，使用 Do
 - 前端：http://43.133.56.234:10101
 - 後端 API：http://43.133.56.234:10102/api
 - MySQL：43.133.56.234:10103
-- 預設帳號：`admin@oms.com` / `admin123`
+- 預設帳號：`admin@rubber.local` / `admin123`
 
 ## 技術棧
 

@@ -5,7 +5,7 @@ test('手动查看下拉框UI', async ({ page }) => {
   await page.goto('http://localhost:3000')
   
   // 登录
-  await page.fill('input[type="email"]', 'admin@oms.com')
+  await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
   await page.click('button:has-text("登入")')
   await page.waitForURL('**/dashboard', { timeout: 10000 })
@@ -20,7 +20,7 @@ test('手动查看下拉框UI', async ({ page }) => {
   await page.waitForTimeout(1000)
   
   // 打开BOM下拉框
-  const bomDropdown = page.locator('.oms-input.cursor-pointer').first()
+  const bomDropdown = page.locator('.rubber-input.cursor-pointer').first()
   await bomDropdown.click()
   await page.waitForTimeout(1000)
   
