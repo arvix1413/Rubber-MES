@@ -1727,12 +1727,22 @@ app.get('/api/order-intake', authMiddleware, async c => {
           FROM purchase_orders po
           JOIN po_items pi ON pi.po_id = po.id
           WHERE po.deleted_at IS NULL
+            AND po.status <> 'cancelled'
             AND pi.po_ref = co.po_number
         ) as linked_po_count,
-        b.product_sku as material_code,
+        COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '') as material_code,
         b.product_name as material_name,
         COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
-        COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit
+        COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit,
+        (
+          SELECT COALESCE(SUM(pi.quantity), 0)
+          FROM purchase_orders po
+          JOIN po_items pi ON pi.po_id = po.id
+          WHERE po.deleted_at IS NULL
+            AND po.status <> 'cancelled'
+            AND pi.po_ref = co.po_number
+            AND pi.material_code = COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '')
+        ) as purchased_qty
       FROM customer_order_items ci
       JOIN customer_orders co ON co.id = ci.order_id
       LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
@@ -1746,6 +1756,14 @@ app.get('/api/order-intake', authMiddleware, async c => {
       const orderedQty = toQty(row.ordered_qty)
       const shippedQty = toQty(row.shipped_qty)
       const reconciledQty = toQty(row.reconciled_qty)
+      const purchasedQty = toQty(row.purchased_qty)
+      const purchaseGapQty = toQty(Math.max(0, orderedQty - purchasedQty))
+      const procurementStatus =
+        purchaseGapQty <= 0
+          ? 'procured'
+          : purchasedQty > 0
+            ? 'partial'
+            : 'pending'
       const pendingReconcileQty = toQty(Math.max(0, shippedQty - reconciledQty))
       const fulfillmentRate = orderedQty > 0 ? Math.min(100, Math.round((shippedQty / orderedQty) * 10000) / 100) : 0
       const reconcileRate = shippedQty > 0 ? Math.min(100, Math.round((reconciledQty / shippedQty) * 10000) / 100) : 0
@@ -1755,6 +1773,9 @@ app.get('/api/order-intake', authMiddleware, async c => {
         shipped_qty: shippedQty,
         reconciled_qty: reconciledQty,
         linked_po_count: Number(row.linked_po_count || 0),
+        purchased_qty: purchasedQty,
+        purchase_gap_qty: purchaseGapQty,
+        procurement_status: procurementStatus,
         pending_reconcile_qty: pendingReconcileQty,
         fulfillment_rate: fulfillmentRate,
         reconcile_rate: reconcileRate,
@@ -1820,18 +1841,6 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
     if (!order) return c.json({ error: '訂單不存在' }, 404)
     if (order.status === 'cancelled') return c.json({ error: '已取消訂單不可生成採購單' }, 400)
 
-    const existed = await queryOne<any>(`
-      SELECT po.id, po.po_number
-      FROM purchase_orders po
-      JOIN po_items pi ON pi.po_id = po.id
-      WHERE po.deleted_at IS NULL AND pi.po_ref = ?
-      ORDER BY po.id DESC
-      LIMIT 1
-    `, [order.po_number])
-    if (existed) {
-      return c.json({ error: `訂單 ${order.po_number} 已生成採購單`, po_id: existed.id, po_number: existed.po_number }, 409)
-    }
-
     const sourceItems = await query<any>(`
       SELECT
         ci.id as order_item_id,
@@ -1856,6 +1865,23 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
     `, [id])
     if (!sourceItems.length) return c.json({ error: '訂單明細為空，無法生成採購單' }, 400)
 
+    const purchasedRows = await query<any>(`
+      SELECT
+        pi.material_code,
+        COALESCE(SUM(pi.quantity), 0) as purchased_qty
+      FROM purchase_orders po
+      JOIN po_items pi ON pi.po_id = po.id
+      WHERE po.deleted_at IS NULL
+        AND po.status <> 'cancelled'
+        AND pi.po_ref = ?
+      GROUP BY pi.material_code
+    `, [order.po_number])
+    const purchasedMap = new Map<string, number>()
+    for (const row of purchasedRows) {
+      purchasedMap.set(String(row.material_code || ''), toQty(row.purchased_qty))
+    }
+    const purchasedPoolMap = new Map<string, number>(purchasedMap)
+
     const normalizedItems = sourceItems
       .map((it: any) => {
         const qty = toQty(it.qty || 0)
@@ -1863,13 +1889,18 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
         const materialCode = String(it.product_sku || it.order_material_code || '').trim()
         const materialName = String(it.product_name || '').trim()
         if (!materialCode && !materialName) return null
+        const purchasedPool = toQty(purchasedPoolMap.get(materialCode) || 0)
+        const consumedByPool = Math.min(qty, purchasedPool)
+        purchasedPoolMap.set(materialCode, toQty(Math.max(0, purchasedPool - consumedByPool)))
+        const remainingQty = toQty(Math.max(0, qty - consumedByPool))
+        if (remainingQty <= 0) return null
         const unitPrice = toMoney(it.supplier_price || it.company_price || it.order_unit_price || 0)
         return {
           material_code: materialCode,
           material_name: materialName || materialCode,
           spec: String(it.order_spec || it.bom_spec || '').trim(),
           unit: String(it.order_unit || it.bom_unit || 'PCS').trim() || 'PCS',
-          quantity: qty,
+          quantity: remainingQty,
           unit_price: unitPrice,
           currency: 'VND',
           remark: '',
@@ -1881,7 +1912,9 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       })
       .filter(Boolean) as any[]
 
-    if (!normalizedItems.length) return c.json({ error: '訂單明細缺少可採購品項，無法生成採購單' }, 400)
+    if (!normalizedItems.length) {
+      return c.json({ error: `訂單 ${order.po_number} 已採購完成，無需再生成採購單` }, 409)
+    }
 
     const preferredSupplier = normalizedItems.find((it) => it.supplier_id || it.supplier_name)
     const supplierId = preferredSupplier?.supplier_id || null

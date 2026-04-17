@@ -23,6 +23,9 @@ type IntakeItem = {
   fulfillment_rate: number
   reconcile_rate: number
   linked_po_count: number
+  purchased_qty: number
+  purchase_gap_qty: number
+  procurement_status: 'pending' | 'partial' | 'procured'
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -30,6 +33,12 @@ const STATUS_LABEL: Record<string, string> = {
   partial: '部分完成',
   completed: '已完成',
   delay: '延遲',
+}
+
+const PROCUREMENT_LABEL: Record<string, string> = {
+  pending: '待採購',
+  partial: '部分已採購',
+  procured: '已採購完成',
 }
 
 export default function OrderIntakePage() {
@@ -137,6 +146,8 @@ export default function OrderIntakePage() {
                 <th className="px-3 py-2 text-left">訂單</th>
                 <th className="px-3 py-2 text-left">客戶 / 品項</th>
                 <th className="px-3 py-2 text-right">訂單量</th>
+                <th className="px-3 py-2 text-right">已採購</th>
+                <th className="px-3 py-2 text-right">採購缺口</th>
                 <th className="px-3 py-2 text-right">已出貨</th>
                 <th className="px-3 py-2 text-right">已核對</th>
                 <th className="px-3 py-2 text-right">待核對</th>
@@ -158,6 +169,8 @@ export default function OrderIntakePage() {
                     <div className="text-xs text-slate-500">{r.spec || '-'}</div>
                   </td>
                   <td className="px-3 py-2 text-right">{r.ordered_qty}</td>
+                  <td className="px-3 py-2 text-right">{r.purchased_qty}</td>
+                  <td className="px-3 py-2 text-right font-semibold text-orange-700">{r.purchase_gap_qty}</td>
                   <td className="px-3 py-2 text-right">{r.shipped_qty}</td>
                   <td className="px-3 py-2 text-right">{r.reconciled_qty}</td>
                   <td className="px-3 py-2 text-right font-semibold text-amber-700">{r.pending_reconcile_qty}</td>
@@ -174,11 +187,18 @@ export default function OrderIntakePage() {
                     </div>
                   </td>
                   <td className="px-3 py-2 align-top min-w-[170px]">
-                    {r.linked_po_count > 0 ? (
-                      <span className="inline-flex items-center px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-xs font-medium">
-                        已生成採購單
+                    <div className="mb-2">
+                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
+                        r.procurement_status === 'procured'
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : r.procurement_status === 'partial'
+                            ? 'bg-amber-100 text-amber-700'
+                            : 'bg-slate-100 text-slate-700'
+                      }`}>
+                        {PROCUREMENT_LABEL[r.procurement_status]}
                       </span>
-                    ) : (
+                    </div>
+                    {r.purchase_gap_qty > 0 ? (
                       <button
                         className="btn-ghost text-xs"
                         disabled={creatingOrderId === r.order_id}
@@ -186,13 +206,15 @@ export default function OrderIntakePage() {
                       >
                         {creatingOrderId === r.order_id ? '生成中...' : '生成採購單'}
                       </button>
+                    ) : (
+                      <span className="text-xs text-slate-500">已無採購缺口</span>
                     )}
                   </td>
                 </tr>
               ))}
               {!loading && paged.length === 0 && (
                 <tr>
-                  <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>目前無資料</td>
+                  <td className="px-3 py-8 text-center text-slate-500" colSpan={10}>目前無資料</td>
                 </tr>
               )}
             </tbody>
