@@ -21,6 +21,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureShipmentReconciliationTables()
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
+  await ensureBomStockColumns()
   await ensureSoftDeleteColumns()
   await next()
 })
@@ -276,6 +277,27 @@ const ensureShipmentReconciliationTables = async () => {
     })
   }
   await ensureShipmentReconciliationTablesPromise
+}
+
+let ensureBomStockColumnsPromise: Promise<void> | null = null
+const ensureBomStockColumns = async () => {
+  if (!ensureBomStockColumnsPromise) {
+    ensureBomStockColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE bom ADD COLUMN current_stock DECIMAL(15,4) NOT NULL DEFAULT 0')
+    })().catch((e) => {
+      ensureBomStockColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureBomStockColumnsPromise
 }
 
 let ensureInvoiceTablesPromise: Promise<void> | null = null
@@ -1710,8 +1732,8 @@ app.get('/api/order-intake', authMiddleware, async c => {
       LEFT JOIN bom b ON b.id = ci.bom_id
       WHERE ${where.join(' AND ')}
       ORDER BY co.created_at DESC, ci.id ASC
-      LIMIT ? OFFSET ?
-    `, [...params, pageSize, offset])
+      LIMIT ${pageSize} OFFSET ${offset}
+    `, params)
 
     const enriched = rows.map((row: any) => {
       const orderedQty = toQty(row.ordered_qty)
@@ -1846,8 +1868,8 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
         AND dn.deleted_at IS NULL
         AND sri.id IS NULL
       ORDER BY dn.delivery_date DESC, dn.id DESC, dni.id ASC
-      LIMIT ? OFFSET ?
-    `, [pageSize, offset])
+      LIMIT ${pageSize} OFFSET ${offset}
+    `)
 
     const orderItemIdMap = await buildOrderItemIdMap(
       rows.map((row: any) => ({
@@ -1908,8 +1930,8 @@ app.get('/api/reconciliations', authMiddleware, async c => {
     WHERE ${where.join(' AND ')}
     GROUP BY sr.id
     ORDER BY sr.created_at DESC
-    LIMIT ? OFFSET ?
-  `, [...params, pageSize, offset])
+    LIMIT ${pageSize} OFFSET ${offset}
+  `, params)
   return c.json(rows.map((r: any) => ({
     ...r,
     total_shipped_qty: toQty(r.total_shipped_qty),
@@ -2322,8 +2344,8 @@ app.get('/api/invoices', authMiddleware, async c => {
       WHERE ${where.join(' AND ')}
       GROUP BY ih.id
       ORDER BY ih.created_at DESC
-      LIMIT ? OFFSET ?
-    `, [...params, pageSize, offset])
+      LIMIT ${pageSize} OFFSET ${offset}
+    `, params)
     return c.json(rows.map((r: any) => ({ ...r, total_qty: toQty(r.total_qty) })))
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
