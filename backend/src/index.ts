@@ -1722,6 +1722,13 @@ app.get('/api/order-intake', authMiddleware, async c => {
         ci.arrived_qty as shipped_qty,
         COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
         COALESCE(ci.settled_qty, 0) as settled_qty,
+        (
+          SELECT COUNT(DISTINCT po.id)
+          FROM purchase_orders po
+          JOIN po_items pi ON pi.po_id = po.id
+          WHERE po.deleted_at IS NULL
+            AND pi.po_ref = co.po_number
+        ) as linked_po_count,
         b.product_sku as material_code,
         b.product_name as material_name,
         COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
@@ -1747,6 +1754,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
         ordered_qty: orderedQty,
         shipped_qty: shippedQty,
         reconciled_qty: reconciledQty,
+        linked_po_count: Number(row.linked_po_count || 0),
         pending_reconcile_qty: pendingReconcileQty,
         fulfillment_rate: fulfillmentRate,
         reconcile_rate: reconcileRate,
@@ -1797,6 +1805,110 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
       pending_reconcile_qty: toQty(Math.max(0, toQty(it.shipped_qty) - toQty(it.reconciled_qty))),
     })),
   })
+})
+
+app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const u = c.get('user')
+    const order = await queryOne<any>(`
+      SELECT co.id, co.po_number, co.customer_id, co.status, c.customer_name
+      FROM customer_orders co
+      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
+      WHERE co.id=? AND co.deleted_at IS NULL
+    `, [id])
+    if (!order) return c.json({ error: '訂單不存在' }, 404)
+    if (order.status === 'cancelled') return c.json({ error: '已取消訂單不可生成採購單' }, 400)
+
+    const existed = await queryOne<any>(`
+      SELECT po.id, po.po_number
+      FROM purchase_orders po
+      JOIN po_items pi ON pi.po_id = po.id
+      WHERE po.deleted_at IS NULL AND pi.po_ref = ?
+      ORDER BY po.id DESC
+      LIMIT 1
+    `, [order.po_number])
+    if (existed) {
+      return c.json({ error: `訂單 ${order.po_number} 已生成採購單`, po_id: existed.id, po_number: existed.po_number }, 409)
+    }
+
+    const sourceItems = await query<any>(`
+      SELECT
+        ci.id as order_item_id,
+        ci.qty,
+        ci.unit_price as order_unit_price,
+        ci.material_code as order_material_code,
+        ci.spec as order_spec,
+        ci.unit as order_unit,
+        ci.thickness,
+        b.product_sku,
+        b.product_name,
+        b.spec as bom_spec,
+        b.unit as bom_unit,
+        b.supplier_id,
+        b.supplier_name,
+        b.supplier_price,
+        b.company_price
+      FROM customer_order_items ci
+      LEFT JOIN bom b ON b.id = ci.bom_id
+      WHERE ci.order_id=?
+      ORDER BY ci.id ASC
+    `, [id])
+    if (!sourceItems.length) return c.json({ error: '訂單明細為空，無法生成採購單' }, 400)
+
+    const normalizedItems = sourceItems
+      .map((it: any) => {
+        const qty = toQty(it.qty || 0)
+        if (qty <= 0) return null
+        const materialCode = String(it.product_sku || it.order_material_code || '').trim()
+        const materialName = String(it.product_name || '').trim()
+        if (!materialCode && !materialName) return null
+        const unitPrice = toMoney(it.supplier_price || it.company_price || it.order_unit_price || 0)
+        return {
+          material_code: materialCode,
+          material_name: materialName || materialCode,
+          spec: String(it.order_spec || it.bom_spec || '').trim(),
+          unit: String(it.order_unit || it.bom_unit || 'PCS').trim() || 'PCS',
+          quantity: qty,
+          unit_price: unitPrice,
+          currency: 'VND',
+          remark: '',
+          po_ref: order.po_number,
+          thickness: it.thickness ?? null,
+          supplier_id: it.supplier_id || null,
+          supplier_name: String(it.supplier_name || '').trim(),
+        }
+      })
+      .filter(Boolean) as any[]
+
+    if (!normalizedItems.length) return c.json({ error: '訂單明細缺少可採購品項，無法生成採購單' }, 400)
+
+    const preferredSupplier = normalizedItems.find((it) => it.supplier_id || it.supplier_name)
+    const supplierId = preferredSupplier?.supplier_id || null
+    const supplierName = preferredSupplier?.supplier_name || '待分配供應商'
+
+    const poNum = `PO${Date.now()}`
+    const subTotal = normalizedItems.reduce((s: number, it: any) => s + toMoney(it.quantity * it.unit_price), 0)
+    const taxRate = 8
+    const total = toMoney(subTotal * (1 + taxRate / 100))
+    const remark = `由訂單收集自動生成，來源客戶訂單 ${order.po_number}`
+    const r = await execute(
+      'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
+    )
+    const poId = r.insertId
+    for (const item of normalizedItems) {
+      const totalPrice = toMoney(item.quantity * item.unit_price)
+      await execute(
+        'INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+        [poId, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
+      )
+    }
+    await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${order.po_number}`)
+    return c.json({ id: poId, po_number: poNum }, 201)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 app.get('/api/order-intake/export/csv', authMiddleware, async c => {

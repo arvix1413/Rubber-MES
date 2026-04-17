@@ -22,6 +22,7 @@ type IntakeItem = {
   pending_reconcile_qty: number
   fulfillment_rate: number
   reconcile_rate: number
+  linked_po_count: number
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -36,6 +37,7 @@ export default function OrderIntakePage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
+  const [creatingOrderId, setCreatingOrderId] = useState<number | null>(null)
 
   const load = async (nextStatus = status) => {
     setLoading(true)
@@ -78,6 +80,21 @@ export default function OrderIntakePage() {
       a.click()
       URL.revokeObjectURL(url)
     } catch {}
+  }
+
+  const generatePo = async (orderId: number) => {
+    if (creatingOrderId) return
+    setCreatingOrderId(orderId)
+    try {
+      const res = await apiFetch<{ id: number; po_number: string }>(`/api/order-intake/${orderId}/generate-po`, { method: 'POST' })
+      window.alert(`已生成採購單：${res.po_number}`)
+      await load(status)
+    } catch (e: any) {
+      const msg = String(e?.message || '生成採購單失敗')
+      window.alert(msg)
+    } finally {
+      setCreatingOrderId(null)
+    }
   }
 
   return (
@@ -124,6 +141,7 @@ export default function OrderIntakePage() {
                 <th className="px-3 py-2 text-right">已核對</th>
                 <th className="px-3 py-2 text-right">待核對</th>
                 <th className="px-3 py-2 text-left">進度</th>
+                <th className="px-3 py-2 text-left">操作</th>
               </tr>
             </thead>
             <tbody>
@@ -155,11 +173,26 @@ export default function OrderIntakePage() {
                       <Link href="/dashboard/shipment-reconciliation" className="text-orange-700 hover:text-orange-800">前往出貨核對</Link>
                     </div>
                   </td>
+                  <td className="px-3 py-2 align-top min-w-[170px]">
+                    {r.linked_po_count > 0 ? (
+                      <span className="inline-flex items-center px-2 py-1 rounded bg-emerald-100 text-emerald-700 text-xs font-medium">
+                        已生成採購單
+                      </span>
+                    ) : (
+                      <button
+                        className="btn-ghost text-xs"
+                        disabled={creatingOrderId === r.order_id}
+                        onClick={() => generatePo(r.order_id)}
+                      >
+                        {creatingOrderId === r.order_id ? '生成中...' : '生成採購單'}
+                      </button>
+                    )}
+                  </td>
                 </tr>
               ))}
               {!loading && paged.length === 0 && (
                 <tr>
-                  <td className="px-3 py-8 text-center text-slate-500" colSpan={7}>目前無資料</td>
+                  <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>目前無資料</td>
                 </tr>
               )}
             </tbody>
