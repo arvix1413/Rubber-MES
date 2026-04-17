@@ -99,6 +99,7 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
   <div class="sign-grid">
     <div class="sign-box">
       <div class="sign-title">供應商確認 Vendor Confirmation</div>
+      <div class="sign-img-wrap"></div>
       <div class="sign-line">${vendor}</div>
     </div>
     <div class="sign-box">

@@ -84,6 +84,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
   <div class="sign-grid">
     <div class="sign-box">
       <div class="sign-title">收貨方確認</div>
+      <div class="sign-img-wrap"></div>
       <div class="sign-line">${txt(data.customer_name)}</div>
     </div>
     <div class="sign-box">

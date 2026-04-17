@@ -92,6 +92,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
   <div class="sign-grid">
     <div class="sign-box">
       <div class="sign-title">${invoiceType === 'supplier' ? '供應商簽章' : '客戶簽章'}</div>
+      <div class="sign-img-wrap"></div>
       <div class="sign-line">${txt(data.party_name)}</div>
     </div>
     <div class="sign-box">

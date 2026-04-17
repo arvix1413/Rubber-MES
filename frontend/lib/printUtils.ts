@@ -51,11 +51,11 @@ td{text-align:center}
 .summary-row{display:flex;justify-content:space-between;padding:4px 8px;border-bottom:1px solid #cbd5e1}
 .summary-row:last-child{border-bottom:none;font-weight:800}
 .note{margin-top:7px;border:1px solid #334155;padding:6px 8px;min-height:48px;line-height:1.42}
-.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:14mm}
-.sign-box{border:1px solid #334155;min-height:84px;padding:6px 8px;text-align:center}
+.sign-grid{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:14mm;align-items:stretch}
+.sign-box{border:1px solid #334155;height:92px;padding:6px 8px;text-align:center;display:flex;flex-direction:column}
 .sign-title{font-weight:700;color:#0f172a}
-.sign-img-wrap{height:34px;display:flex;align-items:center;justify-content:center;margin-top:8px}
-.sign-line{margin-top:10px;border-top:1px solid #334155;padding-top:4px;font-size:10px;color:#334155}
+.sign-img-wrap{height:36px;display:flex;align-items:center;justify-content:center;margin-top:auto}
+.sign-line{margin-top:auto;border-top:1px solid #334155;padding-top:4px;font-size:10px;color:#334155}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 `
 

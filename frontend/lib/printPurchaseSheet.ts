@@ -123,6 +123,7 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
   <div class="sign-grid">
     <div class="sign-box">
       <div class="sign-title">供應商確認</div>
+      <div class="sign-img-wrap"></div>
       <div class="sign-line">${txt(data.supplier_name)}</div>
     </div>
     <div class="sign-box">
