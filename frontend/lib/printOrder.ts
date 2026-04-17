@@ -1,5 +1,5 @@
 import { type CompanySettings } from './useCompany'
-import { cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
+import { buildPrintStyles, cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
 
 export function generateOrderHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = cleanText
@@ -38,46 +38,29 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
   }).join('')
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="zh-Hant">
 <head>
 <meta charset="utf-8" />
-<title>Purchase Order ${txt(data.po_number)}</title>
-<style>
-*{box-sizing:border-box}
-body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:10.5px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:8.5mm 9mm 9mm;margin:0 auto}
-.h{display:flex;justify-content:space-between;align-items:flex-start}
-.title{font-size:32px;font-weight:800;text-align:center;line-height:1.02;margin-bottom:5px;letter-spacing:.3px}
-.small{font-size:10.5px;line-height:1.35}
-.mono{font-family:Consolas,Menlo,monospace}
-table{width:100%;border-collapse:collapse;margin-top:6px}
-th,td{border:1px solid #333;padding:4px 5px;vertical-align:top}
-th{background:#f2f2f2;font-size:9.8px;text-align:center}
-.c{text-align:center}
-.r{text-align:right}
-.note{margin-top:7px;border:1px solid #333;padding:5px 7px;line-height:1.36;min-height:66px}
-.foot{display:grid;grid-template-columns:1fr 1fr;gap:9mm;margin-top:15mm}
-.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
-.box .t{font-weight:700}
-.box .line{margin-top:52px;border-top:1px solid #333;padding-top:4px;font-size:10px}
-@media print{@page{size:A4;margin:0}body{margin:0}}
-</style>
+<title>採購單 ${txt(data.po_number)}</title>
+<style>${buildPrintStyles()}</style>
 </head>
 <body>
 <div class="page">
-  <div class="title">Purchase Order</div>
-  <div class="h small">
-    <div>
-      <div><b>To Vendor:</b> ${vendor}</div>
-      <div><b>Address:</b> ${txt(data.delivery_address || data.address)}</div>
-      <div><b>Company:</b> ${txt(co.company_name)}</div>
-      <div><b>Tax No:</b> ${txt((co as any).tax_id)}</div>
-      <div><b>Tel No:</b> ${txt(co.phone)}</div>
+  <div class="title">採購單</div>
+  <div class="subtitle">PURCHASE ORDER</div>
+
+  <div class="meta-grid">
+    <div class="card">
+      <div class="row"><span class="label">供應商</span><span>${vendor}</span></div>
+      <div class="row"><span class="label">送貨地址</span><span>${txt(data.delivery_address || data.address)}</span></div>
+      <div class="row"><span class="label">我方公司</span><span>${txt(co.company_name)}</span></div>
+      <div class="row"><span class="label">統一編號</span><span>${txt((co as any).tax_id)}</span></div>
+      <div class="row"><span class="label">聯絡電話</span><span>${txt(co.phone)}</span></div>
     </div>
-    <div>
-      <div><b>Slip No:</b> <span class="mono">${txt(data.po_number)}</span></div>
-      <div><b>PO Date:</b> ${formatDate(data.po_date)}</div>
-      <div><b>Currency:</b> ${currency}</div>
+    <div class="card">
+      <div class="row"><span class="label">單號</span><span class="mono">${txt(data.po_number)}</span></div>
+      <div class="row"><span class="label">採購日期</span><span>${formatDate(data.po_date)}</span></div>
+      <div class="row"><span class="label">幣別</span><span>${currency}</span></div>
     </div>
   </div>
 
@@ -97,31 +80,31 @@ th{background:#f2f2f2;font-size:9.8px;text-align:center}
     <tbody>
       ${rows}
       <tr>
-        <td colspan="6" class="r"><b>Total</b></td>
-        <td class="r"><b>${fmt(total)}</b></td>
+        <td colspan="6" class="right"><b>合計 Total</b></td>
+        <td class="right"><b>${fmt(total)}</b></td>
         <td></td>
       </tr>
     </tbody>
   </table>
 
   <div class="note">
-    <div><b>Remark:</b></div>
-    <div>1. Deliver to: ${txt(data.delivery_address || co.address)}</div>
-    <div>2. Delivery during working time; contact purchase department for any abnormal case.</div>
-    <div>3. Price does not include tax unless explicitly stated.</div>
-    <div>4. The Purchase Order Receiving Method: Email / Paper / Fax</div>
+    <div><b>備註 Remark</b></div>
+    <div>1. 送貨地址：${txt(data.delivery_address || co.address)}</div>
+    <div>2. 交貨如有異常，請立即與採購窗口聯繫。</div>
+    <div>3. 除非另有註明，單價不含稅。</div>
+    <div>4. 收件方式：Email / 紙本 / 傳真。</div>
     <div style="margin-top:4px">${txt(data.remark)}</div>
   </div>
 
-  <div class="foot">
-    <div class="box">
-      <div class="t">Vendor Confirmation</div>
-      <div class="line">${vendor}</div>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div class="sign-title">供應商確認 Vendor Confirmation</div>
+      <div class="sign-line">${vendor}</div>
     </div>
-    <div class="box">
-      <div class="t">Buyer Confirmation</div>
-      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
-      <div class="line">${txt(co.contact_person || co.company_name)}</div>
+    <div class="sign-box">
+      <div class="sign-title">採購確認 Buyer Confirmation</div>
+      <div class="sign-img-wrap">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
+      <div class="sign-line">${txt(co.contact_person || co.company_name)}</div>
     </div>
   </div>
 </div>

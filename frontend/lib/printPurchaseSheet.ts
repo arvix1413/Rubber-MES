@@ -1,5 +1,5 @@
 import { type CompanySettings } from './useCompany'
-import { cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
+import { buildPrintStyles, cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
 
 export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = cleanText
@@ -59,49 +59,26 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
 <head>
 <meta charset="utf-8" />
 <title>採購單 ${txt(data.po_number)}</title>
-<style>
-*{box-sizing:border-box}
-body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:10.5px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:8mm 9mm 9mm;margin:0 auto}
-.h1{font-size:36px;font-weight:800;letter-spacing:.4px;text-align:center;line-height:1}
-.h2{font-size:15px;font-weight:700;text-align:center;margin-top:3px}
-.head{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:6px}
-.meta{border:1px solid #333;padding:5px 7px;line-height:1.36}
-.lbl{display:inline-block;width:95px;color:#333;font-weight:700}
-table{width:100%;border-collapse:collapse;margin-top:6px}
-th,td{border:1px solid #333;padding:3px 4px;vertical-align:middle}
-th{background:#f3f3f3;text-align:center;font-size:9.6px}
-.c{text-align:center}
-.r{text-align:right}
-.mono{font-family:Consolas,Menlo,monospace}
-.sum{margin-top:5px;margin-left:auto;width:262px;border:1px solid #333}
-.sum .row{display:flex;justify-content:space-between;padding:4px 7px;border-bottom:1px solid #ddd}
-.sum .row:last-child{border-bottom:none;font-weight:800}
-.notes{margin-top:6px;border:1px solid #333;padding:5px 7px;min-height:66px;line-height:1.34}
-.sign{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:16mm}
-.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
-.box .t{font-weight:700;font-size:11px}
-.box .line{margin-top:52px;border-top:1px solid #444;padding-top:4px;font-size:10px}
-@media print{@page{size:A4;margin:0}body{margin:0}}
-</style>
+<style>${buildPrintStyles()}</style>
 </head>
 <body>
 <div class="page">
-  <div class="h1">採購單 PURCHASE SHEET</div>
-  <div class="head">
-    <div class="meta">
-      <div><span class="lbl">公司名稱</span>${txt(co.company_name)}</div>
-      <div><span class="lbl">地址</span>${txt(co.address)}</div>
-      <div><span class="lbl">電話</span>${txt(co.phone)}</div>
-      <div><span class="lbl">聯絡人</span>${txt(co.contact_person)}</div>
-      <div><span class="lbl">稅號</span>${txt((co as any).tax_id)}</div>
+  <div class="title">採購單</div>
+  <div class="subtitle">PURCHASE SHEET</div>
+  <div class="meta-grid">
+    <div class="card">
+      <div class="row"><span class="label">公司名稱</span><span>${txt(co.company_name)}</span></div>
+      <div class="row"><span class="label">地址</span><span>${txt(co.address)}</span></div>
+      <div class="row"><span class="label">電話</span><span>${txt(co.phone)}</span></div>
+      <div class="row"><span class="label">聯絡人</span><span>${txt(co.contact_person)}</span></div>
+      <div class="row"><span class="label">稅號</span><span>${txt((co as any).tax_id)}</span></div>
     </div>
-    <div class="meta">
-      <div><span class="lbl">採購號碼</span>${txt(data.po_number)}</div>
-      <div><span class="lbl">採購日期 Issue date</span>${formatDate(data.created_at)}</div>
-      <div><span class="lbl">供應商 Company</span>${txt(data.supplier_name)}</div>
-      <div><span class="lbl">聯絡人 Contact</span>${txt((data as any).supplier_contact || '')}</div>
-      <div><span class="lbl">幣別 / 稅率</span>${txt(data.currency || 'VND')} / ${taxRate}%</div>
+    <div class="card">
+      <div class="row"><span class="label">採購號碼</span><span class="mono">${txt(data.po_number)}</span></div>
+      <div class="row"><span class="label">採購日期</span><span>${formatDate(data.created_at)}</span></div>
+      <div class="row"><span class="label">供應商</span><span>${txt(data.supplier_name)}</span></div>
+      <div class="row"><span class="label">聯絡人</span><span>${txt((data as any).supplier_contact || '')}</span></div>
+      <div class="row"><span class="label">幣別 / 稅率</span><span>${txt(data.currency || 'VND')} / ${taxRate}%</span></div>
     </div>
   </div>
 
@@ -127,13 +104,13 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
     </tbody>
   </table>
 
-  <div class="sum">
-    <div class="row"><span>Total</span><span>${money(subTotal)}</span></div>
-    <div class="row"><span>VAT ${taxRate}%</span><span>${money(taxAmount)}</span></div>
-    <div class="row"><span>總金額 VND</span><span>${money(grandTotal)}</span></div>
+  <div class="summary">
+    <div class="summary-row"><span>Total</span><span>${money(subTotal)}</span></div>
+    <div class="summary-row"><span>VAT ${taxRate}%</span><span>${money(taxAmount)}</span></div>
+    <div class="summary-row"><span>總金額 VND</span><span>${money(grandTotal)}</span></div>
   </div>
 
-  <div class="notes">
+  <div class="note">
     <div><b>備註 Remark</b></div>
     <div>1. 付款條件依據合同。The payment way according by sales contract.</div>
     <div>2. 交貨日期：三天。Good finish within 3 days.</div>
@@ -143,15 +120,15 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
     <div style="margin-top:4px">${txt(data.remark)}</div>
   </div>
 
-  <div class="sign">
-    <div class="box">
-      <div class="t">供應商確認</div>
-      <div class="line">${txt(data.supplier_name)}</div>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div class="sign-title">供應商確認</div>
+      <div class="sign-line">${txt(data.supplier_name)}</div>
     </div>
-    <div class="box">
-      <div class="t">採購確認</div>
-      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
-      <div class="line">${txt(co.company_name)}</div>
+    <div class="sign-box">
+      <div class="sign-title">採購確認</div>
+      <div class="sign-img-wrap">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
+      <div class="sign-line">${txt(co.company_name)}</div>
     </div>
   </div>
 </div>

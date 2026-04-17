@@ -1,5 +1,5 @@
 import { type CompanySettings } from './useCompany'
-import { cleanText, formatDate, formatQty, toNum } from './printUtils'
+import { buildPrintStyles, cleanText, formatDate, formatQty, toNum } from './printUtils'
 
 export function generateDeliverySheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = cleanText
@@ -36,46 +36,24 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
 <head>
 <meta charset="utf-8" />
 <title>DELIVERY SHEET ${txt(data.dn_number)}</title>
-<style>
-*{box-sizing:border-box}
-body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
-.page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
-.title{font-size:40px;font-weight:800;text-align:center;line-height:1.05}
-.sub{font-size:14px;text-align:center;font-weight:700;margin-top:2px}
-.head{display:flex;justify-content:space-between;align-items:flex-start;margin-top:8px}
-.left{font-size:11px;line-height:1.45}
-.right{font-size:11px;line-height:1.5;text-align:right}
-.mono{font-family:Consolas,Menlo,monospace}
-table{width:100%;border-collapse:collapse;margin-top:8px}
-th,td{border:1px solid #333;padding:5px;vertical-align:middle}
-th{background:#f2f2f2;text-align:center;font-size:10px}
-td{text-align:center}
-.c{text-align:center}
-.r{text-align:right}
-.note{margin-top:8px;border:1px solid #333;padding:6px 8px;min-height:36px;line-height:1.45}
-.sign{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
-.box .t{font-weight:700}
-.box .line{margin-top:52px;border-top:1px solid #333;padding-top:4px;font-size:10px}
-@media print{@page{size:A4;margin:0}body{margin:0}}
-</style>
+<style>${buildPrintStyles()}</style>
 </head>
 <body>
 <div class="page">
-  <div class="title">PHIẾU GIAO HÀNG</div>
-  <div class="sub">送貨單 / DELIVERY SHEET</div>
+  <div class="title">送貨單</div>
+  <div class="subtitle">PHIẾU GIAO HÀNG / DELIVERY SHEET</div>
 
-  <div class="head">
-    <div class="left">
-      <div><b>Địa điểm nhận hàng:</b> ${txt(data.customer_name)}</div>
-      <div><b>Công ty giao hàng:</b> ${txt(co.company_name)}</div>
-      <div><b>Địa chỉ:</b> ${txt(data.address || co.address)}</div>
-      <div><b>Điện thoại:</b> ${txt(co.phone)}</div>
+  <div class="meta-grid">
+    <div class="card">
+      <div class="row"><span class="label">收貨方</span><span>${txt(data.customer_name)}</span></div>
+      <div class="row"><span class="label">出貨公司</span><span>${txt(co.company_name)}</span></div>
+      <div class="row"><span class="label">地址</span><span>${txt(data.address || co.address)}</span></div>
+      <div class="row"><span class="label">電話</span><span>${txt(co.phone)}</span></div>
     </div>
-    <div class="right">
-      <div><b>Số phiếu / No:</b> <span class="mono">${txt(data.dn_number)}</span></div>
-      <div><b>Ngày:</b> ${formatDate(data.delivery_date)}</div>
-      <div><b>Mã số Cty giao hàng:</b> 2211</div>
+    <div class="card">
+      <div class="row"><span class="label">單號</span><span class="mono">${txt(data.dn_number)}</span></div>
+      <div class="row"><span class="label">日期</span><span>${formatDate(data.delivery_date)}</span></div>
+      <div class="row"><span class="label">公司代碼</span><span>2211</span></div>
     </div>
   </div>
 
@@ -93,7 +71,7 @@ td{text-align:center}
     <tbody>
       ${rows}
       <tr>
-        <td colspan="3" class="r"><b>Total</b></td>
+        <td colspan="3" class="right"><b>Total</b></td>
         <td class="c"><b>${fmt(totalQty)}</b></td>
         <td></td>
         <td></td>
@@ -101,17 +79,17 @@ td{text-align:center}
     </tbody>
   </table>
 
-  <div class="note"><b>Ghi chú / 備註:</b> ${txt(data.remark)}</div>
+  <div class="note"><b>備註 Remark:</b> ${txt(data.remark)}</div>
 
-  <div class="sign">
-    <div class="box">
-      <div class="t">Người nhận hàng</div>
-      <div class="line">${txt(data.customer_name)}</div>
+  <div class="sign-grid">
+    <div class="sign-box">
+      <div class="sign-title">收貨方確認</div>
+      <div class="sign-line">${txt(data.customer_name)}</div>
     </div>
-    <div class="box">
-      <div class="t">Người giao hàng</div>
-      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
-      <div class="line">${txt(co.contact_person || co.company_name)}</div>
+    <div class="sign-box">
+      <div class="sign-title">出貨方確認</div>
+      <div class="sign-img-wrap">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
+      <div class="sign-line">${txt(co.contact_person || co.company_name)}</div>
     </div>
   </div>
 </div>
