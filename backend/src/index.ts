@@ -22,6 +22,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
   await ensureBomStockColumns()
+  await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
 })
@@ -427,6 +428,26 @@ const SOFT_DELETE_TABLES = [
 ] as const
 
 let ensureSoftDeleteColumnsPromise: Promise<void> | null = null
+let ensureUserSignatureColumnPromise: Promise<void> | null = null
+const ensureUserSignatureColumn = async () => {
+  if (!ensureUserSignatureColumnPromise) {
+    ensureUserSignatureColumnPromise = (async () => {
+      try {
+        await execute('ALTER TABLE users ADD COLUMN signature_url TEXT NULL')
+      } catch (e: any) {
+        const msg = String(e?.message || '').toLowerCase()
+        if (msg.includes('duplicate column')) return
+        if (msg.includes("doesn't exist") || msg.includes('unknown table')) return
+        throw e
+      }
+    })().catch((e) => {
+      ensureUserSignatureColumnPromise = null
+      throw e
+    })
+  }
+  await ensureUserSignatureColumnPromise
+}
+
 const ensureSoftDeleteColumns = async () => {
   if (!ensureSoftDeleteColumnsPromise) {
     ensureSoftDeleteColumnsPromise = (async () => {
