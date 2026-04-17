@@ -1,18 +1,11 @@
 import { type CompanySettings } from './useCompany'
+import { cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
 
 export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
-  const txt = (v: any) => {
-    if (v === null || v === undefined) return ''
-    const s = String(v).trim()
-    if (!s || s === 'null' || s === 'undefined') return ''
-    return s
-  }
-  const num = (v: any) => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : 0
-  }
-  const money = (v: any) => num(v).toLocaleString()
-  const qty = (v: any) => (Math.round(num(v) * 10000) / 10000).toLocaleString()
+  const txt = cleanText
+  const num = toNum
+  const money = formatMoney
+  const qty = formatQty
 
   const co = company || {
     company_name: 'RUBBER MES COMPANY',
@@ -50,7 +43,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
 <title>Invoice ${txt(data.invoice_no)}</title>
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
 .page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
 .h1{font-size:36px;font-weight:800;text-align:center;line-height:1}
 .h2{font-size:15px;font-weight:700;text-align:center;margin-top:3px}
@@ -68,9 +61,9 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
 .sum .row:last-child{border-bottom:none;font-weight:800}
 .note{margin-top:8px;border:1px solid #333;padding:6px 8px;min-height:40px;line-height:1.4}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:72px;padding:6px;text-align:center}
+.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
 .box .t{font-weight:700}
-.box .line{margin-top:40px;border-top:1px solid #333;padding-top:4px;font-size:10px}
+.box .line{margin-top:52px;border-top:1px solid #333;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>
@@ -88,7 +81,7 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
     </div>
     <div class="meta">
       <div><span class="lbl">發票號</span><span class="mono">${txt(data.invoice_no)}</span></div>
-      <div><span class="lbl">發票日期</span>${txt(data.invoice_date)}</div>
+      <div><span class="lbl">發票日期</span>${formatDate(data.invoice_date)}</div>
       <div><span class="lbl">對象</span>${txt(data.party_name)}</div>
       <div><span class="lbl">幣別</span>${txt(data.currency) || 'VND'}</div>
       <div><span class="lbl">狀態</span>${txt(data.status)}</div>
@@ -129,7 +122,7 @@ th{background:#f3f3f3;text-align:center;font-size:10px}
     </div>
     <div class="box">
       <div class="t">我方確認</div>
-      <div style="height:38px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:34px;max-width:130px;object-fit:contain"/>` : ''}</div>
+      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
       <div class="line">${txt(co.contact_person || co.company_name)}</div>
     </div>
   </div>

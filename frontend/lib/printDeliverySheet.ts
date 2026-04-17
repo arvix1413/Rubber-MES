@@ -1,17 +1,10 @@
 import { type CompanySettings } from './useCompany'
+import { cleanText, formatDate, formatQty, toNum } from './printUtils'
 
 export function generateDeliverySheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
-  const txt = (v: any) => {
-    if (v === null || v === undefined) return ''
-    const s = String(v).trim()
-    if (!s || s === 'null' || s === 'undefined') return ''
-    return s
-  }
-  const num = (v: any) => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : 0
-  }
-  const fmt = (v: any) => (Math.round(num(v) * 10000) / 10000).toLocaleString()
+  const txt = cleanText
+  const num = toNum
+  const fmt = formatQty
 
   const co = company || {
     company_name: 'CÔNG TY TNHH ĐÔNG PHƯƠNG VŨNG TÀU (TO2)',
@@ -45,7 +38,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
 <title>DELIVERY SHEET ${txt(data.dn_number)}</title>
 <style>
 *{box-sizing:border-box}
-body{font-family:Arial,"Microsoft JhengHei",sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
+body{font-family:"PingFang TC","Noto Sans TC","Microsoft JhengHei",Arial,sans-serif;font-size:11px;color:#111;margin:0;background:#fff}
 .page{width:210mm;min-height:297mm;padding:10mm;margin:0 auto}
 .title{font-size:40px;font-weight:800;text-align:center;line-height:1.05}
 .sub{font-size:14px;text-align:center;font-weight:700;margin-top:2px}
@@ -60,9 +53,9 @@ th{background:#f2f2f2;text-align:center;font-size:10px}
 .r{text-align:right}
 .note{margin-top:8px;border:1px solid #333;padding:6px 8px;min-height:36px;line-height:1.45}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:12mm}
-.box{border:1px solid #333;min-height:72px;padding:6px;text-align:center}
+.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
 .box .t{font-weight:700}
-.box .line{margin-top:40px;border-top:1px solid #333;padding-top:4px;font-size:10px}
+.box .line{margin-top:52px;border-top:1px solid #333;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>
@@ -80,7 +73,7 @@ th{background:#f2f2f2;text-align:center;font-size:10px}
     </div>
     <div class="right">
       <div><b>Số phiếu / No:</b> <span class="mono">${txt(data.dn_number)}</span></div>
-      <div><b>Ngày:</b> ${txt(data.delivery_date)}</div>
+      <div><b>Ngày:</b> ${formatDate(data.delivery_date)}</div>
       <div><b>Mã số Cty giao hàng:</b> 2211</div>
     </div>
   </div>
@@ -116,7 +109,7 @@ th{background:#f2f2f2;text-align:center;font-size:10px}
     </div>
     <div class="box">
       <div class="t">Người giao hàng</div>
-      <div style="height:38px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:34px;max-width:130px;object-fit:contain"/>` : ''}</div>
+      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
       <div class="line">${txt(co.contact_person || co.company_name)}</div>
     </div>
   </div>

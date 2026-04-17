@@ -1,17 +1,10 @@
 import { type CompanySettings } from './useCompany'
+import { cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
 
 export function generateOrderHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
-  const txt = (v: any) => {
-    if (v === null || v === undefined) return ''
-    const s = String(v).trim()
-    if (!s || s === 'null' || s === 'undefined') return ''
-    return s
-  }
-  const num = (v: any) => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : 0
-  }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const txt = cleanText
+  const num = toNum
+  const fmt = formatMoney
 
   const co = company || {
     company_name: 'VUNG TAU ORIENT CO., LTD. - TO2',
@@ -35,11 +28,11 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
         <td class="mono">${txt(data.po_number)}</td>
         <td class="mono">${txt(item.product_sku || item.material_code)}</td>
         <td>${desc}</td>
-        <td class="r">${fmt(item.qty)}</td>
+        <td class="r">${formatQty(item.qty)}</td>
         <td class="c">${txt(item.unit) || 'SH'}</td>
         <td class="r">${fmt(item.unit_price)}</td>
         <td class="r">${fmt(num(item.qty) * num(item.unit_price))}</td>
-        <td class="c">${txt(item.rta_date || data.delivery_date)}</td>
+        <td class="c">${formatDate(item.rta_date || data.delivery_date)}</td>
       </tr>
     `
   }).join('')
@@ -83,7 +76,7 @@ th{background:#f2f2f2;font-size:9.8px;text-align:center}
     </div>
     <div>
       <div><b>Slip No:</b> <span class="mono">${txt(data.po_number)}</span></div>
-      <div><b>PO Date:</b> ${txt(data.po_date)}</div>
+      <div><b>PO Date:</b> ${formatDate(data.po_date)}</div>
       <div><b>Currency:</b> ${currency}</div>
     </div>
   </div>
@@ -127,7 +120,7 @@ th{background:#f2f2f2;font-size:9.8px;text-align:center}
     </div>
     <div class="box">
       <div class="t">Buyer Confirmation</div>
-      <div style="height:40px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:36px;max-width:140px;object-fit:contain"/>` : ''}</div>
+      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
       <div class="line">${txt(co.contact_person || co.company_name)}</div>
     </div>
   </div>

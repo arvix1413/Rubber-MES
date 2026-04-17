@@ -1,18 +1,11 @@
 import { type CompanySettings } from './useCompany'
+import { cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
 
 export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
-  const txt = (v: any) => {
-    if (v === null || v === undefined) return ''
-    const s = String(v).trim()
-    if (!s || s === 'null' || s === 'undefined') return ''
-    return s
-  }
-  const num = (v: any) => {
-    const n = Number(v)
-    return Number.isFinite(n) ? n : 0
-  }
-  const money = (v: any) => num(v).toLocaleString()
-  const qty = (v: any) => (Math.round(num(v) * 10000) / 10000).toLocaleString()
+  const txt = cleanText
+  const num = toNum
+  const money = formatMoney
+  const qty = formatQty
 
   const co = company || {
     company_name: 'KUN YI COMPANY LIMITED',
@@ -86,9 +79,9 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
 .sum .row:last-child{border-bottom:none;font-weight:800}
 .notes{margin-top:6px;border:1px solid #333;padding:5px 7px;min-height:66px;line-height:1.34}
 .sign{display:grid;grid-template-columns:1fr 1fr;gap:10mm;margin-top:16mm}
-.box{border:1px solid #333;min-height:88px;padding:6px;text-align:center}
+.box{border:1px solid #333;min-height:82px;padding:6px;text-align:center}
 .box .t{font-weight:700;font-size:11px}
-.box .line{margin-top:56px;border-top:1px solid #444;padding-top:4px;font-size:10px}
+.box .line{margin-top:52px;border-top:1px solid #444;padding-top:4px;font-size:10px}
 @media print{@page{size:A4;margin:0}body{margin:0}}
 </style>
 </head>
@@ -105,7 +98,7 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
     </div>
     <div class="meta">
       <div><span class="lbl">採購號碼</span>${txt(data.po_number)}</div>
-      <div><span class="lbl">採購日期 Issue date</span>${txt(String(data.created_at || '').slice(0, 10))}</div>
+      <div><span class="lbl">採購日期 Issue date</span>${formatDate(data.created_at)}</div>
       <div><span class="lbl">供應商 Company</span>${txt(data.supplier_name)}</div>
       <div><span class="lbl">聯絡人 Contact</span>${txt((data as any).supplier_contact || '')}</div>
       <div><span class="lbl">幣別 / 稅率</span>${txt(data.currency || 'VND')} / ${taxRate}%</div>
@@ -137,7 +130,7 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
   <div class="sum">
     <div class="row"><span>Total</span><span>${money(subTotal)}</span></div>
     <div class="row"><span>VAT ${taxRate}%</span><span>${money(taxAmount)}</span></div>
-    <div class="row"><span>總金額 VNC</span><span>${money(grandTotal)}</span></div>
+    <div class="row"><span>總金額 VND</span><span>${money(grandTotal)}</span></div>
   </div>
 
   <div class="notes">
@@ -157,7 +150,7 @@ th{background:#f3f3f3;text-align:center;font-size:9.6px}
     </div>
     <div class="box">
       <div class="t">採購確認</div>
-      <div style="height:40px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:36px;max-width:140px;object-fit:contain"/>` : ''}</div>
+      <div style="height:34px;display:flex;align-items:center;justify-content:center">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
       <div class="line">${txt(co.company_name)}</div>
     </div>
   </div>
