@@ -636,7 +636,7 @@ app.post('/api/auth/change-password', authMiddleware, async c => {
 })
 
 // Reset password for any user
-app.post('/api/users/:id/reset-password', authMiddleware, requirePerm('user.manage'), async c => {
+app.post('/api/users/:id/reset-password', authMiddleware, requireManager, async c => {
   try {
     const u = c.get('user'); const id = c.req.param('id')
     const row = await queryOne<any>('SELECT name,email,role FROM users WHERE id=? AND deleted_at IS NULL', [id])
@@ -3103,7 +3103,7 @@ app.delete('/api/inventory/:id', authMiddleware, requirePerm('stock.adjust'), as
 })
 
 // ── Users ─────────────────────────────────────────────────────────────────────
-app.get('/api/users', authMiddleware, requirePerm('user.manage'), async c => {
+app.get('/api/users', authMiddleware, requireManager, async c => {
   return c.json(await query(`
     SELECT id,email,name,
            CASE WHEN role IN ('manager','admin') THEN 'manager' ELSE 'employee' END as role,
@@ -3113,7 +3113,7 @@ app.get('/api/users', authMiddleware, requirePerm('user.manage'), async c => {
     ORDER BY created_at DESC
   `))
 })
-app.post('/api/users', authMiddleware, requirePerm('user.manage'), async c => {
+app.post('/api/users', authMiddleware, requireManager, async c => {
   try {
     const u = c.get('user')
     const { email, password, name, role } = await c.req.json()
@@ -3126,7 +3126,7 @@ app.post('/api/users', authMiddleware, requirePerm('user.manage'), async c => {
     return c.json({ id: r.insertId, email, name, role: safeRole }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.put('/api/users/:id', authMiddleware, requirePerm('user.manage'), async c => {
+app.put('/api/users/:id', authMiddleware, requireManager, async c => {
   try {
     const u = c.get('user'); const id = c.req.param('id')
     const { name, role, password } = await c.req.json()
@@ -3142,7 +3142,7 @@ app.put('/api/users/:id', authMiddleware, requirePerm('user.manage'), async c =>
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.delete('/api/users/:id', authMiddleware, requirePerm('user.manage'), async c => {
+app.delete('/api/users/:id', authMiddleware, requireManager, async c => {
   try {
     const u = c.get('user'); const id = c.req.param('id')
     if (String(u.userId) === id) return c.json({ error: 'Cannot delete yourself' }, 400)
@@ -3155,7 +3155,7 @@ app.delete('/api/users/:id', authMiddleware, requirePerm('user.manage'), async c
 })
 
 // ── Role Permissions ──────────────────────────────────────────────────────────
-app.get('/api/role-permissions', authMiddleware, async c => {
+app.get('/api/role-permissions', authMiddleware, requireManager, async c => {
   try {
     const rows = await query<any>('SELECT role,permission,allowed FROM role_permissions')
     const map: any = {}
@@ -3163,7 +3163,7 @@ app.get('/api/role-permissions', authMiddleware, async c => {
     return c.json({ permissions: map, allPermissions: ALL_PERMISSIONS })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.put('/api/role-permissions', authMiddleware, requirePerm('user.manage'), async c => {
+app.put('/api/role-permissions', authMiddleware, requireManager, async c => {
   try {
     const { role, permission, allowed } = await c.req.json()
     if (role !== 'employee') return c.json({ error: 'Only employee role can be modified' }, 400)
@@ -3810,7 +3810,7 @@ app.get('/api/company', authMiddleware, async c => {
     return c.json(row)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.put('/api/company', authMiddleware, requirePerm('company.manage'), async c => {
+app.put('/api/company', authMiddleware, requireManager, async c => {
   try {
     const b = await c.req.json(); const u = c.get('user')
     // Upsert

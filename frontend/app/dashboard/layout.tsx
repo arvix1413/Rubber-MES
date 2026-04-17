@@ -37,9 +37,17 @@ const NAV: NavEntry[] = [
       { href: '/dashboard/suppliers', label: '供應商資料', icon: <IconBuilding /> },
     ],
   },
+  {
+    label: '系統管理',
+    icon: <IconSetting />,
+    children: [
+      { href: '/dashboard/company', label: '公司設定', icon: <IconBuilding /> },
+      { href: '/dashboard/users', label: '使用者管理', icon: <IconUserCog /> },
+    ],
+  },
 ]
 
-const ALLOWED_DASHBOARD_ROUTES = new Set<string>([
+const BASE_DASHBOARD_ROUTES = new Set<string>([
   '/dashboard',
   '/dashboard/order-intake',
   '/dashboard/customer-orders',
@@ -53,6 +61,11 @@ const ALLOWED_DASHBOARD_ROUTES = new Set<string>([
   '/dashboard/customers',
   '/dashboard/suppliers',
   '/dashboard/profile',
+])
+
+const MANAGER_ONLY_ROUTES = new Set<string>([
+  '/dashboard/company',
+  '/dashboard/users',
 ])
 
 function IconGrid() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg> }
@@ -69,6 +82,8 @@ function IconBox() { return <svg viewBox="0 0 24 24" fill="none" stroke="current
 function IconLayers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><polygon points="12 2 22 7 12 12 2 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg> }
 function IconUsers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> }
 function IconBuilding() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><rect x="3" y="7" width="18" height="14" rx="1" /><path d="M8 21V3h8v18" /></svg> }
+function IconUserCog() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg> }
+function IconSetting() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06A1.65 1.65 0 0 0 15 19.4a1.65 1.65 0 0 0-1 .6 1.65 1.65 0 0 0-.33 1v.17a2 2 0 1 1-4 0V21a1.65 1.65 0 0 0-.33-1 1.65 1.65 0 0 0-1-.6 1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-.6-1 1.65 1.65 0 0 0-1-.33H2.83a2 2 0 1 1 0-4H3a1.65 1.65 0 0 0 1-.33 1.65 1.65 0 0 0 .6-1 1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-.6 1.65 1.65 0 0 0 .33-1V2.83a2 2 0 1 1 4 0V3a1.65 1.65 0 0 0 .33 1 1.65 1.65 0 0 0 1 .6 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9c.26.3.45.65.6 1 .1.3.13.66.13 1v.17a2 2 0 1 1 0 4H20a1.65 1.65 0 0 0-.6.13z"/></svg> }
 function IconChevron({ open }: { open: boolean }) { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className={`h-3 w-3 transition-transform duration-200 ${open ? 'rotate-90' : ''}`}><polyline points="9 18 15 12 9 6" /></svg> }
 function IconLogout() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" /><polyline points="16 17 21 12 16 7" /><line x1="21" y1="12" x2="9" y2="12" /></svg> }
 function IconMenu() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" className="h-4 w-4"><line x1="3" y1="6" x2="21" y2="6" /><line x1="3" y1="12" x2="21" y2="12" /><line x1="3" y1="18" x2="21" y2="18" /></svg> }
@@ -79,9 +94,11 @@ const ROLE_DOT: Record<string, string> = {
   employee: 'bg-amber-400',
 }
 
-const isAllowedDashboardRoute = (pathname: string) => {
+const isAllowedDashboardRoute = (pathname: string, role?: Role) => {
   if (!pathname.startsWith('/dashboard')) return true
-  return ALLOWED_DASHBOARD_ROUTES.has(pathname)
+  if (BASE_DASHBOARD_ROUTES.has(pathname)) return true
+  if (role === 'manager' && MANAGER_ONLY_ROUTES.has(pathname)) return true
+  return false
 }
 
 export default function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -100,7 +117,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router])
 
   useEffect(() => {
-    if (!isAllowedDashboardRoute(pathname)) {
+    if (!user) return
+    if (!isAllowedDashboardRoute(pathname, user.role)) {
       router.replace('/dashboard')
       return
     }
@@ -111,7 +129,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       }
     })
     setSidebarOpen(false)
-  }, [pathname, router])
+  }, [pathname, router, user])
 
   const logout = () => {
     clearToken()
@@ -168,6 +186,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <nav className="flex-1 space-y-1 overflow-y-auto px-3 py-3">
           {NAV.map((n) => {
             if (isGroup(n)) {
+              if (n.label === '系統管理' && role !== 'manager') return null
               const open = openGroups.has(n.label)
               const hasActive = n.children.some((c) => isActive(c.href))
               return (
