@@ -163,7 +163,8 @@ export default function PayablesPage() {
       <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div> : (
           <>
-            <table className="rubber-table">
+            <div className="table-scroll-x">
+            <table className="rubber-table" style={{ minWidth: 1120 }}>
               <thead><tr>
                 <th>採購單號</th><th>供應商</th><th>採購單狀態</th>
                 <th className="text-right">應付金額</th><th>幣別</th>
@@ -191,6 +192,7 @@ export default function PayablesPage() {
                 {paged.length === 0 && <tr><td colSpan={9} className="text-center py-12 text-slate-400">尚無待付款記錄（需先確認供應商發票）</td></tr>}
               </tbody>
             </table>
+            </div>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />
           </>
         )}

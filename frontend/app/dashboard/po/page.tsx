@@ -408,7 +408,8 @@ export default function PoPage() {
           <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin" /></div> : (
           <>
-            <table className="w-full text-sm">
+            <div className="table-scroll-x">
+            <table className="w-full text-sm" style={{ minWidth: 1460 }}>
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="w-8" />
@@ -525,6 +526,7 @@ export default function PoPage() {
                 {paged.length === 0 && <tr><td colSpan={8} className="px-4 py-12 text-center text-slate-400">尚無採購單</td></tr>}
               </tbody>
             </table>
+            </div>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />
           </>
         )}

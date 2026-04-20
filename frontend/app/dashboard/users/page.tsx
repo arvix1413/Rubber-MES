@@ -168,7 +168,8 @@ export default function UsersPage() {
           <div className="text-xs text-slate-500 p-6">載入中...</div>
         ) : (
           <>
-            <table className="min-w-full text-sm">
+            <div className="table-scroll-x">
+            <table className="min-w-full text-sm" style={{ minWidth: 980 }}>
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
                   <th className="px-4 py-3 text-left">使用者</th>
@@ -209,6 +210,7 @@ export default function UsersPage() {
                 {paged.length === 0 && <tr><td colSpan={4} className="px-4 py-10 text-center text-slate-400">尚無使用者</td></tr>}
               </tbody>
             </table>
+            </div>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />
           </>
         )}
