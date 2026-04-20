@@ -22,6 +22,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
   await ensureBomStockColumns()
+  await ensureStockLedgerTable()
   await ensureMaterialExtraColumns()
   await ensureBomExtraColumns()
   await ensureUserSignatureColumn()
@@ -302,6 +303,50 @@ const ensureBomStockColumns = async () => {
     })
   }
   await ensureBomStockColumnsPromise
+}
+
+let ensureStockLedgerTablePromise: Promise<void> | null = null
+const ensureStockLedgerTable = async () => {
+  if (!ensureStockLedgerTablePromise) {
+    ensureStockLedgerTablePromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+
+      await execute(`
+        CREATE TABLE IF NOT EXISTS stock_ledger (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          material_code VARCHAR(100) NOT NULL,
+          material_name TEXT,
+          transaction_type VARCHAR(30) NOT NULL,
+          ref_type VARCHAR(30),
+          ref_id INT,
+          ref_number VARCHAR(100),
+          qty_change DECIMAL(15,4) NOT NULL,
+          qty_before DECIMAL(15,4) DEFAULT 0,
+          qty_after DECIMAL(15,4) DEFAULT 0,
+          unit VARCHAR(50) DEFAULT 'PCS',
+          batch_no VARCHAR(100),
+          remark TEXT,
+          created_by INT,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        )
+      `)
+      await alterSafe('ALTER TABLE stock_ledger ADD COLUMN batch_no VARCHAR(100) DEFAULT NULL')
+      await addIndexSafe('CREATE INDEX idx_stock_ledger_material_time ON stock_ledger (material_code, created_at)')
+      await addIndexSafe('CREATE INDEX idx_stock_ledger_ref ON stock_ledger (ref_type, ref_id)')
+      await addIndexSafe('CREATE INDEX idx_stock_ledger_txn ON stock_ledger (transaction_type, created_at)')
+    })().catch((e) => {
+      ensureStockLedgerTablePromise = null
+      throw e
+    })
+  }
+  await ensureStockLedgerTablePromise
 }
 
 let ensureMaterialExtraColumnsPromise: Promise<void> | null = null
