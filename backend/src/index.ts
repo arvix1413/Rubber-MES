@@ -25,6 +25,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureStockLedgerTable()
   await ensureMaterialExtraColumns()
   await ensureBomExtraColumns()
+  await ensureBomItemsExtraColumns()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
@@ -395,6 +396,29 @@ const ensureBomExtraColumns = async () => {
     })
   }
   await ensureBomExtraColumnsPromise
+}
+
+let ensureBomItemsExtraColumnsPromise: Promise<void> | null = null
+const ensureBomItemsExtraColumns = async () => {
+  if (!ensureBomItemsExtraColumnsPromise) {
+    ensureBomItemsExtraColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE bom_items ADD COLUMN color VARCHAR(100) DEFAULT NULL')
+      await alterSafe('ALTER TABLE bom_items ADD COLUMN lt VARCHAR(100) DEFAULT NULL')
+      await alterSafe('ALTER TABLE bom_items ADD COLUMN moq DECIMAL(15,4) DEFAULT NULL')
+    })().catch((e) => {
+      ensureBomItemsExtraColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureBomItemsExtraColumnsPromise
 }
 
 let ensureInvoiceTablesPromise: Promise<void> | null = null
