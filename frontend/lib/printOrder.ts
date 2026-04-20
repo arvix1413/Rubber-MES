@@ -25,7 +25,7 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
     const desc = `${txt(item.product_name || item.item_name)} ${txt(item.spec)}`.trim()
     return `
       <tr>
-        <td class="mono">${txt(data.po_number)}</td>
+        <td class="mono">${txt((item as any).po_no || data.po_number)}</td>
         <td class="mono">${txt(item.product_sku || item.material_code)}</td>
         <td>${desc}</td>
         <td class="r">${formatQty(item.qty)}</td>

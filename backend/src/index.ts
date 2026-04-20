@@ -214,6 +214,7 @@ const ensureCustomerOrderTrackingColumns = async () => {
       }
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN reconciled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN settled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
+      await alterSafe("ALTER TABLE customer_order_items ADD COLUMN po_no VARCHAR(100) NOT NULL DEFAULT ''")
       await addIndexSafe('CREATE INDEX idx_customer_orders_status_created ON customer_orders (status, created_at)')
       await addIndexSafe('CREATE INDEX idx_customer_orders_customer ON customer_orders (customer_id)')
       await addIndexSafe('CREATE INDEX idx_customer_order_items_order ON customer_order_items (order_id)')
@@ -1166,7 +1167,7 @@ app.get('/api/customer-orders/:id', authMiddleware, async c => {
     WHERE co.id=? AND co.deleted_at IS NULL`, [c.req.param('id')])
   if (!order) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
-    SELECT ci.id, ci.order_id, ci.bom_id, ci.qty, ci.unit_price, ci.rta_date, ci.remark,
+    SELECT ci.id, ci.order_id, ci.bom_id, ci.qty, ci.unit_price, ci.rta_date, ci.po_no, ci.remark,
            ci.arrived_qty, ci.arrived_date, ci.balance, ci.status,
            b.product_sku, b.product_name, b.version, b.spec, b.unit
     FROM customer_order_items ci
@@ -1186,17 +1187,18 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
     const taxRate = 0
     const taxAmount = 0
     const totalAmount = subtotal
+    const firstItemRta = (b.items || []).find((i: any) => i?.rta_date)?.rta_date || null
     const r = await execute('INSERT INTO customer_orders (po_date,po_number,customer_id,status,remark,tax_rate,tax_amount,total_amount,currency,delivery_date,delivery_address,person_in_charge,payment_terms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [b.po_date||null, b.po_number, b.customer_id, b.status||'pending', b.remark||'',
        taxRate, taxAmount, totalAmount, b.currency||'VND',
-       b.delivery_date||null, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'',
+       b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'',
        now8()])
     const orderId = r.insertId
     if (b.items?.length) {
       for (const item of b.items) {
         if (!item.bom_id) continue  // skip items without BOM
-        await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?)',
-          [orderId, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.remark||'', 0, item.qty||0, 'pending'])
+        await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,po_no,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [orderId, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.po_no||'', item.remark||'', 0, item.qty||0, 'pending'])
       }
     }
     await audit(c.get('user'), 'CREATE', '客戶訂單', orderId, `${b.po_number} / ${cust?.customer_name||b.customer_id}`)
@@ -1215,7 +1217,7 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
         const bom = await queryOne<any>('SELECT product_sku, product_name, spec, unit FROM bom WHERE id=? AND deleted_at IS NULL', [item.bom_id])
         await execute(
           'INSERT INTO delivery_note_items (dn_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?)',
-          [dnId, bom?.product_name||'', bom?.product_sku||'', bom?.spec||'', bom?.unit||'PCS', item.qty||0, '', b.po_number||'', null]
+          [dnId, bom?.product_name||'', bom?.product_sku||'', bom?.spec||'', bom?.unit||'PCS', item.qty||0, '', item.po_no||b.po_number||'', null]
         )
       }
     }
@@ -1246,15 +1248,16 @@ app.put('/api/customer-orders/:id', authMiddleware, requirePerm('customer_order.
     const taxRate = 0
     const taxAmount = 0
     const totalAmount = subtotal
+    const firstItemRta = (b.items || []).find((i: any) => i?.rta_date)?.rta_date || null
     await execute('UPDATE customer_orders SET po_date=?,po_number=?,customer_id=?,remark=?,tax_rate=?,tax_amount=?,total_amount=?,currency=?,delivery_date=?,delivery_address=?,person_in_charge=?,payment_terms=? WHERE id=?',
-      [b.po_date||null, existing.po_number, b.customer_id, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||null, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||'', id])
+      [b.po_date||null, existing.po_number, b.customer_id, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||'', id])
     // Replace items
     await execute('DELETE FROM customer_order_items WHERE order_id=?', [id])
     if (b.items?.length) {
       for (const item of b.items) {
         if (!item.bom_id) continue
-        await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?)',
-          [id, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.remark||'', 0, item.qty||0, 'pending'])
+        await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,po_no,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
+          [id, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.po_no||'', item.remark||'', 0, item.qty||0, 'pending'])
       }
     }
     await audit(u, 'UPDATE', '客戶訂單', id, existing.po_number)

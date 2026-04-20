@@ -25,7 +25,7 @@ function getCOActions(status: string) {
   return []
 }
 
-type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
+type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
 type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string }
 type Customer = { id:number; customer_code:string; customer_name:string }
@@ -41,7 +41,7 @@ type ProfitOrderSummary = {
   net_profit: number
   net_margin: number
 }
-const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, rta_date:'', remark:'', spec:'', unit:'' })
+const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, po_no:'', rta_date:'', remark:'', spec:'', unit:'' })
 
 const STATUS_BADGE: Record<string,string> = { pending:'badge-yellow', completed:'badge-green', delay:'badge-red', partial:'badge-blue' }
 const STATUS_LABEL: Record<string,string> = { pending:'待出貨', completed:'已完成', delay:'延遲', partial:'部分到貨' }
@@ -123,14 +123,15 @@ export default function CustomerOrdersPage() {
   const save = async () => {
     if (!form.po_number) { toast('請填寫客戶訂單號', 'error'); return }
     if (!form.customer_id) { toast('請選擇客戶', 'error'); return }
-    const validItems = form.items.filter(i => i.bom_id)
+    const validItems = form.items.filter(i => i.bom_id).map((i) => ({ ...i, po_no: String(i.po_no || '').trim() }))
+    const defaultDeliveryDate = validItems.find(i => i.rta_date)?.rta_date || ''
     if (!validItems.length) { toast('請至少選擇一個 BOM 品項', 'error'); return }
     try {
       if (editingId) {
-        await apiFetch(`/api/customer-orders/${editingId}`, { method:'PUT', body:JSON.stringify({ ...form, tax_rate: 0, items: validItems }) })
+        await apiFetch(`/api/customer-orders/${editingId}`, { method:'PUT', body:JSON.stringify({ ...form, delivery_date: defaultDeliveryDate, tax_rate: 0, items: validItems }) })
         toast('訂單已更新'); setEditingId(null)
       } else {
-        await apiFetch('/api/customer-orders', { method:'POST', body:JSON.stringify({ ...form, tax_rate: 0, items: validItems }) })
+        await apiFetch('/api/customer-orders', { method:'POST', body:JSON.stringify({ ...form, delivery_date: defaultDeliveryDate, tax_rate: 0, items: validItems }) })
         toast('建立成功'); setCreating(false)
       }
       setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] })
@@ -158,6 +159,7 @@ export default function CustomerOrdersPage() {
           bom_id: i.bom_id ?? matchedBom?.id ?? null,
           qty: Number(i.qty),
           unit_price: Number(i.unit_price) || Number(matchedBom?.company_price) || 0,
+          po_no: (i as any).po_no || '',
           rta_date: (i as any).rta_date ? String((i as any).rta_date).slice(0,10) : '',
           remark: (i as any).remark || '',
           spec: i.spec || matchedBom?.spec || '',
@@ -298,10 +300,6 @@ export default function CustomerOrdersPage() {
               </select>
             </div>
             <div>
-              <label className="block text-[11px] text-slate-500 mb-1.5">RTA Default</label>
-              <input type="date" className={inp} value={form.delivery_date} onChange={e=>setForm(p=>({...p,delivery_date:e.target.value}))} />
-            </div>
-            <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">交貨地點</label>
               <input className={inp} value={form.delivery_address} onChange={e=>setForm(p=>({...p,delivery_address:e.target.value}))} placeholder="交貨地址" />
             </div>
@@ -334,6 +332,7 @@ export default function CustomerOrdersPage() {
           <div className="overflow-x-auto rounded-lg border border-slate-200">
             <table className="w-full text-xs">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
@@ -347,6 +346,9 @@ export default function CustomerOrdersPage() {
               <tbody>
                 {form.items.map((item,i)=>(
                   <tr key={i} className="border-b border-slate-100 last:border-0">
+                    <td className="p-1.5 min-w-[120px]">
+                      <input className={inp} value={item.po_no || ''} onChange={e=>updateItem(i,'po_no',e.target.value)} placeholder="PO No" />
+                    </td>
                     <td className="p-1.5 min-w-[260px]">
                       <SearchableSelect
                         options={boms}
@@ -377,7 +379,7 @@ export default function CustomerOrdersPage() {
                       <span className="font-semibold text-slate-700">{((item.qty||0) * (item.unit_price||0)).toLocaleString()}</span>
                     </td>
                     <td className="p-1.5 w-36">
-                      <input type="date" className={inp} value={item.rta_date || form.delivery_date || ''} onChange={e=>updateItem(i,'rta_date',e.target.value)} />
+                      <input type="date" className={inp} value={item.rta_date || ''} onChange={e=>updateItem(i,'rta_date',e.target.value)} />
                     </td>
                     <td className="p-1.5 min-w-[180px]">
                       <input className={inp} value={item.remark || ''} onChange={e=>updateItem(i,'remark',e.target.value)} placeholder="Remark" />
@@ -509,6 +511,7 @@ export default function CustomerOrdersPage() {
                               ) : (
                                 <table className="w-full text-xs">
                                   <thead><tr className="border-b border-slate-100">
+                                    <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">PO No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Mtl No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Description</th>
                                     <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Qty</th>
@@ -522,6 +525,7 @@ export default function CustomerOrdersPage() {
                                   <tbody>
                                     {items.map((item,i)=>(
                                       <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                        <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
                                         <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
                                         <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
                                         <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
