@@ -2462,10 +2462,11 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
     if (!deliveryNoteItemIds.length) return c.json({ error: 'no valid delivery_note_item_id' }, 400)
 
     const reconciliationNo = `RC${Date.now()}`
+    const reconcileDate = b?.reconcile_date ? toDateStr(b.reconcile_date) : null
     const r = await execute(`
       INSERT INTO shipment_reconciliations (reconciliation_no, reconcile_date, status, remark, created_by, created_at)
       VALUES (?,?,?,?,?,?)
-    `, [reconciliationNo, b.reconcile_date || null, 'draft', b.remark || '', c.get('user')?.userId || null, now8()])
+    `, [reconciliationNo, reconcileDate, 'draft', b.remark || '', c.get('user')?.userId || null, now8()])
     const reconciliationId = r.insertId
 
     const placeholders = deliveryNoteItemIds.map(() => '?').join(',')
@@ -2560,7 +2561,8 @@ app.put('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create
     `, [id])
     if (Number(locked?.cnt || 0) > 0) return c.json({ error: 'reconciliation already used by confirmed invoice' }, 400)
 
-    await execute('UPDATE shipment_reconciliations SET reconcile_date=?, remark=? WHERE id=?', [b.reconcile_date || null, b.remark || '', id])
+    const reconcileDate = b?.reconcile_date ? toDateStr(b.reconcile_date) : null
+    await execute('UPDATE shipment_reconciliations SET reconcile_date=?, remark=? WHERE id=?', [reconcileDate, b.remark || '', id])
     const items = Array.isArray(b?.items) ? b.items : []
     for (const item of items) {
       const itemId = Number(item?.id || 0)
@@ -3017,7 +3019,8 @@ app.put('/api/invoices/:id', authMiddleware, requirePerm('customer_order.create'
     const header = await queryOne<any>('SELECT status FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
     if (!header) return c.json({ error: 'Not found' }, 404)
     if (header.status !== 'draft') return c.json({ error: 'only draft invoice can be edited' }, 400)
-    await execute('UPDATE invoice_headers SET invoice_date=?, remark=?, tax_rate=? WHERE id=?', [b?.invoice_date || null, b?.remark || '', toMoney(b?.tax_rate || 0), id])
+    const invoiceDate = b?.invoice_date ? toDateStr(b.invoice_date) : null
+    await execute('UPDATE invoice_headers SET invoice_date=?, remark=?, tax_rate=? WHERE id=?', [invoiceDate, b?.remark || '', toMoney(b?.tax_rate || 0), id])
 
     const items = Array.isArray(b?.items) ? b.items : []
     let totalAmount = 0
