@@ -264,8 +264,8 @@ export default function ShipmentReconciliationPage() {
           </div>
 
           <div className="table-scroll-x border border-slate-200 rounded-xl">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+            <table className="rubber-table" style={{ minWidth: 980 }}>
+              <thead>
                 <tr>
                   <th className="px-3 py-2 text-left">選取</th>
                   <th className="px-3 py-2 text-left">出貨單 / 訂單</th>
@@ -349,8 +349,8 @@ export default function ShipmentReconciliationPage() {
 
       <div className="rubber-card overflow-hidden">
         <div className="table-scroll-x">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+          <table className="rubber-table" style={{ minWidth: 1180 }}>
+            <thead>
               <tr>
                 <th className="px-3 py-2 text-left">核對單號</th>
                 <th className="px-3 py-2 text-left">日期</th>
@@ -411,8 +411,8 @@ export default function ShipmentReconciliationPage() {
                             </div>
                           </div>
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
-                            <table className="min-w-full text-sm bg-white">
-                              <thead className="bg-slate-50 text-slate-600">
+                            <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
+                              <thead>
                                 <tr>
                                   <th className="px-3 py-2 text-left">出貨單/訂單</th>
                                   <th className="px-3 py-2 text-left">品項</th>

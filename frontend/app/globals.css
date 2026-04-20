@@ -106,6 +106,18 @@ input[type='number'] { -moz-appearance: textfield; }
 .section-hint { @apply text-xs mt-0.5; color: var(--text-soft); }
 .list-controls { @apply mb-4 flex flex-wrap items-center gap-3; }
 .list-search { @apply rubber-input w-72 max-w-full; }
+.filter-chip {
+  @apply px-3 py-1.5 text-xs rounded-lg border transition-colors;
+  border-color: #d7c9b9;
+  background: #f8f2ea;
+  color: #665647;
+}
+.filter-chip:hover { border-color: #b89d84; }
+.filter-chip-active {
+  background: #1f4f5f;
+  border-color: #1f4f5f;
+  color: #ffffff;
+}
 .expand-row-wrap { @apply border-t; border-color: #e6dccc; background: #faf5ec; }
 .expand-row-loading { @apply px-8 py-4 text-xs flex items-center gap-2; color: #7e7367; }
 .expand-row-empty { @apply px-8 py-4 text-xs; color: #7e7367; }

@@ -432,7 +432,7 @@ export default function CustomerOrdersPage() {
             <div className="flex gap-1">
               {[['', '全部'], ['pending', '待出貨'], ['partial', '部分'], ['delay', '延遲'], ['completed', '已完成']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
-                  className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${statusFilter === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                  className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
                   {label}
                 </button>
               ))}

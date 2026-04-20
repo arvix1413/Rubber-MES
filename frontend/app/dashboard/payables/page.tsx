@@ -153,7 +153,7 @@ export default function PayablesPage() {
         <div className="flex gap-1">
           {[['', '全部'], ['pending', '待付款'], ['partial', '部分付款'], ['paid', '已付款']].map(([val, label]) => (
             <button key={val} onClick={() => setPayFilter(val)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${payFilter === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+              className={`filter-chip ${payFilter === val ? 'filter-chip-active' : ''}`}>
               {label}
             </button>
           ))}

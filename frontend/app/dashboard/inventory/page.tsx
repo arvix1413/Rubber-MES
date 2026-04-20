@@ -103,7 +103,7 @@ export default function InventoryPage() {
         <div className="flex gap-1">
           {(['all', 'ok', 'low'] as const).map(f => (
             <button key={f} onClick={() => setStockFilter(f)}
-              className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${stockFilter === f ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+              className={`filter-chip ${stockFilter === f ? 'filter-chip-active' : ''}`}>
               {f === 'all' ? '全部' : f === 'ok' ? '有庫存' : '零庫存'}
             </button>
           ))}

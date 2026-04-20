@@ -323,9 +323,9 @@ export default function InvoicesPage() {
           <p className="text-xs text-slate-500 mt-1">對已核對出貨建立客戶/供應商發票，形成結算閉環。</p>
         </div>
         <div className="flex items-center gap-2">
-          <div className="inline-flex rounded-lg border border-slate-200 overflow-hidden text-xs">
-            <button className={`px-3 py-1.5 ${invoiceType === 'customer' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`} onClick={() => setInvoiceType('customer')}>客戶發票</button>
-            <button className={`px-3 py-1.5 ${invoiceType === 'supplier' ? 'bg-blue-600 text-white' : 'bg-white text-slate-600'}`} onClick={() => setInvoiceType('supplier')}>供應商發票</button>
+          <div className="inline-flex rounded-lg border border-[#d7c9b9] p-0.5 bg-[#f8f2ea] text-xs">
+            <button className={`px-3 py-1.5 rounded-md transition-colors ${invoiceType === 'customer' ? 'filter-chip-active' : 'text-slate-600'}`} onClick={() => setInvoiceType('customer')}>客戶發票</button>
+            <button className={`px-3 py-1.5 rounded-md transition-colors ${invoiceType === 'supplier' ? 'filter-chip-active' : 'text-slate-600'}`} onClick={() => setInvoiceType('supplier')}>供應商發票</button>
           </div>
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
           {canWrite && <button className="btn-primary" onClick={() => setCreating((v) => !v)}>{creating ? '收起建立區' : '+ 新建發票'}</button>}
@@ -364,8 +364,8 @@ export default function InvoicesPage() {
           </div>
 
           <div className="table-scroll-x border border-slate-200 rounded-xl">
-            <table className="min-w-full text-sm">
-              <thead className="bg-slate-50 text-slate-600">
+            <table className="rubber-table" style={{ minWidth: 980 }}>
+              <thead>
                 <tr>
                   <th className="px-3 py-2 text-left">選取</th>
                   <th className="px-3 py-2 text-left">核對單 / PO</th>
@@ -432,8 +432,8 @@ export default function InvoicesPage() {
 
       <div className="rubber-card overflow-hidden">
         <div className="table-scroll-x">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+          <table className="rubber-table" style={{ minWidth: 1180 }}>
+            <thead>
               <tr>
                 <th className="px-3 py-2 text-left">發票號</th>
                 <th className="px-3 py-2 text-left">對象</th>
@@ -509,8 +509,8 @@ export default function InvoicesPage() {
                           </div>
 
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
-                            <table className="min-w-full text-sm bg-white">
-                              <thead className="bg-slate-50 text-slate-600">
+                            <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
+                              <thead>
                                 <tr>
                                   <th className="px-3 py-2 text-left">PO</th>
                                   <th className="px-3 py-2 text-left">品項</th>

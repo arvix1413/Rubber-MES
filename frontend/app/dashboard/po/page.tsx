@@ -398,7 +398,7 @@ export default function PoPage() {
             <div className="flex gap-1">
               {[['', '全部'], ['draft', '草稿'], ['approved', '已核准'], ['sent', '已送出'], ['received', '已收貨']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
-                  className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${statusFilter === val ? 'bg-blue-600 text-white border-blue-600' : 'bg-white text-slate-500 border-slate-200 hover:border-slate-300'}`}>
+                  className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
                   {label}
                 </button>
               ))}

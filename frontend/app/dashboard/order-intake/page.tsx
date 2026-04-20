@@ -157,8 +157,8 @@ export default function OrderIntakePage() {
 
       <div className="rubber-card overflow-hidden">
         <div className="table-scroll-x">
-          <table className="min-w-full text-sm">
-            <thead className="bg-slate-50 text-slate-600">
+          <table className="rubber-table" style={{ minWidth: 1280 }}>
+            <thead>
               <tr>
                 <th className="px-3 py-2 text-left">訂單</th>
                 <th className="px-3 py-2 text-left">客戶 / 品項</th>
