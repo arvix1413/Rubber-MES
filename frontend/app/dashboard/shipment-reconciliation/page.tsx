@@ -262,7 +262,7 @@ export default function ShipmentReconciliationPage() {
             <div className="flex items-end justify-end text-xs text-slate-600">已選 {selectedCount} 筆</div>
           </div>
 
-          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+          <div className="table-scroll-x border border-slate-200 rounded-xl">
             <table className="min-w-full text-sm">
               <thead className="bg-slate-50 text-slate-600">
                 <tr>
@@ -347,7 +347,7 @@ export default function ShipmentReconciliationPage() {
       )}
 
       <div className="rubber-card overflow-hidden">
-        <div className="overflow-x-auto">
+        <div className="table-scroll-x">
           <table className="min-w-full text-sm">
             <thead className="bg-slate-50 text-slate-600">
               <tr>
@@ -409,7 +409,7 @@ export default function ShipmentReconciliationPage() {
                               />
                             </div>
                           </div>
-                          <div className="overflow-x-auto border border-slate-200 rounded-xl">
+                          <div className="table-scroll-x border border-slate-200 rounded-xl">
                             <table className="min-w-full text-sm bg-white">
                               <thead className="bg-slate-50 text-slate-600">
                                 <tr>

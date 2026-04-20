@@ -331,7 +331,7 @@ export default function CustomerOrdersPage() {
             <span className="text-xs font-semibold text-slate-600">Purchase Order Rows</span>
             <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增品項</button>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-slate-200">
+          <div className="table-scroll-x rounded-lg border border-slate-200">
             <table className="w-full text-xs">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>

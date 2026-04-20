@@ -414,7 +414,7 @@ export default function DeliveryNotesPage() {
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                <div className="overflow-x-auto">
+                                <div className="table-scroll-x">
                                   <table className="w-full text-xs" style={{minWidth:500}}>
                                     <thead><tr className="border-b border-slate-100">
                                       {['品名','物料編號','規格','單位','數量','備註'].map(h => (

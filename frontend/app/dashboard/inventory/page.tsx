@@ -115,7 +115,7 @@ export default function InventoryPage() {
           <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div>
         ) : (
           <>
-            <div className="overflow-x-auto">
+            <div className="table-scroll-x">
               <table className="w-full text-sm" style={{ minWidth: 700 }}>
                 <thead>
                   <tr className="border-b border-slate-200">

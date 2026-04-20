@@ -301,7 +301,7 @@ export default function PoPage() {
             <span className="text-xs font-semibold text-slate-600">採購明細</span>
             <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增料號</button>
           </div>
-          <div className="overflow-x-auto overscroll-x-contain rounded-lg border border-slate-200">
+          <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200">
             <table className="w-full text-xs" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
                 {['Item','PO NO','MTL NO（BOM）','Products','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
@@ -460,7 +460,7 @@ export default function PoPage() {
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                <div className="overflow-x-auto">
+                                <div className="table-scroll-x">
                                   <table className="w-full text-xs" style={{minWidth:700}}>
                                     <thead>
                                       <tr className="border-b border-slate-100">

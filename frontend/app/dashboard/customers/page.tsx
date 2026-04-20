@@ -135,7 +135,7 @@ export default function CustomersPage() {
       <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
-            <div className="overflow-x-auto">
+            <div className="table-scroll-x">
               <table className="rubber-table">
                 <thead><tr><th>客戶編號</th><th>客戶名稱</th><th>聯絡人</th><th>電話</th><th>付款方式</th><th>狀態</th><th>操作</th></tr></thead>
                 <tbody>
