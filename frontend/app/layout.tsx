@@ -2,6 +2,7 @@ import type { Metadata } from 'next'
 import './globals.css'
 import { DialogProvider } from '@/components/Dialog'
 import { Noto_Sans_TC, Noto_Serif_TC } from 'next/font/google'
+import NumberInputWheelGuard from '@/components/NumberInputWheelGuard'
 
 const bodyFont = Noto_Sans_TC({
   subsets: ['latin'],
@@ -24,6 +25,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   return (
     <html lang="zh-TW">
       <body className={`${bodyFont.variable} ${brandFont.variable}`}>
+        <NumberInputWheelGuard />
         <DialogProvider>{children}</DialogProvider>
       </body>
     </html>
