@@ -22,6 +22,8 @@ app.use('/api/*', async (_c, next) => {
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
   await ensureBomStockColumns()
+  await ensureMaterialExtraColumns()
+  await ensureBomExtraColumns()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
@@ -300,6 +302,53 @@ const ensureBomStockColumns = async () => {
     })
   }
   await ensureBomStockColumnsPromise
+}
+
+let ensureMaterialExtraColumnsPromise: Promise<void> | null = null
+const ensureMaterialExtraColumns = async () => {
+  if (!ensureMaterialExtraColumnsPromise) {
+    ensureMaterialExtraColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE materials ADD COLUMN color VARCHAR(100) DEFAULT NULL')
+      await alterSafe('ALTER TABLE materials ADD COLUMN leadtime_days INT DEFAULT NULL')
+      await alterSafe('ALTER TABLE materials ADD COLUMN moq DECIMAL(15,4) DEFAULT NULL')
+      await alterSafe('ALTER TABLE materials ADD COLUMN remark TEXT')
+    })().catch((e) => {
+      ensureMaterialExtraColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureMaterialExtraColumnsPromise
+}
+
+let ensureBomExtraColumnsPromise: Promise<void> | null = null
+const ensureBomExtraColumns = async () => {
+  if (!ensureBomExtraColumnsPromise) {
+    ensureBomExtraColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE bom ADD COLUMN color VARCHAR(100) DEFAULT NULL')
+      await alterSafe('ALTER TABLE bom ADD COLUMN lt VARCHAR(100) DEFAULT NULL')
+      await alterSafe('ALTER TABLE bom ADD COLUMN moq DECIMAL(15,4) DEFAULT NULL')
+    })().catch((e) => {
+      ensureBomExtraColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureBomExtraColumnsPromise
 }
 
 let ensureInvoiceTablesPromise: Promise<void> | null = null
@@ -746,6 +795,7 @@ app.delete('/api/customers/:id', authMiddleware, requirePerm('customer.manage'),
 
 // ── Materials ────────────────────────────────────────────────────────────────
 app.get('/api/materials', authMiddleware, async c => {
+  await ensureMaterialExtraColumns()
   const url = new URL(c.req.url)
   const supplierId = url.searchParams.get('supplier_id')
   const supplierName = url.searchParams.get('supplier_name')
@@ -767,21 +817,35 @@ app.get('/api/materials', authMiddleware, async c => {
 })
 app.post('/api/materials', authMiddleware, requirePerm('bom.create'), async c => {
   try {
+    await ensureMaterialExtraColumns()
     const b = await c.req.json()
     if (!b.material_code || !b.material_name) return c.json({ error: 'material_code and material_name required' }, 400)
-    const r = await execute('INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [b.material_code,b.material_name,b.spec||'',b.unit||'PCS',b.category||'',b.product_category||'',b.supplier_id||null,b.supplier_price||0,b.company_price||0,b.currency||'VND',b.stock||0,b.image_url||'',now8()])
+    const r = await execute(
+      'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,color,leadtime_days,moq,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [
+        b.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
+        b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
+        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, b.moq ? Number(b.moq) : null, b.remark || '', now8(),
+      ]
+    )
     return c.json({ id: r.insertId, ...b }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c => {
   try {
+    await ensureMaterialExtraColumns()
     const id = c.req.param('id')
     const b = await c.req.json()
     const existing = await queryOne<any>('SELECT material_code FROM materials WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
-    await execute('UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=? WHERE id=?',
-      [existing.material_code,b.material_name,b.spec||'',b.unit||'PCS',b.category||'',b.product_category||'',b.supplier_id||null,b.supplier_price||0,b.company_price||0,b.currency||'VND',b.stock||0,b.image_url||'',id])
+    await execute(
+      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,moq=?,remark=? WHERE id=?',
+      [
+        existing.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
+        b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
+        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, b.moq ? Number(b.moq) : null, b.remark || '', id,
+      ]
+    )
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -795,6 +859,7 @@ app.delete('/api/materials/:id', authMiddleware, requirePerm('bom.delete'), asyn
 })
 app.post('/api/materials/bulk', authMiddleware, requirePerm('bom.create'), async c => {
   try {
+    await ensureMaterialExtraColumns()
     const items = await c.req.json()
     let success = 0, updated = 0, newSuppliers = 0
     const errors: string[] = []
@@ -810,12 +875,24 @@ app.post('/api/materials/bulk', authMiddleware, requirePerm('bom.create'), async
         }
         const existing = await queryOne<any>('SELECT id FROM materials WHERE material_code=? AND deleted_at IS NULL', [item.material_code])
         if (existing) {
-          await execute('UPDATE materials SET material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,currency=? WHERE material_code=?',
-            [item.material_name,item.spec||'',item.unit||'PCS',item.category||'',item.product_category||'',supplierId,item.supplier_price||0,item.currency||'VND',item.material_code])
+          await execute(
+            'UPDATE materials SET material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,currency=?,color=?,leadtime_days=?,moq=?,remark=? WHERE material_code=?',
+            [
+              item.material_name, item.spec || '', item.unit || 'PCS', item.category || '', item.product_category || '',
+              supplierId, item.supplier_price || 0, item.currency || 'VND', item.color || '',
+              item.leadtime_days ? Number(item.leadtime_days) : null, item.moq ? Number(item.moq) : null, item.remark || '', item.material_code,
+            ]
+          )
           updated++
         } else {
-          await execute('INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,currency,stock,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
-            [item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.category||'',item.product_category||'',supplierId,item.supplier_price||0,item.currency||'VND',0,now8()])
+          await execute(
+            'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,currency,stock,color,leadtime_days,moq,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            [
+              item.material_code, item.material_name, item.spec || '', item.unit || 'PCS', item.category || '', item.product_category || '',
+              supplierId, item.supplier_price || 0, item.currency || 'VND', 0, item.color || '',
+              item.leadtime_days ? Number(item.leadtime_days) : null, item.moq ? Number(item.moq) : null, item.remark || '', now8(),
+            ]
+          )
           success++
         }
       } catch (e: any) { errors.push(`${item.material_code}: ${e.message}`) }
@@ -827,6 +904,7 @@ app.post('/api/materials/bulk', authMiddleware, requirePerm('bom.create'), async
 // ── BOM ──────────────────────────────────────────────────────────────────────
 app.get('/api/bom', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
+  await ensureBomExtraColumns()
   const rows = await query<any>(`
     SELECT b.*, s.name as supplier_display_name
     FROM bom b LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
@@ -837,6 +915,7 @@ app.get('/api/bom', authMiddleware, async c => {
 })
 app.get('/api/bom/:id', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
+  await ensureBomExtraColumns()
   const bom = await queryOne<any>(`
     SELECT b.*, s.name as supplier_display_name
     FROM bom b LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
@@ -861,6 +940,7 @@ const normalizeRequiredText = (value: any): string => String(value ?? '').trim()
 app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
   try {
     await ensureBomMoqTiersColumn()
+    await ensureBomExtraColumns()
     const b = await c.req.json()
     const productSku = normalizeRequiredText(b.product_sku)
     const productName = normalizeRequiredText(b.product_name)
@@ -878,10 +958,10 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
     if (existing) return c.json({ error: `SKU「${productSku}」已存在，請使用不同的 SKU` }, 409)
     const u = c.get('user')
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
-    const r = await execute(`INSERT INTO bom (product_sku,product_name,material_name,spec,unit,supplier_id,supplier_name,supplier_price,company_price,currency,category,cert_code,brand,image_url,version,moq_tiers,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    const r = await execute(`INSERT INTO bom (product_sku,product_name,material_name,spec,unit,supplier_id,supplier_name,supplier_price,company_price,currency,category,color,lt,moq,cert_code,brand,image_url,version,moq_tiers,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [productSku, productName, b.material_name||'', b.spec||'', unit,
        b.supplier_id||null, b.supplier_name||'', supplierPrice, companyPrice,
-       currency, b.category||'', b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
+       currency, b.category||'', b.color||'', b.lt||'', b.moq||null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
        moqTiers.length ? JSON.stringify(moqTiers) : null,
        'active', u.userId, now8()])
     const bomId = r.insertId
@@ -898,6 +978,7 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
 app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
   try {
     await ensureBomMoqTiersColumn()
+    await ensureBomExtraColumns()
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const existing = await queryOne<any>('SELECT product_sku FROM bom WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
@@ -912,10 +993,10 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
     if (supplierPrice === null) return c.json({ error: 'supplier_price required and must be >= 0' }, 400)
     if (companyPrice === null) return c.json({ error: 'company_price required and must be >= 0' }, 400)
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
-    await execute(`UPDATE bom SET product_sku=?,product_name=?,material_name=?,spec=?,unit=?,supplier_id=?,supplier_name=?,supplier_price=?,company_price=?,currency=?,category=?,cert_code=?,brand=?,image_url=?,version=?,moq_tiers=? WHERE id=?`,
+    await execute(`UPDATE bom SET product_sku=?,product_name=?,material_name=?,spec=?,unit=?,supplier_id=?,supplier_name=?,supplier_price=?,company_price=?,currency=?,category=?,color=?,lt=?,moq=?,cert_code=?,brand=?,image_url=?,version=?,moq_tiers=? WHERE id=?`,
       [existing.product_sku, productName, b.material_name||'', b.spec||'', unit,
        b.supplier_id||null, b.supplier_name||'', supplierPrice, companyPrice,
-       currency, b.category||'', b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
+       currency, b.category||'', b.color||'', b.lt||'', b.moq||null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
        moqTiers.length ? JSON.stringify(moqTiers) : null,
        id])
     await execute('DELETE FROM bom_items WHERE bom_id=?', [id])
@@ -982,7 +1063,10 @@ app.post('/api/po', authMiddleware, requirePerm('po.create'), async c => {
   try {
     const b = await c.req.json()
     const u = c.get('user')
-    const poNum = `PO${Date.now()}`
+    const customPoNumber = String(b.po_number || '').trim()
+    const poNum = customPoNumber || `PO${Date.now()}`
+    const existingPo = await queryOne<any>('SELECT id FROM purchase_orders WHERE po_number=? AND deleted_at IS NULL', [poNum])
+    if (existingPo) return c.json({ error: `採購單號「${poNum}」已存在，請使用不同編號` }, 409)
     const subTotal = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     const taxRate = Math.min(25, Math.max(1, Number(b.tax_rate) || 8))
     const total = Math.round(subTotal * (1 + taxRate / 100) * 100) / 100
@@ -1884,6 +1968,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
         ci.spec as order_spec,
         ci.unit as order_unit,
         ci.thickness,
+        b.id as bom_id,
         b.product_sku,
         b.product_name,
         b.spec as bom_spec,
@@ -1898,6 +1983,33 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       ORDER BY ci.id ASC
     `, [id])
     if (!sourceItems.length) return c.json({ error: '訂單明細為空，無法生成採購單' }, 400)
+
+    const bomIds = Array.from(new Set(sourceItems.map((it: any) => Number(it.bom_id)).filter((x) => Number.isFinite(x) && x > 0)))
+    const bomItemRows = bomIds.length
+      ? await query<any>(`
+          SELECT bom_id, material_code, material_name, spec, unit, quantity, supplier_name, supplier_price, company_price, currency, remark, color, lt, moq
+          FROM bom_items
+          WHERE bom_id IN (${bomIds.map(() => '?').join(',')})
+          ORDER BY id ASC
+        `, bomIds)
+      : []
+    const bomItemsMap = new Map<number, any[]>()
+    for (const row of bomItemRows) {
+      const key = Number(row.bom_id)
+      if (!bomItemsMap.has(key)) bomItemsMap.set(key, [])
+      bomItemsMap.get(key)!.push(row)
+    }
+    const supplierNames = Array.from(new Set(bomItemRows.map((r: any) => String(r.supplier_name || '').trim()).filter(Boolean)))
+    const suppliersByName = new Map<string, number>()
+    if (supplierNames.length) {
+      const supplierRows = await query<any>(`SELECT id, name FROM suppliers WHERE deleted_at IS NULL AND name IN (${supplierNames.map(() => '?').join(',')})`, supplierNames)
+      for (const s of supplierRows) suppliersByName.set(String(s.name || '').trim(), Number(s.id))
+    }
+
+    let payload: any = {}
+    try { payload = await c.req.json() } catch { payload = {} }
+    const splitBySupplier = Boolean(payload?.split_by_supplier ?? true)
+    const poBaseNumber = String(payload?.po_number_base || '').trim()
 
     const purchasedRows = await query<any>(`
       SELECT
@@ -1917,32 +2029,63 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
     const purchasedPoolMap = new Map<string, number>(purchasedMap)
 
     const normalizedItems = sourceItems
-      .map((it: any) => {
+      .flatMap((it: any) => {
         const qty = toQty(it.qty || 0)
-        if (qty <= 0) return null
-        const materialCode = String(it.product_sku || it.order_material_code || '').trim()
-        const materialName = String(it.product_name || '').trim()
-        if (!materialCode && !materialName) return null
-        const purchasedPool = toQty(purchasedPoolMap.get(materialCode) || 0)
-        const consumedByPool = Math.min(qty, purchasedPool)
-        purchasedPoolMap.set(materialCode, toQty(Math.max(0, purchasedPool - consumedByPool)))
-        const remainingQty = toQty(Math.max(0, qty - consumedByPool))
-        if (remainingQty <= 0) return null
-        const unitPrice = toMoney(it.supplier_price || it.company_price || it.order_unit_price || 0)
-        return {
-          material_code: materialCode,
-          material_name: materialName || materialCode,
-          spec: String(it.order_spec || it.bom_spec || '').trim(),
-          unit: String(it.order_unit || it.bom_unit || 'PCS').trim() || 'PCS',
-          quantity: remainingQty,
-          unit_price: unitPrice,
-          currency: 'VND',
-          remark: '',
-          po_ref: order.po_number,
-          thickness: it.thickness ?? null,
-          supplier_id: it.supplier_id || null,
-          supplier_name: String(it.supplier_name || '').trim(),
-        }
+        if (qty <= 0) return []
+        const bomComponents = it.bom_id ? (bomItemsMap.get(Number(it.bom_id)) || []) : []
+        const sourceList = bomComponents.length
+          ? bomComponents.map((bi: any) => ({
+              material_code: bi.material_code,
+              material_name: bi.material_name,
+              spec: bi.spec || it.order_spec || it.bom_spec || '',
+              unit: bi.unit || it.order_unit || it.bom_unit || 'PCS',
+              supplier_name: bi.supplier_name || '',
+              supplier_price: bi.supplier_price,
+              company_price: bi.company_price,
+              currency: bi.currency || 'VND',
+              remark: bi.remark || '',
+              ratio_qty: Number(bi.quantity) || 1,
+            }))
+          : [{
+              material_code: it.product_sku || it.order_material_code || '',
+              material_name: it.product_name || '',
+              spec: it.order_spec || it.bom_spec || '',
+              unit: it.order_unit || it.bom_unit || 'PCS',
+              supplier_name: it.supplier_name || '',
+              supplier_price: it.supplier_price,
+              company_price: it.company_price,
+              currency: 'VND',
+              remark: '',
+              ratio_qty: 1,
+            }]
+
+        return sourceList.map((src: any) => {
+          const materialCode = String(src.material_code || '').trim()
+          const materialName = String(src.material_name || '').trim()
+          if (!materialCode && !materialName) return null
+          const demandQty = toQty(qty * (Number(src.ratio_qty) || 1))
+          const purchasedPool = toQty(purchasedPoolMap.get(materialCode) || 0)
+          const consumedByPool = Math.min(demandQty, purchasedPool)
+          purchasedPoolMap.set(materialCode, toQty(Math.max(0, purchasedPool - consumedByPool)))
+          const remainingQty = toQty(Math.max(0, demandQty - consumedByPool))
+          if (remainingQty <= 0) return null
+          const supplierName = String(src.supplier_name || '').trim()
+          const unitPrice = toMoney(src.supplier_price || src.company_price || it.order_unit_price || 0)
+          return {
+            material_code: materialCode,
+            material_name: materialName || materialCode,
+            spec: String(src.spec || '').trim(),
+            unit: String(src.unit || 'PCS').trim() || 'PCS',
+            quantity: remainingQty,
+            unit_price: unitPrice,
+            currency: String(src.currency || 'VND').trim() || 'VND',
+            remark: String(src.remark || '').trim(),
+            po_ref: order.po_number,
+            thickness: it.thickness ?? null,
+            supplier_id: suppliersByName.get(supplierName) || it.supplier_id || null,
+            supplier_name: supplierName,
+          }
+        }).filter(Boolean)
       })
       .filter(Boolean) as any[]
 
@@ -1950,29 +2093,50 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       return c.json({ error: `訂單 ${order.po_number} 已採購完成，無需再生成採購單` }, 409)
     }
 
-    const preferredSupplier = normalizedItems.find((it) => it.supplier_id || it.supplier_name)
-    const supplierId = preferredSupplier?.supplier_id || null
-    const supplierName = preferredSupplier?.supplier_name || '待分配供應商'
-
-    const poNum = `PO${Date.now()}`
-    const subTotal = normalizedItems.reduce((s: number, it: any) => s + toMoney(it.quantity * it.unit_price), 0)
-    const taxRate = 8
-    const total = toMoney(subTotal * (1 + taxRate / 100))
-    const remark = `由訂單收集自動生成，來源客戶訂單 ${order.po_number}`
-    const r = await execute(
-      'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
-    )
-    const poId = r.insertId
-    for (const item of normalizedItems) {
-      const totalPrice = toMoney(item.quantity * item.unit_price)
-      await execute(
-        'INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-        [poId, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
-      )
+    const grouped = new Map<string, any[]>()
+    if (splitBySupplier) {
+      for (const item of normalizedItems) {
+        const key = `${item.supplier_id || ''}::${item.supplier_name || ''}`
+        if (!grouped.has(key)) grouped.set(key, [])
+        grouped.get(key)!.push(item)
+      }
+    } else {
+      grouped.set('single::single', normalizedItems)
     }
-    await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${order.po_number}`)
-    return c.json({ id: poId, po_number: poNum }, 201)
+    const groups = Array.from(grouped.values())
+
+    const created: Array<{ id: number; po_number: string; supplier_name: string }> = []
+    for (let idx = 0; idx < groups.length; idx++) {
+      const items = groups[idx]
+      const preferredSupplier = items.find((it: any) => it.supplier_id || it.supplier_name)
+      const supplierId = preferredSupplier?.supplier_id || null
+      const supplierName = preferredSupplier?.supplier_name || '待分配供應商'
+      const poNum = poBaseNumber
+        ? `${poBaseNumber}-${idx + 1}`
+        : `PO${Date.now()}${String(idx + 1).padStart(2, '0')}`
+      const duplicated = await queryOne<any>('SELECT id FROM purchase_orders WHERE po_number=? AND deleted_at IS NULL', [poNum])
+      if (duplicated) return c.json({ error: `採購單號「${poNum}」已存在，請更換編號` }, 409)
+
+      const subTotal = items.reduce((s: number, it: any) => s + toMoney(it.quantity * it.unit_price), 0)
+      const taxRate = 8
+      const total = toMoney(subTotal * (1 + taxRate / 100))
+      const remark = `由訂單收集自動生成，來源客戶訂單 ${order.po_number}`
+      const r = await execute(
+        'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+        [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
+      )
+      const poId = r.insertId
+      for (const item of items) {
+        const totalPrice = toMoney(item.quantity * item.unit_price)
+        await execute(
+          'INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
+          [poId, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
+        )
+      }
+      await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${order.po_number}`)
+      created.push({ id: poId, po_number: poNum, supplier_name: supplierName })
+    }
+    return c.json({ created, count: created.length }, 201)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }

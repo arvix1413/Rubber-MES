@@ -13,13 +13,44 @@ type Bom = {
   id:number; product_sku:string; product_name:string; material_name:string; spec:string; unit:string
   supplier_id:number|null; supplier_name:string; supplier_price:number; company_price:number
   currency:string; category:string; version:string; status:string; created_at:string
-  cert_code:string; brand:string; image_url:string; moq_tiers?: MoqTier[]
+  cert_code:string; brand:string; image_url:string; color?:string; lt?:string; moq?:number|null; moq_tiers?: MoqTier[]
+  items?: BomItem[]
+}
+type BomItem = {
+  id?: number
+  material_code: string
+  material_name: string
+  spec: string
+  unit: string
+  quantity?: number | null
+  supplier_name?: string
+  supplier_price?: number
+  company_price?: number
+  currency?: string
+  remark?: string
+  color?: string
+  lt?: string
+  moq?: number | null
+}
+type Material = {
+  id: number
+  material_code: string
+  material_name: string
+  spec: string
+  unit: string
+  supplier_name?: string
+  supplier_price?: number
+  company_price?: number
+  currency?: string
+  color?: string
+  leadtime_days?: number | null
+  moq?: number | null
 }
 const emptyTiers = (): MoqTier[] => Array.from({ length: 5 }, () => ({ moq: 0, price: 0 }))
 const empty = (): Partial<Bom> => ({
   product_sku:'', product_name:'', material_name:'', spec:'', unit:'PCS',
   supplier_id:null, supplier_name:'', supplier_price:0, company_price:0,
-  currency:'VND', category:'', version:'V1', cert_code:'', brand:'', image_url:'', moq_tiers: emptyTiers()
+  currency:'VND', category:'', version:'V1', cert_code:'', brand:'', image_url:'', color:'', lt:'', moq:null, moq_tiers: emptyTiers(), items:[]
 })
 
 type Supplier = { id:number; name:string; currency:string }
@@ -37,6 +68,7 @@ export default function BomPage() {
   const { toast, confirm: confirmDialog } = useDialog()
   const [boms, setBoms] = useState<Bom[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
   const [editing, setEditing] = useState<Partial<Bom>|null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -50,6 +82,7 @@ export default function BomPage() {
   useEffect(()=>{
     load()
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(()=>{})
+    apiFetch<Material[]>('/api/materials').then(setMaterials).catch(()=>{})
   },[])
 
   const uploadImage = async (file: File) => {
@@ -109,6 +142,36 @@ export default function BomPage() {
       return { ...p, moq_tiers: tiers }
     })
   }
+  const addItem = () => {
+    setEditing((p) => ({ ...p, items: [...(p?.items || []), { material_code: '', material_name: '', spec: '', unit: 'PCS', quantity: 1, currency: 'VND' }] }))
+  }
+  const removeItem = (idx:number) => {
+    setEditing((p) => ({ ...p, items: (p?.items || []).filter((_, i) => i !== idx) }))
+  }
+  const updateItem = (idx:number, key:keyof BomItem, val:any) => {
+    setEditing((p) => ({ ...p, items: (p?.items || []).map((it, i) => i === idx ? { ...it, [key]: val } : it) }))
+  }
+  const applyMaterialToItem = (idx:number, code:string) => {
+    const m = materials.find((x) => x.material_code === code)
+    if (!m) return
+    setEditing((p) => ({
+      ...p,
+      items: (p?.items || []).map((it, i) => i !== idx ? it : ({
+        ...it,
+        material_code: m.material_code,
+        material_name: m.material_name,
+        spec: m.spec || '',
+        unit: m.unit || 'PCS',
+        supplier_name: m.supplier_name || '',
+        supplier_price: Number(m.supplier_price || 0),
+        company_price: Number(m.company_price || 0),
+        currency: m.currency || 'VND',
+        color: m.color || '',
+        lt: m.leadtime_days ? `${m.leadtime_days}` : '',
+        moq: m.moq ?? null,
+      })),
+    }))
+  }
 
   const categories = Array.from(new Set(boms.map(b => b.category).filter(Boolean)))
   const filtered = boms.filter(b => {
@@ -124,10 +187,10 @@ export default function BomPage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">材料明細</h1>
-          <p className="text-xs text-slate-500 mt-0.5">物料編號、規格、供應商單價、公司售價</p>
+          <h1 className="text-xl font-bold text-slate-800">產品規格 / BOM</h1>
+          <p className="text-xs text-slate-500 mt-0.5">主產品 + 組合加工材料明細（顏色 / Leadtime / MOQ）</p>
         </div>
-        {canWrite && <button onClick={()=>setEditing(empty())} className="btn-primary">+ 建立材料</button>}
+        {canWrite && <button onClick={()=>setEditing(empty())} className="btn-primary">+ 建立 BOM</button>}
       </div>
 
       {/* Edit / Create Modal */}
@@ -165,6 +228,10 @@ export default function BomPage() {
                 <input className={inp} value={editing.spec||''} onChange={e=>setEditing(p=>({...p,spec:e.target.value}))} />
               </div>
               <div>
+                <label className="block text-[11px] text-slate-500 mb-1.5">顏色</label>
+                <input className={inp} value={editing.color||''} onChange={e=>setEditing(p=>({...p,color:e.target.value}))} />
+              </div>
+              <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">單位</label>
                 <select
                   className={inp}
@@ -173,6 +240,14 @@ export default function BomPage() {
                 >
                   {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime</label>
+                <input className={inp} value={editing.lt||''} onChange={e=>setEditing(p=>({...p,lt:e.target.value}))} />
+              </div>
+              <div>
+                <label className="block text-[11px] text-slate-500 mb-1.5">MOQ</label>
+                <input type="number" className={inp} value={editing.moq ?? ''} onChange={e=>setEditing(p=>({...p,moq:e.target.value ? Number(e.target.value) : null}))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">分類</label>
@@ -257,6 +332,55 @@ export default function BomPage() {
                 </div>
                 <input className={`${inp} mt-2`} placeholder="或輸入圖片 URL" value={editing.image_url||''} onChange={e=>setEditing(p=>({...p,image_url:e.target.value}))} />
               </div>
+              <div className="col-span-2">
+                <div className="flex items-center justify-between mb-2">
+                  <label className="block text-[11px] text-slate-500">BOM 組合材料明細（可新增列）</label>
+                  <button type="button" className="btn-ghost text-blue-600" onClick={addItem}>+ 新增列</button>
+                </div>
+                <div className="table-scroll-x border border-slate-200 rounded-lg">
+                  <table className="w-full text-xs" style={{ minWidth: 1280 }}>
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        {['物料編號','材料名稱','規格','顏色','單位','供應商','供應商單價','銷售單價','幣別','Leadtime','MOQ','備註',''].map(h => (
+                          <th key={h} className="px-2 py-1.5 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {(editing.items || []).map((item, i) => (
+                        <tr key={i} className="border-b border-slate-100">
+                          <td className="p-1">
+                            <input
+                              list={`mat-codes-${i}`}
+                              className={inp}
+                              value={item.material_code || ''}
+                              onChange={e => { updateItem(i, 'material_code', e.target.value); applyMaterialToItem(i, e.target.value) }}
+                            />
+                            <datalist id={`mat-codes-${i}`}>
+                              {materials.map(m => <option key={m.id} value={m.material_code}>{m.material_name}</option>)}
+                            </datalist>
+                          </td>
+                          <td className="p-1"><input className={inp} value={item.material_name || ''} onChange={e => updateItem(i, 'material_name', e.target.value)} /></td>
+                          <td className="p-1"><input className={inp} value={item.spec || ''} onChange={e => updateItem(i, 'spec', e.target.value)} /></td>
+                          <td className="p-1"><input className={inp} value={item.color || ''} onChange={e => updateItem(i, 'color', e.target.value)} /></td>
+                          <td className="p-1"><input className={inp} value={item.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} /></td>
+                          <td className="p-1"><input className={inp} value={item.supplier_name || ''} onChange={e => updateItem(i, 'supplier_name', e.target.value)} /></td>
+                          <td className="p-1"><input type="number" className={inp} value={item.supplier_price ?? 0} onChange={e => updateItem(i, 'supplier_price', Number(e.target.value))} /></td>
+                          <td className="p-1"><input type="number" className={inp} value={item.company_price ?? 0} onChange={e => updateItem(i, 'company_price', Number(e.target.value))} /></td>
+                          <td className="p-1"><input className={inp} value={item.currency || 'VND'} onChange={e => updateItem(i, 'currency', e.target.value)} /></td>
+                          <td className="p-1"><input className={inp} value={item.lt || ''} onChange={e => updateItem(i, 'lt', e.target.value)} /></td>
+                          <td className="p-1"><input type="number" className={inp} value={item.moq ?? ''} onChange={e => updateItem(i, 'moq', e.target.value ? Number(e.target.value) : null)} /></td>
+                          <td className="p-1"><input className={inp} value={item.remark || ''} onChange={e => updateItem(i, 'remark', e.target.value)} /></td>
+                          <td className="p-1 text-center"><button type="button" className="text-slate-300 hover:text-red-600" onClick={() => removeItem(i)}>✕</button></td>
+                        </tr>
+                      ))}
+                      {(editing.items || []).length === 0 && (
+                        <tr><td colSpan={13} className="px-3 py-4 text-center text-slate-400">尚未新增組合材料</td></tr>
+                      )}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
             </div>
             <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
               <button onClick={()=>setEditing(null)} className="btn-ghost">取消</button>
@@ -284,7 +408,7 @@ export default function BomPage() {
               <table className="w-full text-sm" style={{minWidth:1000}}>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    {['圖片','分類','物料編號','產品名稱','材料名稱','規格','單位','品牌','認證代碼','供應商'].map(h=>(
+                    {['圖片','分類','物料編號','產品名稱','材料名稱','規格','顏色','單位','Leadtime','MOQ','品牌','認證代碼','供應商'].map(h=>(
                       <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                     <th className="px-3 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">供應商單價</th>
@@ -304,7 +428,10 @@ export default function BomPage() {
                       <td className="px-3 py-2.5 text-slate-800 font-medium max-w-[200px] truncate" title={b.product_name}>{b.product_name}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.material_name||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[120px] truncate" title={b.spec}>{b.spec||'—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.color||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.unit}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.lt||'—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.moq ?? '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.brand||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.cert_code||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={b.supplier_name}>{b.supplier_name||'—'}</td>
@@ -313,16 +440,24 @@ export default function BomPage() {
                       <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{b.currency}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="flex gap-1">
-                          {canEdit && <button onClick={()=>setEditing({ ...b, unit: normalizeUnit(b.unit), moq_tiers: (() => {
-                            const parsed = normalizeMoqTiers((b as any).moq_tiers)
-                            return [...parsed, ...emptyTiers()].slice(0, 5)
-                          })() })} className="btn-ghost text-blue-600">編輯</button>}
+                          {canEdit && <button onClick={async ()=>{
+                            const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
+                            setEditing({
+                              ...detail,
+                              unit: normalizeUnit(detail.unit),
+                              moq_tiers: (() => {
+                                const parsed = normalizeMoqTiers((detail as any).moq_tiers)
+                                return [...parsed, ...emptyTiers()].slice(0, 5)
+                              })(),
+                              items: detail.items || [],
+                            })
+                          }} className="btn-ghost text-blue-600">編輯</button>}
                           {canDel && <button onClick={e=>del(b.id,e)} className="btn-danger">刪除</button>}
                         </div>
                       </td>
                     </tr>
                   ))}
-                  {paged.length===0 && <tr><td colSpan={14} className="text-center py-12 text-slate-400">尚無 BOM 資料</td></tr>}
+                  {paged.length===0 && <tr><td colSpan={17} className="text-center py-12 text-slate-400">尚無 BOM 資料</td></tr>}
                 </tbody>
               </table>
             </div>

@@ -32,6 +32,7 @@ const NAV: NavEntry[] = [
     label: '基礎主檔',
     icon: <IconBox />,
     children: [
+      { href: '/dashboard/materials', label: '材料管理', icon: <IconLayers /> },
       { href: '/dashboard/bom', label: '產品規格/BOM', icon: <IconLayers /> },
       { href: '/dashboard/customers', label: '客戶資料', icon: <IconUsers /> },
       { href: '/dashboard/suppliers', label: '供應商資料', icon: <IconBuilding /> },
@@ -57,6 +58,7 @@ const BASE_DASHBOARD_ROUTES = new Set<string>([
   '/dashboard/invoices',
   '/dashboard/payables',
   '/dashboard/inventory',
+  '/dashboard/materials',
   '/dashboard/bom',
   '/dashboard/customers',
   '/dashboard/suppliers',

@@ -45,7 +45,7 @@ export default function PoPage() {
   const [loadedItems, setLoadedItems] = useState<Record<number, PoItem[]>>({})
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState({ supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
+  const [form, setForm] = useState({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -202,7 +202,7 @@ export default function PoPage() {
         toast('採購單建立成功')
         setCreating(false)
       }
-      setForm({ supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
+      setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
       await load()
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
@@ -215,6 +215,7 @@ export default function PoPage() {
       ? suppliers.find(s => String(s.id) === String(rawSupplierId))
       : suppliers.find(s => s.name === po.supplier_name)
     setForm({
+      po_number: '',
       supplier_id: sup ? String(sup.id) : (rawSupplierId ? String(rawSupplierId) : ''),
       supplier_name: po.supplier_name,
       currency: po.currency,
@@ -271,13 +272,23 @@ export default function PoPage() {
           <h1 className="text-xl font-bold text-slate-800">採購單管理</h1>
           <p className="section-hint">點選採購單列展開檢視料號明細</p>
         </div>
-        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-primary">+ 建立採購單</button>}
+        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-primary">+ 建立採購單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
         <div className="rubber-card p-6 mb-5">
           <h2 className="text-sm font-semibold text-slate-800 mb-4">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
-          <div className="grid grid-cols-3 gap-3 mb-4">
+          <div className="grid grid-cols-4 gap-3 mb-4">
+            <div>
+              <label className="block text-[11px] text-slate-500 mb-1.5">採購單號（選填）</label>
+              <input
+                className={inp}
+                value={form.po_number}
+                onChange={e=>setForm(p=>({...p, po_number: e.target.value}))}
+                placeholder="例如 123456-1"
+                disabled={editingId !== null}
+              />
+            </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">供應商 *</label>
               <select className={inp} value={form.supplier_id}
@@ -375,7 +386,7 @@ export default function PoPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
-            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-ghost border border-slate-200">取消</button>
+            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-ghost border border-slate-200">取消</button>
           </div>
         </div>
       )}

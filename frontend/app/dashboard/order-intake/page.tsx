@@ -48,6 +48,8 @@ export default function OrderIntakePage() {
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [creatingOrderId, setCreatingOrderId] = useState<number | null>(null)
+  const [poBaseNumber, setPoBaseNumber] = useState('')
+  const [splitBySupplier, setSplitBySupplier] = useState(true)
 
   const load = async (nextStatus = status) => {
     setLoading(true)
@@ -96,8 +98,12 @@ export default function OrderIntakePage() {
     if (creatingOrderId) return
     setCreatingOrderId(orderId)
     try {
-      const res = await apiFetch<{ id: number; po_number: string }>(`/api/order-intake/${orderId}/generate-po`, { method: 'POST' })
-      window.alert(`已生成採購單：${res.po_number}`)
+      const res = await apiFetch<{ created: Array<{ id: number; po_number: string; supplier_name: string }>; count: number }>(`/api/order-intake/${orderId}/generate-po`, {
+        method: 'POST',
+        body: JSON.stringify({ split_by_supplier: splitBySupplier, po_number_base: poBaseNumber.trim() || undefined }),
+      })
+      const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
+      window.alert(`已生成 ${res.count || lines.length} 張採購單\\n${lines.join('\\n')}`)
       await load(status)
     } catch (e: any) {
       const msg = String(e?.message || '生成採購單失敗')
@@ -123,7 +129,7 @@ export default function OrderIntakePage() {
       </div>
 
       <div className="rubber-card p-4 mb-4">
-        <div className="grid md:grid-cols-5 gap-3">
+        <div className="grid md:grid-cols-7 gap-3">
           <input
             className="rubber-input md:col-span-3"
             placeholder="搜尋客戶、訂單號、料號、品名"
@@ -135,6 +141,16 @@ export default function OrderIntakePage() {
             <option value="open">進行中</option>
             <option value="completed">已完成</option>
           </select>
+          <input
+            className="rubber-input"
+            placeholder="採購單基礎編號(選填)"
+            value={poBaseNumber}
+            onChange={(e) => setPoBaseNumber(e.target.value)}
+          />
+          <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
+            <input type="checkbox" checked={splitBySupplier} onChange={(e) => setSplitBySupplier(e.target.checked)} />
+            按供應商拆單
+          </label>
           <button className="btn-primary" onClick={() => { setPage(1); load(status) }}>查詢</button>
         </div>
       </div>

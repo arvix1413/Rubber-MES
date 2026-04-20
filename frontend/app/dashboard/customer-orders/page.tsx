@@ -26,9 +26,9 @@ function getCOActions(status: string) {
   return []
 }
 
-type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
+type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
-type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string }
+type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Customer = { id:number; customer_code:string; customer_name:string }
 type ProfitOrderSummary = {
   id: number
@@ -168,6 +168,9 @@ export default function CustomerOrdersPage() {
           product_sku: i.product_sku || matchedBom?.product_sku,
           product_name: i.product_name || matchedBom?.product_name,
           image_url: i.image_url || matchedBom?.image_url,
+          supplier_name: (i as any).supplier_name || matchedBom?.supplier_name || '',
+          lt: (i as any).lt || matchedBom?.lt || '',
+          moq: (i as any).moq ?? matchedBom?.moq ?? null,
         }
       })
     })
@@ -227,6 +230,9 @@ export default function CustomerOrdersPage() {
       if (bom.spec) updates.spec = bom.spec
       if (bom.unit) updates.unit = bom.unit
       if (bom.image_url) updates.image_url = bom.image_url
+      updates.supplier_name = bom.supplier_name || ''
+      updates.lt = bom.lt || ''
+      updates.moq = bom.moq ?? null
       updates.product_sku = bom.product_sku
       updates.product_name = bom.product_name
     } else {
@@ -236,6 +242,9 @@ export default function CustomerOrdersPage() {
       updates.image_url = ''
       updates.product_sku = ''
       updates.product_name = ''
+      updates.supplier_name = ''
+      updates.lt = ''
+      updates.moq = null
     }
     
     setForm(p => ({
@@ -338,6 +347,7 @@ export default function CustomerOrdersPage() {
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
+                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Supplier / LT / MOQ</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Unit</th>
                 <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Price</th>
@@ -368,6 +378,9 @@ export default function CustomerOrdersPage() {
                     </td>
                     <td className="p-1.5 min-w-[180px]">
                       <input className={lockedInp} value={`${item.product_name || ''} ${item.spec || ''}`.trim()} readOnly />
+                    </td>
+                    <td className="p-1.5 min-w-[220px]">
+                      <input className={lockedInp} value={`${item.supplier_name || '-'} / ${item.lt || '-'} / ${item.moq ?? '-'}`} readOnly />
                     </td>
                     <td className="p-1.5 w-24">
                       <input type="number" className={inp} value={item.qty||''} onChange={e=>updateItem(i,'qty',Number(e.target.value))} />
