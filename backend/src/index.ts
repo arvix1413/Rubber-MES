@@ -3182,22 +3182,15 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('deliver
             SELECT
               dn2.customer_order_id,
               dni.material_code,
-              CASE
-                WHEN COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') = ? THEN ''
-                ELSE COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
-              END as po_key,
+              COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') as po_key_raw,
               SUM(COALESCE(dni.qty, 0)) as shipped_qty
             FROM delivery_note_items dni
             JOIN delivery_notes dn2 ON dni.dn_id = dn2.id
             WHERE dn2.customer_order_id = ? AND dn2.status = 'shipped' AND dn2.deleted_at IS NULL
-            GROUP BY dn2.customer_order_id, dni.material_code,
-              CASE
-                WHEN COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') = ? THEN ''
-                ELSE COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
-              END
+            GROUP BY dn2.customer_order_id, dni.material_code, COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
           ) s ON s.customer_order_id = ci.order_id
              AND s.material_code = b.product_sku
-             AND s.po_key = COALESCE(NULLIF(TRIM(ci.po_no), ''), '')
+             AND (CASE WHEN s.po_key_raw = ? THEN '' ELSE s.po_key_raw END) = COALESCE(NULLIF(TRIM(ci.po_no), ''), '')
           SET ci.arrived_qty = LEAST(ci.qty, COALESCE(s.shipped_qty, 0)),
               ci.balance = GREATEST(0, ci.qty - LEAST(ci.qty, COALESCE(s.shipped_qty, 0))),
               ci.status = CASE
@@ -3206,7 +3199,7 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('deliver
                 ELSE 'pending'
               END
           WHERE ci.order_id = ?
-        `, [orderPo, coId, orderPo, coId])
+        `, [coId, orderPo, coId])
         // Check if all items fully shipped → mark completed, else partial
         const coItems = await query<any>('SELECT qty, arrived_qty FROM customer_order_items WHERE order_id=?', [coId])
         const allDone = coItems.every((ci: any) => Number(ci.arrived_qty) >= Number(ci.qty))
