@@ -26,6 +26,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureMaterialExtraColumns()
   await ensureBomExtraColumns()
   await ensureBomItemsExtraColumns()
+  await ensurePoItemReceivedQtyColumn()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
@@ -419,6 +420,24 @@ const ensureBomItemsExtraColumns = async () => {
     })
   }
   await ensureBomItemsExtraColumnsPromise
+}
+
+let ensurePoItemReceivedQtyColumnPromise: Promise<void> | null = null
+const ensurePoItemReceivedQtyColumn = async () => {
+  if (!ensurePoItemReceivedQtyColumnPromise) {
+    ensurePoItemReceivedQtyColumnPromise = (async () => {
+      try {
+        await execute('ALTER TABLE po_items ADD COLUMN received_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
+      } catch (e: any) {
+        const msg = String(e?.message || '').toLowerCase()
+        if (!msg.includes('duplicate column')) throw e
+      }
+    })().catch((e) => {
+      ensurePoItemReceivedQtyColumnPromise = null
+      throw e
+    })
+  }
+  await ensurePoItemReceivedQtyColumnPromise
 }
 
 let ensureInvoiceTablesPromise: Promise<void> | null = null
