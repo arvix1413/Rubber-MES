@@ -61,7 +61,7 @@ export function StatusFlow({ steps, current, actions, onAction, compact = false 
 
   return (
     <div>
-      <div className="flex items-center mb-4 overflow-x-auto pb-1">
+      <div className="flex items-center mb-4 scroll-x-unified pb-1">
         {steps.map((step, i) => {
           const sc = COLOR_MAP[step.color]
           const isDone = i < currentIdx
