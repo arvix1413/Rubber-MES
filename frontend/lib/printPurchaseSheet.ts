@@ -1,11 +1,20 @@
 import { type CompanySettings } from './useCompany'
-import { buildPrintStyles, cleanText, formatDate, formatMoney, formatQty, toNum } from './printUtils'
+import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
+import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
 
 export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
-  const txt = cleanText
-  const num = toNum
-  const money = formatMoney
-  const qty = formatQty
+  const txt = (v: any) => {
+    if (v === null || v === undefined) return ''
+    const s = String(v).trim()
+    if (!s || s === 'null' || s === 'undefined' || s === '—' || s === '-') return ''
+    return s
+  }
+  const num = (v: any) => {
+    const n = Number(v)
+    return Number.isFinite(n) ? n : 0
+  }
+  const fmt = (v: any) => num(v).toLocaleString()
+  const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
 
   const co = company || {
     company_name: 'KUN YI COMPANY LIMITED',
@@ -13,126 +22,112 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
     address: '',
     phone: '',
     contact_person: '',
-    tax_id: '',
     logo_url: null,
   }
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
+  const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
 
-  const taxRate = Math.max(0, Number(data.tax_rate || 0))
   const items: any[] = Array.isArray(data.items) ? data.items : []
-  const subTotal = items.reduce((sum, i) => sum + num(i.total_price), 0)
+  const taxRate = Math.max(0, num((data as any).tax_rate || 0))
+  const subTotal = items.reduce((s: number, i: any) => s + num(i.total_price), 0)
   const taxAmount = Math.round(subTotal * (taxRate / 100) * 100) / 100
   const grandTotal = subTotal + taxAmount
 
-  const colorOf = (name: string) => {
-    const x = (name || '').toUpperCase()
-    if (x.includes('BLACK')) return '黑'
-    if (x.includes('WHITE')) return '白'
-    if (x.includes('RED')) return '紅'
-    if (x.includes('BLUE')) return '藍'
-    if (x.includes('GREEN')) return '綠'
-    return ''
-  }
-
-  const rows = items.map((item, idx) => {
-    const n = txt(item.material_name)
-    const thickness = txt(item.thickness)
-    return `
+  const rows = items.map((item: any, idx: number) => `
       <tr>
-        <td class="c">${idx + 1}</td>
-        <td class="c">${txt(item.po_ref || data.po_number)}</td>
-        <td class="c mono">${txt(item.material_code)}</td>
-        <td>${n}</td>
-        <td class="c">${colorOf(n)}</td>
-        <td class="c">${txt(item.spec)}</td>
-        <td class="c">${thickness}</td>
-        <td class="c">${txt(item.unit) || 'SH'}</td>
-        <td class="r">${qty(item.quantity)}</td>
-        <td class="r">${money(item.unit_price)}</td>
-        <td class="r">${money(item.total_price)}</td>
-        <td>${txt(item.remark)}</td>
+        <td class="col-st" style="text-align:center">${idx + 1}</td>
+        <td class="col-code">${txt(item.po_ref || data.po_number)}</td>
+        <td class="col-material">${txt(item.material_code)}</td>
+        <td class="col-name">${txt(item.material_name)}</td>
+        <td class="col-spec">${txt(item.spec)}</td>
+        <td class="col-qty">${fmt(item.quantity)}</td>
+        <td class="col-unit">${txt(item.unit) || 'PCS'}</td>
+        <td class="col-price">${fmt(item.unit_price)}</td>
+        <td class="col-total">${fmt(item.total_price)}</td>
+        <td class="col-remark">${fmtText(item.remark)}</td>
       </tr>
-    `
-  }).join('')
+    `).join('')
 
-  return `<!DOCTYPE html>
-<html lang="zh-Hant">
-<head>
-<meta charset="utf-8" />
-<title>採購單 ${txt(data.po_number)}</title>
-<style>${buildPrintStyles()}</style>
-</head>
-<body>
-<div class="page">
-  <div class="title">採購單</div>
-  <div class="subtitle">PURCHASE SHEET</div>
-  <div class="meta-grid">
-    <div class="card">
-      <div class="row"><span class="label">公司名稱</span><span>${txt(co.company_name)}</span></div>
-      <div class="row"><span class="label">地址</span><span>${txt(co.address)}</span></div>
-      <div class="row"><span class="label">電話</span><span>${txt(co.phone)}</span></div>
-      <div class="row"><span class="label">聯絡人</span><span>${txt(co.contact_person)}</span></div>
-      <div class="row"><span class="label">稅號</span><span>${txt((co as any).tax_id)}</span></div>
+  const css = `
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Microsoft JhengHei", "PingFang TC", Arial, sans-serif; font-size: 11px; font-weight: 400; color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 8mm 6mm; max-width: 210mm; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 5mm; margin-bottom: 5mm; }
+    .company { font-size: 18px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    .subtitle { font-size: 10px; color: #666; margin-top: 3px; }
+    .doc-title { font-size: 22px; font-weight: 700; color: #1a56db; letter-spacing: 2px; text-align: right; }
+    .doc-sub { font-size: 10px; color: #666; text-align: right; margin-top: 2px; }
+    .doc-no { font-size: 12px; font-weight: 600; text-align: right; margin-top: 3px; }
+    ${SHARED_PRINT_PARTY_TABLE_CSS}
+    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+    .info-table td { border: 1px solid #bbb; padding: 5px 8px; font-size: 11px; font-weight: 400; vertical-align: middle; text-align: center; }
+    .info-table .lbl { font-weight: 600; background: #f5f5f5; white-space: nowrap; width: 110px; color: #333; line-height: 1.4; }
+    ${SHARED_PRINT_ITEM_TABLE_CSS}
+    .remark-box { border: 1px solid #bbb; padding: 6px 10px; min-height: 18mm; font-size: 10px; font-weight: 400; margin-top: 5mm; }
+    .remark-title { font-weight: 600; margin-bottom: 4px; font-size: 10px; }
+    .terms { border: 1px solid #ccc; padding: 6px 10px; margin-top: 4mm; font-size: 9px; font-weight: 400; line-height: 1.5; color: #555; }
+    .sign-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
+    .sign-box { border: 1px solid #bbb; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; }
+    .sign-label { font-weight: 600; font-size: 10px; color: #333; padding-bottom: 4px; border-bottom: 1px solid #eee; margin-bottom: 0; }
+    .sign-area { flex: 1; min-height: 50px; display: flex; align-items: center; justify-content: center; }
+    .sign-line { border-top: 1px solid #555; padding-top: 4px; font-size: 10px; font-weight: 400; color: #333; margin-top: 4px; }
+    @media print { @page { size: A4; margin: 0; } }
+  `
+
+  return `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/><title>採購單 ${txt(data.po_number)}</title><style>${css}</style></head><body>
+    <div class="page">
+      <div class="header">
+        <div>
+          ${logoUrl ? `<img src="${logoUrl}" style="max-height:40px;max-width:160px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'"/><br/>` : ''}
+          <div class="company">${txt(co.company_name)}</div>
+          <div class="subtitle">${txt(co.company_name_local)}</div>
+        </div>
+        <div>
+          <div class="doc-title">採購單</div>
+          <div class="doc-sub">PURCHASE ORDER / ĐƠN ĐẶT HÀNG</div>
+          <div class="doc-no">No. ${txt(data.po_number)}</div>
+        </div>
+      </div>
+
+      <table class="party-table">
+        <tr><td class="section" colspan="4">本公司 / Company Name</td><td class="section" colspan="4">供應商公司 / Supplier Name</td></tr>
+        <tr><td class="label">公司名</td><td class="value" colspan="3">${txt(co.company_name)}</td><td class="label">公司名</td><td class="value" colspan="3">${txt(data.supplier_name)}</td></tr>
+        <tr><td class="label">地址</td><td class="value" colspan="3">${txt(co.address)}</td><td class="label">地址</td><td class="value" colspan="3">${txt((data as any).supplier_address)}</td></tr>
+        <tr><td class="label">電話</td><td class="value" colspan="3">${txt(co.phone)}</td><td class="label">電話</td><td class="value" colspan="3">${txt((data as any).supplier_phone)}</td></tr>
+        <tr><td class="label">聯絡人</td><td class="value" colspan="3">${txt(co.contact_person)}</td><td class="label">聯絡人</td><td class="value" colspan="3">${txt((data as any).supplier_contact)}</td></tr>
+      </table>
+
+      <table class="info-table">
+        <tr>
+          <td class="lbl">供應商</td><td class="val" colspan="3" style="font-weight:600;font-size:12px">${txt(data.supplier_name)}</td>
+          <td class="lbl">採購單號</td><td class="val" style="font-family:monospace;font-weight:600">${txt(data.po_number)}</td>
+        </tr>
+        <tr>
+          <td class="lbl">幣別</td><td class="val">${txt(data.currency) || 'VND'}</td>
+          <td class="lbl">稅率</td><td class="val">${taxRate}%</td>
+          <td class="lbl">建立日期</td><td class="val">${txt(String(data.created_at || '').slice(0, 10))}</td>
+        </tr>
+      </table>
+
+      <table class="items">
+        <thead><tr>
+          <th class="col-st">ST</th><th class="col-code">PO NO</th><th class="col-material">MTL NO</th><th class="col-name">材料名稱</th><th class="col-spec">規格</th><th class="col-qty">數量</th><th class="col-unit">單位</th><th class="col-price">單價</th><th class="col-total">金額</th><th class="col-remark">備註</th>
+        </tr></thead>
+        <tbody>
+          ${rows}
+          <tr class="total-row"><td colspan="8">小計</td><td>${fmt(subTotal)}</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">VAT ${taxRate}%</td><td>${fmt(taxAmount)}</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">總計</td><td>${fmt(grandTotal)}</td><td>${txt(data.currency) || 'VND'}</td></tr>
+        </tbody>
+      </table>
+
+      <div class="remark-box"><div class="remark-title">備註：</div><div>${fmtText(data.remark)}</div></div>
+      <div class="terms"><strong>注意事項：</strong> 付款條件依據合同；交期以實際通知為準；單價未含稅除非另有說明。</div>
+
+      <div class="sign-section">
+        <div class="sign-box"><div class="sign-label">供應商確認</div><div class="sign-area"></div><div class="sign-line">${txt(data.supplier_name)}</div></div>
+        <div class="sign-box"><div class="sign-label">採購確認</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:44px;max-width:150px;object-fit:contain"/>` : ''}</div><div class="sign-line">${txt(co.company_name)}</div></div>
+      </div>
     </div>
-    <div class="card">
-      <div class="row"><span class="label">採購號碼</span><span class="mono">${txt(data.po_number)}</span></div>
-      <div class="row"><span class="label">採購日期</span><span>${formatDate(data.created_at)}</span></div>
-      <div class="row"><span class="label">供應商</span><span>${txt(data.supplier_name)}</span></div>
-      <div class="row"><span class="label">聯絡人</span><span>${txt((data as any).supplier_contact || '')}</span></div>
-      <div class="row"><span class="label">幣別 / 稅率</span><span>${txt(data.currency || 'VND')} / ${taxRate}%</span></div>
-    </div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th style="width:32px">項目</th>
-        <th style="width:78px">PO NO</th>
-        <th style="width:70px">MTL NO</th>
-        <th>產品 Products</th>
-        <th style="width:48px">顏色</th>
-        <th style="width:88px">規格 Spec</th>
-        <th style="width:56px">厚度 mm</th>
-        <th style="width:42px">單位</th>
-        <th style="width:56px">數量</th>
-        <th style="width:76px">單價</th>
-        <th style="width:86px">總價</th>
-        <th style="width:70px">備註</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${rows}
-    </tbody>
-  </table>
-
-  <div class="summary">
-    <div class="summary-row"><span>Total</span><span>${money(subTotal)}</span></div>
-    <div class="summary-row"><span>VAT ${taxRate}%</span><span>${money(taxAmount)}</span></div>
-    <div class="summary-row"><span>總金額 VND</span><span>${money(grandTotal)}</span></div>
-  </div>
-
-  <div class="note">
-    <div><b>備註 Remark</b></div>
-    <div>1. 付款條件依據合同。The payment way according by sales contract.</div>
-    <div>2. 交貨日期：三天。Good finish within 3 days.</div>
-    <div>3. 交貨方式：越南胡志明本地 Ex-Work.</div>
-    <div>4. 單價不含 VAT。Price not include VAT.</div>
-    <div>5. 任合問題根據合同上的效法討論。</div>
-    <div style="margin-top:4px">${txt(data.remark)}</div>
-  </div>
-
-  <div class="sign-grid">
-    <div class="sign-box">
-      <div class="sign-title">供應商確認</div>
-      <div class="sign-img-wrap"></div>
-      <div class="sign-line">${txt(data.supplier_name)}</div>
-    </div>
-    <div class="sign-box">
-      <div class="sign-title">採購確認</div>
-      <div class="sign-img-wrap">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:30px;max-width:120px;object-fit:contain"/>` : ''}</div>
-      <div class="sign-line">${txt(co.company_name)}</div>
-    </div>
-  </div>
-</div>
-</body>
-</html>`
+  </body></html>`
 }
