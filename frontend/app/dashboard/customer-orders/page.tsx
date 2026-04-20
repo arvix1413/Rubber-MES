@@ -26,7 +26,7 @@ function getCOActions(status: string) {
 }
 
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string }
-type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string }
+type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string }
 type Customer = { id:number; customer_code:string; customer_name:string }
 type ProfitOrderSummary = {
@@ -255,6 +255,8 @@ export default function CustomerOrdersPage() {
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
   const money = (v?: number) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  const qtyNum = (v: any) => Number(v || 0)
+  const pct = (v: any) => Number(v || 0)
 
   return (
     <div>
@@ -434,6 +436,9 @@ export default function CustomerOrdersPage() {
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">客戶</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">訂單日期</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">交貨日</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">已出/總數</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
+                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">總計</th>
                   {canViewProfit && <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">淨利</th>}
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">狀態</th>
@@ -455,6 +460,13 @@ export default function CustomerOrdersPage() {
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate" title={o.customer_name}>{o.customer_name}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{o.po_date ? String(o.po_date).slice(0,10) : '—'}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{o.delivery_date ? String(o.delivery_date).slice(0,10) : '—'}</td>
+                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{qtyNum(o.shipped_total_qty).toLocaleString()} / {qtyNum(o.order_total_qty).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{qtyNum(o.balance_total_qty).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                          <span className={`text-xs font-semibold ${pct(o.completion_rate) >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>
+                            {pct(o.completion_rate).toFixed(2)}%
+                          </span>
+                        </td>
                         <td className="px-4 py-3 text-right font-semibold text-slate-800">{o.total_amount ? Number(o.total_amount).toLocaleString() : '—'}</td>
                         {canViewProfit && (
                           <td className={`px-4 py-3 text-right font-semibold ${(profit?.net_profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
@@ -480,7 +492,7 @@ export default function CustomerOrdersPage() {
                       </tr>
                       {isOpen && (
                         <tr key={`${o.id}-items`} className="border-b border-slate-100">
-                          <td colSpan={canViewProfit ? 9 : 8} className="px-0 py-0">
+                          <td colSpan={canViewProfit ? 12 : 11} className="px-0 py-0">
                             <div className="expand-row-wrap">
                               {canViewProfit && profit && (
                                 <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
@@ -520,6 +532,7 @@ export default function CustomerOrdersPage() {
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Remark</th>
                                     <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">已到數量</th>
                                     <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">結餘</th>
+                                    <th className="px-4 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">完成率</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">狀態</th>
                                   </tr></thead>
                                   <tbody>
@@ -533,7 +546,10 @@ export default function CustomerOrdersPage() {
                                         <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{(item as any).rta_date ? String((item as any).rta_date).slice(0,10) : '—'}</td>
                                         <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
                                         <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.balance||0).toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>
+                                        <td className="px-4 py-2 text-right whitespace-nowrap">
+                                          {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
+                                        </td>
                                         <td className="px-4 py-2 whitespace-nowrap">
                                           <span className={STATUS_BADGE[item.status||'pending']||'badge-gray'}>{STATUS_LABEL[item.status||'pending']||item.status}</span>
                                         </td>
@@ -549,7 +565,7 @@ export default function CustomerOrdersPage() {
                     </>
                   )
                 })}
-                {paged.length===0 && <tr><td colSpan={canViewProfit ? 9 : 8} className="px-4 py-12 text-center text-slate-400">尚無訂單</td></tr>}
+                {paged.length===0 && <tr><td colSpan={canViewProfit ? 12 : 11} className="px-4 py-12 text-center text-slate-400">尚無訂單</td></tr>}
               </tbody>
             </table>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />

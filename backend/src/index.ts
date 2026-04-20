@@ -1111,9 +1111,19 @@ app.get('/api/customer-orders', authMiddleware, async c => {
              COALESCE(co.received_amount, 0) as received_amount, 
              COALESCE(co.payment_status, 'unpaid') as payment_status, 
              co.payment_date, co.payment_note,
+             COALESCE(SUM(ci.qty), 0) as order_total_qty,
+             COALESCE(SUM(ci.arrived_qty), 0) as shipped_total_qty,
+             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(SUM(ci.arrived_qty), 0)) as balance_total_qty,
+             CASE
+               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
+               ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
+             END as completion_rate,
              c.customer_name, c.customer_code
-      FROM customer_orders co LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
+      FROM customer_orders co
+      LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
+      LEFT JOIN customer_order_items ci ON ci.order_id = co.id
       ${whereClause}
+      GROUP BY co.id
       ORDER BY co.created_at DESC
     `, params.length ? params : undefined)
     return c.json(orders)
@@ -2948,23 +2958,41 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('deliver
       const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
       if (dn?.customer_order_id) {
         const coId = dn.customer_order_id
-        // Sum all shipped delivery note items for this customer order
-        const shippedItems = await query<any>(`
-          SELECT dni.material_code, SUM(dni.qty) as shipped_qty
-          FROM delivery_note_items dni
-          JOIN delivery_notes dn2 ON dni.dn_id = dn2.id
-          WHERE dn2.customer_order_id = ? AND dn2.status = 'shipped' AND dn2.deleted_at IS NULL
-          GROUP BY dni.material_code
-        `, [coId])
-        // Update arrived_qty on each customer_order_item
-        for (const s of shippedItems) {
-          await execute(`
-            UPDATE customer_order_items ci
-            JOIN bom b ON ci.bom_id = b.id
-            SET ci.arrived_qty = ?, ci.balance = ci.qty - ?
-            WHERE ci.order_id = ? AND b.product_sku = ?
-          `, [s.shipped_qty, s.shipped_qty, coId, s.material_code])
-        }
+        const order = await queryOne<any>('SELECT po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [coId])
+        const orderPo = String(order?.po_number || '')
+        // Recalculate shipped qty by material_code + PO No, then overwrite arrived_qty/balance/status
+        await execute(`
+          UPDATE customer_order_items ci
+          JOIN bom b ON ci.bom_id = b.id
+          LEFT JOIN (
+            SELECT
+              dn2.customer_order_id,
+              dni.material_code,
+              CASE
+                WHEN COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') = ? THEN ''
+                ELSE COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
+              END as po_key,
+              SUM(COALESCE(dni.qty, 0)) as shipped_qty
+            FROM delivery_note_items dni
+            JOIN delivery_notes dn2 ON dni.dn_id = dn2.id
+            WHERE dn2.customer_order_id = ? AND dn2.status = 'shipped' AND dn2.deleted_at IS NULL
+            GROUP BY dn2.customer_order_id, dni.material_code,
+              CASE
+                WHEN COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') = ? THEN ''
+                ELSE COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
+              END
+          ) s ON s.customer_order_id = ci.order_id
+             AND s.material_code = b.product_sku
+             AND s.po_key = COALESCE(NULLIF(TRIM(ci.po_no), ''), '')
+          SET ci.arrived_qty = LEAST(ci.qty, COALESCE(s.shipped_qty, 0)),
+              ci.balance = GREATEST(0, ci.qty - LEAST(ci.qty, COALESCE(s.shipped_qty, 0))),
+              ci.status = CASE
+                WHEN LEAST(ci.qty, COALESCE(s.shipped_qty, 0)) >= ci.qty THEN 'completed'
+                WHEN LEAST(ci.qty, COALESCE(s.shipped_qty, 0)) > 0 THEN 'partial'
+                ELSE 'pending'
+              END
+          WHERE ci.order_id = ?
+        `, [orderPo, coId, orderPo, coId])
         // Check if all items fully shipped → mark completed, else partial
         const coItems = await query<any>('SELECT qty, arrived_qty FROM customer_order_items WHERE order_id=?', [coId])
         const allDone = coItems.every((ci: any) => Number(ci.arrived_qty) >= Number(ci.qty))
