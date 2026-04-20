@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react'
 import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import Link from 'next/link'
+import { formatDateYMD, todayYMD } from '@/lib/datetime'
 
 type IntakeItem = {
   order_id: number
@@ -85,7 +86,7 @@ export default function OrderIntakePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `order_intake_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `order_intake_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch {}
@@ -160,7 +161,7 @@ export default function OrderIntakePage() {
                 <tr key={r.order_item_id} className="border-t border-slate-100">
                   <td className="px-3 py-2 align-top">
                     <div className="font-semibold text-slate-800">{r.po_number}</div>
-                    <div className="text-xs text-slate-500">{r.po_date ? String(r.po_date).slice(0, 10) : '-'}</div>
+                    <div className="text-xs text-slate-500">{formatDateYMD(r.po_date) || '-'}</div>
                     <div className="text-[11px] mt-1 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{STATUS_LABEL[r.order_status] || r.order_status}</div>
                   </td>
                   <td className="px-3 py-2 align-top">

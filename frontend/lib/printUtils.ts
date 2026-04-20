@@ -1,3 +1,5 @@
+import { formatDateYMD } from './datetime'
+
 export const cleanText = (value: any): string => {
   if (value === null || value === undefined) return ''
   const raw = String(value).trim()
@@ -20,11 +22,8 @@ export const formatMoney = (value: any): string => toNum(value).toLocaleString()
 export const formatDate = (value: any): string => {
   const s = cleanText(value)
   if (!s) return ''
-  const m = s.match(/^(\d{4}-\d{2}-\d{2})/)
-  if (m) return m[1]
-  const d = new Date(s)
-  if (Number.isNaN(d.getTime())) return s
-  return d.toISOString().slice(0, 10)
+  const d = formatDateYMD(s)
+  return d || s
 }
 
 export const buildPrintStyles = (): string => `

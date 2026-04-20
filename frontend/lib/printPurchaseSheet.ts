@@ -1,6 +1,7 @@
 import { type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
+import { formatDateYMD } from './datetime'
 
 export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -105,7 +106,7 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
         <tr>
           <td class="lbl">幣別</td><td class="val">${txt(data.currency) || 'VND'}</td>
           <td class="lbl">稅率</td><td class="val">${taxRate}%</td>
-          <td class="lbl">建立日期</td><td class="val">${txt(String(data.created_at || '').slice(0, 10))}</td>
+          <td class="lbl">建立日期</td><td class="val">${txt(formatDateYMD(data.created_at || ''))}</td>
         </tr>
       </table>
 

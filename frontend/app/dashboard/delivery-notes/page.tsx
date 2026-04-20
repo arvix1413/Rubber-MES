@@ -7,6 +7,7 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, DN_STEPS, getDNActions } from '@/components/StatusFlow'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
+import { formatDateYMD } from '@/lib/datetime'
 
 type DNItem = { bom_id?:number|null; item_name:string; material_code:string; qty:number; shipped_qty:number; remark:string; po_ref?: string; spec?: string; unit?: string }
 type DN = { id:number; dn_number:string; customer_name:string; delivery_date:string; status:string; remark:string; created_at:string; items?:DNItem[]; order_po_number?:string }
@@ -144,7 +145,7 @@ export default function DeliveryNotesPage() {
   const startEditDN = async (dn: DN) => {
     const d = await apiFetch<DN>(`/api/delivery-notes/${dn.id}`)
     setEditForm({
-      delivery_date: dn.delivery_date ? String(dn.delivery_date).slice(0,10) : '',
+      delivery_date: formatDateYMD(dn.delivery_date),
       remark: dn.remark || '',
       items: d.items || []
     })
@@ -390,7 +391,7 @@ export default function DeliveryNotesPage() {
                         <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap">{dn.dn_number}</td>
                         <td className="px-3 py-2.5 font-medium whitespace-nowrap max-w-[200px] truncate" title={dn.customer_name}>{dn.customer_name}</td>
                         <td className="px-3 py-2.5 text-slate-400 text-xs whitespace-nowrap">{dn.order_po_number || '—'}</td>
-                        <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{dn.delivery_date ? String(dn.delivery_date).slice(0,10) : '—'}</td>
+                        <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{formatDateYMD(dn.delivery_date) || '—'}</td>
                         <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap max-w-[120px] truncate" title={dn.remark}>{dn.remark||'—'}</td>
                         <td className="px-3 py-2.5 whitespace-nowrap"><span className={STATUS_MAP[dn.status]?.badge}>{STATUS_MAP[dn.status]?.label}</span></td>
                         <td className="px-3 py-2.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>

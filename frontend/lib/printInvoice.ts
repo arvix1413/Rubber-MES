@@ -1,6 +1,7 @@
 import { type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
+import { formatDateYMD } from './datetime'
 
 export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -97,7 +98,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
       </table>
 
       <table class="info-table">
-        <tr><td class="lbl">發票號</td><td style="font-family:monospace;font-weight:600">${txt(data.invoice_no)}</td><td class="lbl">發票日期</td><td>${txt(String(data.invoice_date || '').slice(0,10))}</td><td class="lbl">幣別</td><td>${txt(data.currency) || 'VND'}</td></tr>
+        <tr><td class="lbl">發票號</td><td style="font-family:monospace;font-weight:600">${txt(data.invoice_no)}</td><td class="lbl">發票日期</td><td>${txt(formatDateYMD(data.invoice_date || ''))}</td><td class="lbl">幣別</td><td>${txt(data.currency) || 'VND'}</td></tr>
         <tr><td class="lbl">狀態</td><td>${txt(data.status)}</td><td class="lbl">驗證碼</td><td style="font-family:monospace">${txt(data.verification_code)}</td><td class="lbl">稅率</td><td>${num(data.tax_rate)}%</td></tr>
       </table>
 

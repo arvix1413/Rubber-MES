@@ -10,6 +10,7 @@ import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
+import { formatDateYMD } from '@/lib/datetime'
 
 // Customer order actions based on current status
 function getCOActions(status: string) {
@@ -142,12 +143,12 @@ export default function CustomerOrdersPage() {
   const startEdit = async (order: Order) => {
     const data = await apiFetch<Order>(`/api/customer-orders/${order.id}`)
     setForm({
-      po_date: order.po_date ? String(order.po_date).slice(0,10) : '',
+      po_date: formatDateYMD(order.po_date),
       po_number: order.po_number,
       customer_id: String(order.customer_id),
       remark: order.remark || '',
       currency: (order as any).currency || 'VND',
-      delivery_date: order.delivery_date ? String(order.delivery_date).slice(0,10) : '',
+      delivery_date: formatDateYMD(order.delivery_date),
       delivery_address: (order as any).delivery_address || '',
       person_in_charge: order.person_in_charge || '',
       payment_terms: order.payment_terms || '',
@@ -160,7 +161,7 @@ export default function CustomerOrdersPage() {
           qty: Number(i.qty),
           unit_price: Number(i.unit_price) || Number(matchedBom?.company_price) || 0,
           po_no: (i as any).po_no || '',
-          rta_date: (i as any).rta_date ? String((i as any).rta_date).slice(0,10) : '',
+          rta_date: formatDateYMD((i as any).rta_date),
           remark: (i as any).remark || '',
           spec: i.spec || matchedBom?.spec || '',
           unit: i.unit || matchedBom?.unit || '',
@@ -458,8 +459,8 @@ export default function CustomerOrdersPage() {
                         <td className="pl-4 py-3"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
                         <td className="px-4 py-3 font-mono text-xs text-blue-600">{o.po_number}</td>
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate" title={o.customer_name}>{o.customer_name}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{o.po_date ? String(o.po_date).slice(0,10) : '—'}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{o.delivery_date ? String(o.delivery_date).slice(0,10) : '—'}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs">{formatDateYMD(o.po_date) || '—'}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs">{formatDateYMD(o.delivery_date) || '—'}</td>
                         <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{qtyNum(o.shipped_total_qty).toLocaleString()} / {qtyNum(o.order_total_qty).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{qtyNum(o.balance_total_qty).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -543,7 +544,7 @@ export default function CustomerOrdersPage() {
                                         <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
                                         <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
                                         <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{(item as any).rta_date ? String((item as any).rta_date).slice(0,10) : '—'}</td>
+                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
                                         <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
                                         <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
                                         <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>

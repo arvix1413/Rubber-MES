@@ -5,6 +5,7 @@ import { API, apiFetch, getToken } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
+import { formatDateYMD, todayYMD } from '@/lib/datetime'
 
 type PendingItem = {
   delivery_note_item_id: number
@@ -219,7 +220,7 @@ export default function ShipmentReconciliationPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `reconciliations_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `reconciliations_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
       toast('CSV 已下載')
@@ -283,7 +284,7 @@ export default function ShipmentReconciliationPage() {
                       <td className="px-3 py-2"><input type="checkbox" checked={checked} onChange={(e) => toggleSelect(p, e.target.checked)} /></td>
                       <td className="px-3 py-2">
                         <div className="font-medium text-slate-800">{p.dn_number}</div>
-                        <div className="text-xs text-slate-500">{p.po_number || '-'} / {p.delivery_date ? String(p.delivery_date).slice(0, 10) : '-'}</div>
+                        <div className="text-xs text-slate-500">{p.po_number || '-'} / {formatDateYMD(p.delivery_date) || '-'}</div>
                       </td>
                       <td className="px-3 py-2">
                         <div className="text-slate-700">{p.customer_name || '-'}</div>
@@ -369,7 +370,7 @@ export default function ShipmentReconciliationPage() {
                   <Fragment key={h.id}>
                     <tr className="border-t border-slate-100">
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.reconciliation_no}</td>
-                      <td className="px-3 py-2">{h.reconcile_date ? String(h.reconcile_date).slice(0, 10) : '-'}</td>
+                      <td className="px-3 py-2">{formatDateYMD(h.reconcile_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
                       <td className="px-3 py-2 text-right">{h.total_shipped_qty}</td>
                       <td className="px-3 py-2 text-right">{h.total_accepted_qty}</td>
@@ -395,7 +396,7 @@ export default function ShipmentReconciliationPage() {
                                 type="date"
                                 className="rubber-input"
                                 disabled={detail.status !== 'draft'}
-                                value={detail.reconcile_date ? String(detail.reconcile_date).slice(0, 10) : ''}
+                                value={formatDateYMD(detail.reconcile_date)}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, reconcile_date: e.target.value } }))}
                               />
                             </div>

@@ -3,6 +3,7 @@ import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
 import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
+import { formatDateYMD, todayYMD } from '@/lib/datetime'
 
 type AP = {
   id: number; po_number: string; supplier_name: string; total_amount: number
@@ -39,7 +40,7 @@ export default function PayablesPage() {
     setForm({
       payment_status: item.payment_status || 'paid',
       paid_amount: item.total_amount,
-      payment_date: new Date().toISOString().slice(0, 10),
+      payment_date: todayYMD(),
       payment_note: item.payment_note || '',
     })
   }
@@ -79,7 +80,7 @@ export default function PayablesPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `payables_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `payables_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
       toast('CSV 已下載')
@@ -179,7 +180,7 @@ export default function PayablesPage() {
                       <td className="text-right font-medium">{(item.total_amount || 0).toLocaleString()}</td>
                       <td className="text-slate-400 text-xs">{item.currency}</td>
                       <td className="text-right text-emerald-600">{(item.paid_amount || 0).toLocaleString()}</td>
-                      <td className="text-slate-400 text-xs">{item.payment_date}</td>
+                      <td className="text-slate-400 text-xs">{formatDateYMD(item.payment_date) || '—'}</td>
                       <td><span className={st.badge}>{st.label}</span></td>
                       <td>
                         <button onClick={() => openEdit(item)} className="btn-ghost">付款</button>

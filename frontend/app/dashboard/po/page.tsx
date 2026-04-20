@@ -9,6 +9,7 @@ import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
+import { formatDateYMD } from '@/lib/datetime'
 
 type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; bom_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
@@ -427,7 +428,7 @@ export default function PoPage() {
                         <td className="px-4 py-3 text-right text-slate-600 font-medium">{Number(p.total_amount).toLocaleString()}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{p.currency}</td>
                         <td className="px-4 py-3"><span className={sm.badge}>{sm.label}</span></td>
-                        <td className="px-4 py-3 text-slate-300 text-xs">{p.created_at?.slice(0,10)}</td>
+                        <td className="px-4 py-3 text-slate-300 text-xs">{formatDateYMD(p.created_at) || '—'}</td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <StatusFlow compact steps={PO_STEPS} current={p.status}

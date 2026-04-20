@@ -8,6 +8,7 @@ import { useRouter } from 'next/navigation'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { validate } from '@/lib/validate'
 import FieldLockHint from '@/components/FieldLockHint'
+import { formatDateYMD } from '@/lib/datetime'
 
 type User = { id: number; email: string; name: string; role: Role; created_at: string }
 const empty = (): Partial<User> & { password?: string } => ({ email: '', name: '', role: 'employee', password: '' })
@@ -195,7 +196,7 @@ export default function UsersPage() {
                         <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${ROLE_COLORS[u.role]}`}>{ROLE_LABELS[u.role]}（自己）</span>
                       )}
                     </td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{u.created_at?.slice(0, 10)}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{formatDateYMD(u.created_at) || '—'}</td>
                     <td className="px-4 py-3">
                       <div className="flex gap-2">
                         <button onClick={() => setEditing({ ...u, password: '' })} className="btn-ghost">編輯</button>

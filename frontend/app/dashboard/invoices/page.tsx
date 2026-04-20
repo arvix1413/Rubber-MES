@@ -8,6 +8,7 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany } from '@/lib/useCompany'
 import { generateInvoiceHTML } from '@/lib/printInvoice'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
+import { formatDateYMD, todayYMD } from '@/lib/datetime'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -274,7 +275,7 @@ export default function InvoicesPage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `invoices_${invoiceType}_${new Date().toISOString().slice(0, 10)}.csv`
+      a.download = `invoices_${invoiceType}_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
       toast('CSV 已下載')
@@ -454,7 +455,7 @@ export default function InvoicesPage() {
                     <tr className="border-t border-slate-100">
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.invoice_no}</td>
                       <td className="px-3 py-2">{h.party_name || '-'}</td>
-                      <td className="px-3 py-2">{h.invoice_date ? String(h.invoice_date).slice(0, 10) : '-'}</td>
+                      <td className="px-3 py-2">{formatDateYMD(h.invoice_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
                       <td className="px-3 py-2 text-right">{Number(h.total_amount || 0).toLocaleString()}</td>
                       <td className="px-3 py-2 text-right">{Number(h.tax_amount || 0).toLocaleString()}</td>
@@ -482,7 +483,7 @@ export default function InvoicesPage() {
                                 type="date"
                                 className="rubber-input"
                                 disabled={detail.status !== 'draft'}
-                                value={detail.invoice_date ? String(detail.invoice_date).slice(0, 10) : ''}
+                                value={formatDateYMD(detail.invoice_date)}
                                 onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, invoice_date: e.target.value } }))}
                               />
                             </div>
