@@ -442,21 +442,22 @@ export default function CustomerOrdersPage() {
           <div className="rubber-card overflow-hidden">
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
-            <table className="w-full text-sm">
+            <div className="table-scroll-x">
+            <table className="w-full text-sm" style={{ minWidth: canViewProfit ? 1820 : 1660 }}>
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="w-8" />
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">訂單編號</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">客戶</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">訂單日期</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">交貨日</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">訂單編號</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">客戶</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">訂單日期</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交貨日</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">已出/總數</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">總計</th>
                   {canViewProfit && <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">淨利</th>}
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">狀態</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">操作</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[200px]">狀態</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[250px]">操作</th>
                 </tr>
               </thead>
               <tbody>
@@ -471,9 +472,9 @@ export default function CustomerOrdersPage() {
                         onClick={() => toggleExpand(o.id)}>
                         <td className="pl-4 py-3"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
                         <td className="px-4 py-3 font-mono text-xs text-blue-600">{o.po_number}</td>
-                        <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate" title={o.customer_name}>{o.customer_name}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{formatDateYMD(o.po_date) || '—'}</td>
-                        <td className="px-4 py-3 text-slate-400 text-xs">{formatDateYMD(o.delivery_date) || '—'}</td>
+                        <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate whitespace-nowrap" title={o.customer_name}>{o.customer_name}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.po_date) || '—'}</td>
+                        <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.delivery_date) || '—'}</td>
                         <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{qtyNum(o.shipped_total_qty).toLocaleString()} / {qtyNum(o.order_total_qty).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{qtyNum(o.balance_total_qty).toLocaleString()}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
@@ -487,12 +488,12 @@ export default function CustomerOrdersPage() {
                             {profit ? money(profit.net_profit) : '—'}
                           </td>
                         )}
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 min-w-[200px] whitespace-nowrap">
                           <StatusFlow compact steps={CO_STEPS} current={o.status}
                             actions={getCOActions(o.status)}
                             onAction={(toStatus) => changeStatus(o.id, toStatus)} />
                         </td>
-                        <td className="px-4 py-3" onClick={e=>e.stopPropagation()}>
+                        <td className="px-4 py-3 min-w-[250px] whitespace-nowrap" onClick={e=>e.stopPropagation()}>
                           <div className="flex gap-1">
                             <button onClick={e=>{e.stopPropagation();printOrder(o.id)}} className="btn-ghost" title="列印">🖨 列印</button>
                             {canWrite && o.status !== 'completed' && (
@@ -582,6 +583,7 @@ export default function CustomerOrdersPage() {
                 {paged.length===0 && <tr><td colSpan={canViewProfit ? 12 : 11} className="px-4 py-12 text-center text-slate-400">尚無訂單</td></tr>}
               </tbody>
             </table>
+            </div>
             <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} />
           </>
         )}
