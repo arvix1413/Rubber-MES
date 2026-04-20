@@ -111,6 +111,15 @@ input[type='number'] { -moz-appearance: textfield; }
 .expand-row-empty { @apply px-8 py-4 text-xs; color: #7e7367; }
 .expand-row-actions { @apply px-4 py-2.5 border-t flex items-center gap-2; border-color: #e6dccc; background: #f3ece2; }
 
+.table-scroll-x {
+  @apply overflow-x-auto overscroll-x-contain;
+  overflow-y: hidden;
+}
+.table-scroll-x > table {
+  width: 100%;
+  min-width: max-content;
+}
+
 @keyframes slide-up {
   from { opacity: 0; transform: translateY(12px) scale(0.97); }
   to   { opacity: 1; transform: translateY(0) scale(1); }
