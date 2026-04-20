@@ -180,6 +180,11 @@ export default function BomPage() {
     const matchCat = !catFilter || b.category === catFilter
     return matchSearch && matchCat
   })
+  const moqTierSummary = (b: Bom) => {
+    const tiers = normalizeMoqTiers((b as any).moq_tiers)
+    if (!tiers.length) return b.moq ? `MOQ ${Number(b.moq).toLocaleString()}` : '—'
+    return tiers.map((t) => `${t.moq.toLocaleString()}/${t.price.toLocaleString()}`).join(' | ')
+  }
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
   const inp = 'rubber-input'
 
@@ -408,7 +413,7 @@ export default function BomPage() {
               <table className="w-full text-sm" style={{minWidth:1000}}>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    {['圖片','分類','物料編號','產品名稱','材料名稱','規格','顏色','單位','Leadtime','MOQ','品牌','認證代碼','供應商'].map(h=>(
+                    {['圖片','分類','物料編號','產品名稱','材料名稱','規格','顏色','單位','Leadtime','MOQ階梯','品牌','認證代碼','供應商'].map(h=>(
                       <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                     <th className="px-3 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">供應商單價</th>
@@ -431,7 +436,7 @@ export default function BomPage() {
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.color||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.unit}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.lt||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.moq ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={moqTierSummary(b)}>{moqTierSummary(b)}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.brand||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.cert_code||'—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={b.supplier_name}>{b.supplier_name||'—'}</td>

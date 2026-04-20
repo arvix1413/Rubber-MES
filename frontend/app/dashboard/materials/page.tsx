@@ -6,6 +6,7 @@ import { API, apiFetch, getToken } from '@/lib/api'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
+import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
 
 type Material = {
   id: number
@@ -25,12 +26,14 @@ type Material = {
   color?: string
   leadtime_days?: number | null
   moq?: number | null
+  moq_tiers?: MoqTier[]
   remark?: string
   created_at: string
 }
 
 type Supplier = { id: number; name: string; currency: string }
 
+const emptyTiers = (): MoqTier[] => Array.from({ length: 5 }, () => ({ moq: 0, price: 0 }))
 const empty = (): Partial<Material> => ({
   material_code: '',
   material_name: '',
@@ -47,6 +50,7 @@ const empty = (): Partial<Material> => ({
   color: '',
   leadtime_days: null,
   moq: null,
+  moq_tiers: emptyTiers(),
   remark: '',
 })
 
@@ -142,6 +146,18 @@ export default function MaterialsPage() {
       currency: sup?.currency || p?.currency || 'VND',
     }))
   }
+  const updateTier = (tierIdx:number, field:'moq'|'price', val:number) => {
+    setEditing((p) => {
+      const tiers = Array.isArray(p?.moq_tiers) ? [...p.moq_tiers] : emptyTiers()
+      tiers[tierIdx] = { ...(tiers[tierIdx] || { moq: 0, price: 0 }), [field]: Math.max(0, Number(val) || 0) }
+      return { ...p, moq_tiers: tiers }
+    })
+  }
+  const tierSummary = (r: Material) => {
+    const tiers = normalizeMoqTiers(r.moq_tiers)
+    if (!tiers.length) return r.moq ? `MOQ ${Number(r.moq).toLocaleString()}` : '—'
+    return tiers.map((t) => `${t.moq.toLocaleString()}/${t.price.toLocaleString()}`).join(' | ')
+  }
 
   return (
     <div>
@@ -202,9 +218,30 @@ export default function MaterialsPage() {
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime（天）</label>
                 <input type="number" className="rubber-input" value={editing.leadtime_days ?? ''} onChange={(e) => setEditing((p) => ({ ...p, leadtime_days: e.target.value ? Number(e.target.value) : null }))} />
               </div>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">MOQ</label>
-                <input type="number" className="rubber-input" value={editing.moq ?? ''} onChange={(e) => setEditing((p) => ({ ...p, moq: e.target.value ? Number(e.target.value) : null }))} />
+              <div className="col-span-2">
+                <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>
+                <div className="rounded-xl border border-slate-200 p-3 space-y-1.5 bg-slate-50/50">
+                  {(editing.moq_tiers || emptyTiers()).map((tier, i) => (
+                    <div key={i} className="grid grid-cols-[26px_1fr_1fr] gap-2 items-center">
+                      <span className="text-[10px] text-slate-400 text-center">#{i + 1}</span>
+                      <input
+                        type="number"
+                        className="rubber-input"
+                        placeholder="MOQ"
+                        value={tier.moq || ''}
+                        onChange={e=>updateTier(i, 'moq', Number(e.target.value))}
+                      />
+                      <input
+                        type="number"
+                        className="rubber-input"
+                        placeholder="單價"
+                        value={tier.price || ''}
+                        onChange={e=>updateTier(i, 'price', Number(e.target.value))}
+                      />
+                    </div>
+                  ))}
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">同一材料可設定最多 5 組 MOQ 階梯</p>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">幣別</label>
@@ -253,7 +290,7 @@ export default function MaterialsPage() {
               <table className="w-full text-sm" style={{ minWidth: 1540 }}>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ', '幣別', '備註', '操作'].map((h) => (
+                    {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ階梯', '幣別', '備註', '操作'].map((h) => (
                       <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                   </tr>
@@ -270,12 +307,15 @@ export default function MaterialsPage() {
                       <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.supplier_price || 0).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.company_price || 0).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.leadtime_days ?? '—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.moq ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={tierSummary(r)}>{tierSummary(r)}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.currency || 'VND'}</td>
                       <td className="px-3 py-2.5 text-slate-500 max-w-[240px] truncate" title={r.remark || ''}>{r.remark || '—'}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="flex gap-1">
-                          {canEdit && <button onClick={() => setEditing({ ...r })} className="btn-ghost text-blue-600">編輯</button>}
+                          {canEdit && <button onClick={() => setEditing({ ...r, moq_tiers: (() => {
+                            const parsed = normalizeMoqTiers((r as any).moq_tiers)
+                            return [...parsed, ...emptyTiers()].slice(0, 5)
+                          })() })} className="btn-ghost text-blue-600">編輯</button>}
                           {canDel && <button onClick={() => del(r.id)} className="btn-danger">刪除</button>}
                         </div>
                       </td>

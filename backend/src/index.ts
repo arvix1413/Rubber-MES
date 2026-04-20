@@ -319,6 +319,7 @@ const ensureMaterialExtraColumns = async () => {
       await alterSafe('ALTER TABLE materials ADD COLUMN color VARCHAR(100) DEFAULT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN leadtime_days INT DEFAULT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN moq DECIMAL(15,4) DEFAULT NULL')
+      await alterSafe('ALTER TABLE materials ADD COLUMN moq_tiers TEXT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN remark TEXT')
     })().catch((e) => {
       ensureMaterialExtraColumnsPromise = null
@@ -812,20 +813,22 @@ app.get('/api/materials', authMiddleware, async c => {
   }
   sql += ` WHERE ${where.join(' AND ')}`
   sql += ' ORDER BY m.created_at DESC'
-  const rows = await query(sql, params.length ? params : undefined)
-  return c.json(rows)
+  const rows = await query<any>(sql, params.length ? params : undefined)
+  return c.json(rows.map((row: any) => ({ ...row, moq_tiers: parseMoqTiersFromDb(row.moq_tiers) })))
 })
 app.post('/api/materials', authMiddleware, requirePerm('bom.create'), async c => {
   try {
     await ensureMaterialExtraColumns()
     const b = await c.req.json()
     if (!b.material_code || !b.material_name) return c.json({ error: 'material_code and material_name required' }, 400)
+    const moqTiers = normalizeMoqTiers(b.moq_tiers)
+    const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
     const r = await execute(
-      'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,color,leadtime_days,moq,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,color,leadtime_days,moq,moq_tiers,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [
         b.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
         b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
-        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, b.moq ? Number(b.moq) : null, b.remark || '', now8(),
+        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', now8(),
       ]
     )
     return c.json({ id: r.insertId, ...b }, 201)
@@ -838,12 +841,14 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
     const b = await c.req.json()
     const existing = await queryOne<any>('SELECT material_code FROM materials WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
+    const moqTiers = normalizeMoqTiers(b.moq_tiers)
+    const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
     await execute(
-      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,moq=?,remark=? WHERE id=?',
+      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
       [
         existing.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
         b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
-        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, b.moq ? Number(b.moq) : null, b.remark || '', id,
+        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
       ]
     )
     return c.json({ ok: true })
