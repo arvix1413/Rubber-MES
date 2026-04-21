@@ -35,6 +35,16 @@ jobs:
           build-args: |
             NEXT_PUBLIC_API_URL=http://43.160.199.226:10102
 
+      - name: Upload Rubber Compose File
+        uses: appleboy/scp-action@v0.1.7
+        with:
+          host: ${{ secrets.SERVER_HOST }}
+          username: ${{ secrets.SERVER_USER }}
+          password: ${{ secrets.SERVER_PASSWORD }}
+          port: ${{ secrets.SERVER_PORT }}
+          source: "docker-compose.yml"
+          target: "/opt/rubber/"
+
       - name: Deploy Rubber to Server via SSH
         uses: appleboy/ssh-action@v1
         with:
@@ -42,6 +52,4 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT }}
-          script: |
-            sed -i "s/3306:3306/10103:3306/g" /opt/rubber/docker-compose.yml
-            /opt/rubber/deploy.sh
+          script: /opt/rubber/deploy.sh

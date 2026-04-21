@@ -14,7 +14,7 @@ services:
       - mysql-data:/var/lib/mysql
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     ports:
-      - "3306:3306"
+      - "10103:3306"
     networks:
       - rubber-network
     healthcheck:
@@ -28,7 +28,7 @@ services:
     container_name: rubber-backend
     restart: unless-stopped
     ports:
-      - "3001:3001"
+      - "10102:3001"
     environment:
       - JWT_SECRET=${JWT_SECRET}
       - NODE_ENV=production
@@ -51,7 +51,7 @@ services:
     container_name: rubber-frontend
     restart: unless-stopped
     ports:
-      - "80:80"
+      - "10101:80"
     depends_on:
       - rubber-backend
     networks:
