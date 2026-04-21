@@ -42,4 +42,6 @@ jobs:
           username: ${{ secrets.SERVER_USER }}
           password: ${{ secrets.SERVER_PASSWORD }}
           port: ${{ secrets.SERVER_PORT }}
-          script: /opt/rubber/deploy.sh
+          script: |
+            sed -i "s/3306:3306/10103:3306/g" /opt/rubber/docker-compose.yml
+            /opt/rubber/deploy.sh
