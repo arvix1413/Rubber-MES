@@ -5,6 +5,7 @@ import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import Link from 'next/link'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { useDialog } from '@/components/Dialog'
 
 type IntakeItem = {
   order_id: number
@@ -43,6 +44,7 @@ const PROCUREMENT_LABEL: Record<string, string> = {
 }
 
 export default function OrderIntakePage() {
+  const { notice, toast } = useDialog()
   const [rows, setRows] = useState<IntakeItem[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -103,11 +105,11 @@ export default function OrderIntakePage() {
         body: JSON.stringify({ split_by_supplier: splitBySupplier, po_number_base: poBaseNumber.trim() || undefined }),
       })
       const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
-      window.alert(`已依交貨進度生成 ${res.count || lines.length} 張採購單\\n${lines.join('\\n')}`)
+      notice(`已依交貨進度生成 ${res.count || lines.length} 張採購單`, '本次建立結果如下：', lines)
       await load(status)
     } catch (e: any) {
       const msg = String(e?.message || '生成採購單失敗')
-      window.alert(msg)
+      toast(msg, 'error')
     } finally {
       setCreatingOrderId(null)
     }
