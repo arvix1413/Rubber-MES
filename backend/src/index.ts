@@ -1369,14 +1369,15 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
     const duplicated = await queryOne<any>('SELECT id FROM customer_orders WHERE po_number=? AND deleted_at IS NULL', [b.po_number])
     if (duplicated) return c.json({ error: `訂單編號「${b.po_number}」已存在，請使用不同編號` }, 409)
     const cust = await queryOne<any>('SELECT customer_name, payment_terms FROM customers WHERE id=? AND deleted_at IS NULL', [b.customer_id])
+    const customerName = cust?.customer_name || b.customer_name || ''
     // No tax for customer orders
     const subtotal = (b.items||[]).reduce((s: number, i: any) => s + (i.qty||0) * (i.unit_price||0), 0)
     const taxRate = 0
     const taxAmount = 0
     const totalAmount = subtotal
     const firstItemRta = (b.items || []).find((i: any) => i?.rta_date)?.rta_date || null
-    const r = await execute('INSERT INTO customer_orders (po_date,po_number,customer_id,status,remark,tax_rate,tax_amount,total_amount,currency,delivery_date,delivery_address,person_in_charge,payment_terms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-      [b.po_date||null, b.po_number, b.customer_id, b.status||'pending', b.remark||'',
+    const r = await execute('INSERT INTO customer_orders (po_date,po_number,customer_id,customer_name,status,remark,tax_rate,tax_amount,total_amount,currency,delivery_date,delivery_address,person_in_charge,payment_terms,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [b.po_date||null, b.po_number, b.customer_id, customerName, b.status||'pending', b.remark||'',
        taxRate, taxAmount, totalAmount, b.currency||'VND',
        b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'',
        now8()])
@@ -1394,7 +1395,7 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
     const dnNum = `DN${Date.now()}`
     const dnR = await execute(
       'INSERT INTO delivery_notes (dn_number,customer_id,customer_name,customer_order_id,delivery_date,status,remark,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-      [dnNum, b.customer_id, cust?.customer_name||'', orderId, b.po_date||null, 'draft', b.remark||'', c.get('user').userId, now8()]
+      [dnNum, b.customer_id, customerName, orderId, b.po_date||null, 'draft', b.remark||'', c.get('user').userId, now8()]
     )
     const dnId = dnR.insertId
     if (b.items?.length) {
@@ -1431,13 +1432,17 @@ app.put('/api/customer-orders/:id', authMiddleware, requirePerm('customer_order.
     const existing = await queryOne<any>('SELECT status, po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
     if (existing.status === 'completed') return c.json({ error: '已完成的訂單不能修改' }, 400)
+    const cust = b.customer_id
+      ? await queryOne<any>('SELECT customer_name, payment_terms FROM customers WHERE id=? AND deleted_at IS NULL', [b.customer_id])
+      : null
+    const customerName = cust?.customer_name || b.customer_name || ''
     const subtotal = (b.items||[]).reduce((s: number, i: any) => s + (i.qty||0) * (i.unit_price||0), 0)
     const taxRate = 0
     const taxAmount = 0
     const totalAmount = subtotal
     const firstItemRta = (b.items || []).find((i: any) => i?.rta_date)?.rta_date || null
-    await execute('UPDATE customer_orders SET po_date=?,po_number=?,customer_id=?,remark=?,tax_rate=?,tax_amount=?,total_amount=?,currency=?,delivery_date=?,delivery_address=?,person_in_charge=?,payment_terms=? WHERE id=?',
-      [b.po_date||null, existing.po_number, b.customer_id, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||'', id])
+    await execute('UPDATE customer_orders SET po_date=?,po_number=?,customer_id=?,customer_name=?,remark=?,tax_rate=?,tax_amount=?,total_amount=?,currency=?,delivery_date=?,delivery_address=?,person_in_charge=?,payment_terms=? WHERE id=?',
+      [b.po_date||null, existing.po_number, b.customer_id, customerName, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'', id])
     // Replace items
     await execute('DELETE FROM customer_order_items WHERE order_id=?', [id])
     if (b.items?.length) {
