@@ -11,10 +11,10 @@ import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 import { formatDateYMD } from '@/lib/datetime'
 
-type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; bom_id?:number }
+type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; material_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
 type Supplier = { id: number; name: string; currency: string; supplier_code: string }
-type BOM = { id: number; product_sku: string; product_name: string; spec: string; unit: string; supplier_price: number; company_price: number; currency: string; image_url?: string; material_name?: string; supplier_id?: number; moq_tiers?: MoqTier[] }
+type Material = { id: number; material_code: string; material_name: string; spec: string; unit: string; supplier_price: number; currency: string; image_url?: string; supplier_id?: number; moq_tiers?: MoqTier[] }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:     { label:'草稿',   badge:'badge-gray'   },
@@ -40,7 +40,7 @@ export default function PoPage() {
 
   const [pos, setPos] = useState<Po[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
-  const [boms, setBoms] = useState<BOM[]>([])
+  const [materials, setMaterials] = useState<Material[]>([])
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, PoItem[]>>({})
   const [creating, setCreating] = useState(false)
@@ -57,7 +57,7 @@ export default function PoPage() {
   useEffect(() => {
     load()
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(() => {})
-    apiFetch<BOM[]>('/api/bom').then(setBoms).catch(() => {})
+    apiFetch<Material[]>('/api/materials').then(setMaterials).catch(() => {})
   }, [])
 
   const onSelectSupplier = async (supplierId: string) => {
@@ -65,20 +65,19 @@ export default function PoPage() {
     setForm(p => ({ ...p, supplier_id: supplierId, supplier_name: sup?.name || '', currency: sup?.currency || 'VND', items: [emptyItem()] }))
   }
 
-  // Get filtered BOMs based on selected supplier
-  const getFilteredBoms = () => {
-    if (!form.supplier_id) return boms
-    return boms.filter(b => !b.supplier_id || String(b.supplier_id) === form.supplier_id)
+  const getFilteredMaterials = () => {
+    if (!form.supplier_id) return materials
+    return materials.filter(m => !m.supplier_id || String(m.supplier_id) === form.supplier_id)
   }
 
-  const selectBOM = (i: number, bomId: string) => {
-    const bom = getFilteredBoms().find(b => String(b.id) === bomId)
-    if (!bom) {
+  const selectMaterial = (i: number, materialId: string) => {
+    const material = getFilteredMaterials().find(m => String(m.id) === materialId)
+    if (!material) {
       setForm(p => ({
         ...p,
         items: p.items.map((item, idx) => idx !== i ? item : {
           ...item,
-          bom_id: undefined,
+          material_id: undefined,
           material_code: '',
           material_name: '',
           spec: '',
@@ -96,15 +95,15 @@ export default function PoPage() {
       items: p.items.map((item, idx) => idx !== i ? item : {
         ...(item || {}),
         ...item,
-        bom_id: Number(bomId),
-        material_code: bom.product_sku,
-        material_name: bom.product_name,
-        spec: bom.spec || '',
-        unit: bom.unit || 'PCS',
-        unit_price: resolveTierPrice(bom.moq_tiers, item.quantity || 0, bom.supplier_price || 0),
-        currency: bom.currency || form.currency,
-        image_url: bom.image_url || '',
-        total_price: (item.quantity || 0) * resolveTierPrice(bom.moq_tiers, item.quantity || 0, bom.supplier_price || 0),
+        material_id: Number(materialId),
+        material_code: material.material_code,
+        material_name: material.material_name,
+        spec: material.spec || '',
+        unit: material.unit || 'PCS',
+        unit_price: resolveTierPrice(material.moq_tiers, item.quantity || 0, material.supplier_price || 0),
+        currency: material.currency || form.currency,
+        image_url: material.image_url || '',
+        total_price: (item.quantity || 0) * resolveTierPrice(material.moq_tiers, item.quantity || 0, material.supplier_price || 0),
       })
     }))
   }
@@ -178,9 +177,9 @@ export default function PoPage() {
       items: p.items.map((item, idx) => {
         if (idx !== i) return item
         const u = { ...item, [field]: val }
-        if (field === 'quantity' && u.bom_id) {
-          const bom = boms.find((b) => b.id === u.bom_id)
-          if (bom) u.unit_price = resolveTierPrice(bom.moq_tiers, Number(u.quantity) || 0, bom.supplier_price || 0)
+        if (field === 'quantity' && u.material_id) {
+          const material = materials.find((m) => m.id === u.material_id)
+          if (material) u.unit_price = resolveTierPrice(material.moq_tiers, Number(u.quantity) || 0, material.supplier_price || 0)
         }
         if (field === 'quantity' || field === 'unit_price') u.total_price = (Number(u.quantity) || 0) * (Number(u.unit_price) || 0)
         return u
@@ -190,8 +189,8 @@ export default function PoPage() {
 
   const save = async () => {
     if (!form.supplier_id) { toast('請選擇供應商', 'error'); return }
-    const validItems = form.items.filter(i => i.bom_id)
-    if (!validItems.length) { toast('請至少選擇一個 BOM 品項', 'error'); return }
+    const validItems = form.items.filter(i => i.material_id)
+    if (!validItems.length) { toast('請至少選擇一個材料品項', 'error'); return }
     try {
       if (editingId) {
         await apiFetch(`/api/po/${editingId}`, { method: 'PUT', body: JSON.stringify({ ...form, items: validItems }) })
@@ -222,8 +221,7 @@ export default function PoPage() {
       tax_rate: Math.min(25, Math.max(1, Number((data as any).tax_rate ?? (po as any).tax_rate ?? 8))),
       remark: po.remark || '',
       items: (data.items || []).map(i => {
-        // Match BOM by product_sku = material_code
-        const matchedBom = boms.find(b => b.product_sku === i.material_code)
+        const matchedMaterial = materials.find(m => m.material_code === i.material_code)
         return {
           material_code: i.material_code,
           material_name: i.material_name,
@@ -235,8 +233,8 @@ export default function PoPage() {
           currency: i.currency,
           remark: i.remark,
           po_ref: i.po_ref,
-          image_url: i.image_url || matchedBom?.image_url || '',
-          bom_id: matchedBom ? matchedBom.id : undefined,
+          image_url: i.image_url || matchedMaterial?.image_url || '',
+          material_id: matchedMaterial ? matchedMaterial.id : undefined,
         }
       })
     })
@@ -316,7 +314,7 @@ export default function PoPage() {
           <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200">
             <table className="w-full text-xs" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
-                {['Item','PO NO','MTL NO（BOM）','Products','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
+                {['Item','PO NO','MTL NO（Materials）','Products','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
                   <th key={h} className="px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">{h}</th>
                 ))}
               </tr></thead>
@@ -333,17 +331,16 @@ export default function PoPage() {
                     <td className="p-1"><input className={inp} style={{width:130}} value={item.po_ref} placeholder="PO編號" onChange={e=>updateItem(i,'po_ref',e.target.value)} /></td>
                     <td className="p-1 min-w-[280px]">
                       <SearchableSelect
-                        options={getFilteredBoms()}
-                        value={item.bom_id ? String(item.bom_id) : ''}
-                        onChange={val => selectBOM(i, val)}
-                        placeholder="-- 選擇 BOM --"
+                        options={getFilteredMaterials()}
+                        value={item.material_id ? String(item.material_id) : ''}
+                        onChange={val => selectMaterial(i, val)}
+                        placeholder="-- 選擇材料 --"
                         disabled={!form.supplier_id}
-                        renderOption={b => `${b.product_sku} — ${b.product_name}${b.spec ? ` (${b.spec})` : ''}`}
-                        filterFn={(b, search) => 
-                          b.product_sku.toLowerCase().includes(search) ||
-                          b.product_name.toLowerCase().includes(search) ||
-                          (b.spec||'').toLowerCase().includes(search) ||
-                          (b.material_name||'').toLowerCase().includes(search)
+                        renderOption={m => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
+                        filterFn={(m, search) => 
+                          m.material_code.toLowerCase().includes(search) ||
+                          m.material_name.toLowerCase().includes(search) ||
+                          (m.spec || '').toLowerCase().includes(search)
                         }
                       />
                     </td>
