@@ -1,8 +1,10 @@
 #!/bin/bash
 # Verify Rubber MES deployment and database connectivity
 
-SERVER="ubuntu@43.133.56.234"
-SERVER_PASS="Www.950pp.com"
+SERVER_HOST="${SERVER_HOST:-43.160.199.226}"
+SERVER_USER="${SERVER_USER:-ubuntu}"
+SERVER="${SERVER_USER}@${SERVER_HOST}"
+SERVER_PASS="${SERVER_PASS:-Www.950pp.com}"
 
 echo "🔍 Verifying Rubber MES Deployment..."
 echo ""
@@ -39,7 +41,7 @@ sshpass -p "$SERVER_PASS" ssh -o StrictHostKeyChecking=no $SERVER "docker ps --f
 
 echo ""
 echo "4. Testing frontend..."
-FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://43.133.56.234:10101)
+FRONTEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${SERVER_HOST}:10101)
 if [ "$FRONTEND_STATUS" = "200" ]; then
   echo "✅ Frontend is accessible (HTTP $FRONTEND_STATUS)"
 else
@@ -48,7 +50,7 @@ fi
 
 echo ""
 echo "5. Testing backend..."
-BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://43.133.56.234:10102/)
+BACKEND_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://${SERVER_HOST}:10102/)
 if [ "$BACKEND_STATUS" = "200" ] || [ "$BACKEND_STATUS" = "401" ]; then
   echo "✅ Backend is running (HTTP $BACKEND_STATUS)"
 else
@@ -57,7 +59,7 @@ fi
 
 echo ""
 echo "6. Testing MySQL port..."
-if nc -vz -w 5 43.133.56.234 10103 >/dev/null 2>&1; then
+if nc -vz -w 5 ${SERVER_HOST} 10103 >/dev/null 2>&1; then
   echo "✅ MySQL port 10103 is reachable"
 else
   echo "❌ MySQL port 10103 is not reachable"
@@ -65,4 +67,4 @@ fi
 
 echo ""
 echo "✅ Verification complete!"
-echo "Visit: http://43.133.56.234:10101"
+echo "Visit: http://${SERVER_HOST}:10101"

@@ -33,7 +33,7 @@ jobs:
           push: true
           tags: ${{ secrets.DOCKER_HUB_USER }}/rubber-frontend:latest
           build-args: |
-            NEXT_PUBLIC_API_URL=http://43.133.56.234:10102
+            NEXT_PUBLIC_API_URL=http://43.160.199.226:10102
 
       - name: Deploy Rubber to Server via SSH
         uses: appleboy/ssh-action@v1
