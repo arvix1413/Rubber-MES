@@ -2,12 +2,19 @@ name: Build & Deploy Rubber MES
 
 on:
   push:
-    branches: [main]
+    branches: [stg, prd]
   workflow_dispatch:
 
 jobs:
   build-and-deploy-rubber:
     runs-on: ubuntu-latest
+    env:
+      DEPLOY_ENV: ${{ github.ref_name }}
+      TARGET_HOST: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_HOST || secrets.RUBBER_STG_SERVER_HOST }}
+      TARGET_PORT: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_PORT || secrets.RUBBER_STG_SERVER_PORT }}
+      TARGET_USER: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_USER || secrets.RUBBER_STG_SERVER_USER }}
+      TARGET_PASSWORD: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_PASSWORD || secrets.RUBBER_STG_SERVER_PASSWORD }}
+      API_URL: ${{ github.ref_name == 'prd' && 'http://43.160.199.226:10102' || 'http://43.133.56.234:10102' }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -23,7 +30,7 @@ jobs:
         with:
           context: ./backend
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USER }}/rubber-backend:latest
+          tags: ${{ secrets.DOCKER_HUB_USER }}/rubber-backend:${{ env.DEPLOY_ENV }}
 
       - name: Build & Push Rubber Frontend
         uses: docker/build-push-action@v5
@@ -31,25 +38,25 @@ jobs:
           context: ./frontend
           file: ./frontend/Dockerfile.rubber
           push: true
-          tags: ${{ secrets.DOCKER_HUB_USER }}/rubber-frontend:latest
+          tags: ${{ secrets.DOCKER_HUB_USER }}/rubber-frontend:${{ env.DEPLOY_ENV }}
           build-args: |
-            NEXT_PUBLIC_API_URL=http://43.160.199.226:10102
+            NEXT_PUBLIC_API_URL=${{ env.API_URL }}
 
       - name: Upload Rubber Compose File
         uses: appleboy/scp-action@v0.1.7
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT }}
+          host: ${{ env.TARGET_HOST }}
+          username: ${{ env.TARGET_USER }}
+          password: ${{ env.TARGET_PASSWORD }}
+          port: ${{ env.TARGET_PORT }}
           source: "docker-compose.yml"
           target: "/opt/rubber/"
 
       - name: Deploy Rubber to Server via SSH
         uses: appleboy/ssh-action@v1
         with:
-          host: ${{ secrets.SERVER_HOST }}
-          username: ${{ secrets.SERVER_USER }}
-          password: ${{ secrets.SERVER_PASSWORD }}
-          port: ${{ secrets.SERVER_PORT }}
-          script: /opt/rubber/deploy.sh
+          host: ${{ env.TARGET_HOST }}
+          username: ${{ env.TARGET_USER }}
+          password: ${{ env.TARGET_PASSWORD }}
+          port: ${{ env.TARGET_PORT }}
+          script: IMAGE_TAG=${{ env.DEPLOY_ENV }} /opt/rubber/deploy.sh
