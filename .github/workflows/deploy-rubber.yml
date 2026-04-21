@@ -10,10 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       DEPLOY_ENV: ${{ github.ref_name }}
-      TARGET_HOST: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_HOST || secrets.RUBBER_STG_SERVER_HOST }}
-      TARGET_PORT: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_PORT || secrets.RUBBER_STG_SERVER_PORT }}
-      TARGET_USER: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_USER || secrets.RUBBER_STG_SERVER_USER }}
-      TARGET_PASSWORD: ${{ github.ref_name == 'prd' && secrets.RUBBER_PRD_SERVER_PASSWORD || secrets.RUBBER_STG_SERVER_PASSWORD }}
+      TARGET_HOST: ${{ github.ref_name == 'prd' && (secrets.RUBBER_PRD_SERVER_HOST || secrets.SERVER_HOST) || (secrets.RUBBER_STG_SERVER_HOST || secrets.SERVER_HOST) }}
+      TARGET_PORT: ${{ github.ref_name == 'prd' && (secrets.RUBBER_PRD_SERVER_PORT || secrets.SERVER_PORT) || (secrets.RUBBER_STG_SERVER_PORT || secrets.SERVER_PORT) }}
+      TARGET_USER: ${{ github.ref_name == 'prd' && (secrets.RUBBER_PRD_SERVER_USER || secrets.SERVER_USER) || (secrets.RUBBER_STG_SERVER_USER || secrets.SERVER_USER) }}
+      TARGET_PASSWORD: ${{ github.ref_name == 'prd' && (secrets.RUBBER_PRD_SERVER_PASSWORD || secrets.SERVER_PASSWORD) || (secrets.RUBBER_STG_SERVER_PASSWORD || secrets.SERVER_PASSWORD) }}
       API_URL: ${{ github.ref_name == 'prd' && 'http://43.160.199.226:10102' || 'http://43.133.56.234:10102' }}
     steps:
       - name: Checkout
