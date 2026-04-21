@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS bom (
 CREATE TABLE IF NOT EXISTS bom_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   bom_id INT NOT NULL,
+  material_id INT NULL,
   material_code VARCHAR(100) NOT NULL,
   material_name VARCHAR(255) NOT NULL,
   spec TEXT,
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS bom_items (
   company_price DECIMAL(15,2) DEFAULT 0,
   currency VARCHAR(20) DEFAULT 'VND',
   remark TEXT,
+  INDEX idx_bom_items_material_id (material_id),
   FOREIGN KEY (bom_id) REFERENCES bom(id) ON DELETE CASCADE
 );
 
@@ -209,6 +211,7 @@ CREATE TABLE IF NOT EXISTS quotations (
 CREATE TABLE IF NOT EXISTS quotation_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   quotation_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
@@ -219,6 +222,7 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   remark TEXT,
   moq DECIMAL(15,2) DEFAULT NULL,
   image_url TEXT DEFAULT NULL,
+  INDEX idx_quotation_items_material_id (material_id),
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
 );
 
@@ -238,6 +242,7 @@ CREATE TABLE IF NOT EXISTS delivery_notes (
 CREATE TABLE IF NOT EXISTS delivery_note_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   dn_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
@@ -246,6 +251,7 @@ CREATE TABLE IF NOT EXISTS delivery_note_items (
   remark TEXT,
   po_ref VARCHAR(100) COMMENT '订单编号',
   thickness DECIMAL(10,2) COMMENT '厚度',
+  INDEX idx_delivery_note_items_material_id (material_id),
   FOREIGN KEY (dn_id) REFERENCES delivery_notes(id) ON DELETE CASCADE
 );
 
@@ -265,6 +271,7 @@ CREATE TABLE IF NOT EXISTS delivery_sheets (
 CREATE TABLE IF NOT EXISTS delivery_sheet_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   ds_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
@@ -273,6 +280,7 @@ CREATE TABLE IF NOT EXISTS delivery_sheet_items (
   remark TEXT,
   po_ref VARCHAR(100) COMMENT '訂單編號',
   thickness DECIMAL(10,2) COMMENT '厚度',
+  INDEX idx_delivery_sheet_items_material_id (material_id),
   FOREIGN KEY (ds_id) REFERENCES delivery_sheets(id) ON DELETE CASCADE
 );
 
