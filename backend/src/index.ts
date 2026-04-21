@@ -27,6 +27,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureBomExtraColumns()
   await ensureBomItemsExtraColumns()
   await ensurePoItemReceivedQtyColumn()
+  await ensurePoItemMaterialIdColumn()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
@@ -438,6 +439,28 @@ const ensurePoItemReceivedQtyColumn = async () => {
     })
   }
   await ensurePoItemReceivedQtyColumnPromise
+}
+
+let ensurePoItemMaterialIdColumnPromise: Promise<void> | null = null
+const ensurePoItemMaterialIdColumn = async () => {
+  if (!ensurePoItemMaterialIdColumnPromise) {
+    ensurePoItemMaterialIdColumnPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column') && !msg.includes('duplicate key name') && !msg.includes('duplicate index')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE po_items ADD COLUMN material_id INT NULL AFTER po_id')
+      await alterSafe('ALTER TABLE po_items ADD INDEX idx_po_items_material_id (material_id)')
+    })().catch((e) => {
+      ensurePoItemMaterialIdColumnPromise = null
+      throw e
+    })
+  }
+  await ensurePoItemMaterialIdColumnPromise
 }
 
 let ensureInvoiceTablesPromise: Promise<void> | null = null
@@ -1143,11 +1166,12 @@ app.get('/api/po/:id', authMiddleware, async c => {
   if (!po) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT pi.*,
-           COALESCE(pi.material_name, b.product_name, '') as material_name,
-           COALESCE(pi.spec, b.spec, '') as spec,
-           COALESCE(pi.unit, b.unit, 'PCS') as unit,
-           b.image_url
+           COALESCE(pi.material_name, m.material_name, b.product_name, '') as material_name,
+           COALESCE(pi.spec, m.spec, b.spec, '') as spec,
+           COALESCE(pi.unit, m.unit, b.unit, 'PCS') as unit,
+           COALESCE(m.image_url, b.image_url, '') as image_url
     FROM po_items pi 
+    LEFT JOIN materials m ON pi.material_id = m.id
     LEFT JOIN bom b ON pi.material_code = b.product_sku
     WHERE pi.po_id=?`, [c.req.param('id')])
   return c.json({ ...po, items })
@@ -1169,8 +1193,8 @@ app.post('/api/po', authMiddleware, requirePerm('po.create'), async c => {
     if (b.items?.length) {
       for (const item of b.items) {
         const tp = (item.quantity||0)*(item.unit_price||0)
-        await execute('INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-          [poId,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity,item.unit_price||0,tp,item.currency||'VND',item.remark||'',item.po_ref||'',item.thickness||null])
+        await execute('INSERT INTO po_items (po_id,material_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [poId,item.material_id||null,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity,item.unit_price||0,tp,item.currency||'VND',item.remark||'',item.po_ref||'',item.thickness||null])
       }
     }
     await audit(u, 'CREATE', '採購單', poId, poNum)
@@ -1192,8 +1216,8 @@ app.put('/api/po/:id', authMiddleware, requirePerm('po.create'), async c => {
     if (b.items?.length) {
       for (const item of b.items) {
         const tp = (item.quantity||0)*(item.unit_price||0)
-        await execute('INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-          [id,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity,item.unit_price||0,tp,item.currency||'VND',item.remark||'',item.po_ref||'',item.thickness||null])
+        await execute('INSERT INTO po_items (po_id,material_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [id,item.material_id||null,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity,item.unit_price||0,tp,item.currency||'VND',item.remark||'',item.po_ref||'',item.thickness||null])
       }
     }
     await audit(u, 'UPDATE', '採購單', id, b.supplier_name)
@@ -2227,8 +2251,8 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       for (const item of items) {
         const totalPrice = toMoney(item.quantity * item.unit_price)
         await execute(
-          'INSERT INTO po_items (po_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?)',
-          [poId, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
+          'INSERT INTO po_items (po_id,material_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+          [poId, item.material_id || null, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
         )
       }
       await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${order.po_number}`)

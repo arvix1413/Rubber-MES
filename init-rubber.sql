@@ -120,6 +120,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 CREATE TABLE IF NOT EXISTS po_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_id INT NOT NULL,
+  material_id INT NULL,
   material_code VARCHAR(100) NOT NULL,
   material_name VARCHAR(255) NOT NULL,
   spec TEXT,
@@ -130,6 +131,7 @@ CREATE TABLE IF NOT EXISTS po_items (
   total_price DECIMAL(15,2) DEFAULT 0,
   currency VARCHAR(20) DEFAULT 'VND',
   remark TEXT,
+  INDEX idx_po_items_material_id (material_id),
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
 );
 
