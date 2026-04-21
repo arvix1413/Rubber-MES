@@ -88,7 +88,7 @@ export default function OrderIntakePage() {
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `order_intake_${todayYMD()}.csv`
+      a.download = `delivery_progress_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
     } catch {}
@@ -103,7 +103,7 @@ export default function OrderIntakePage() {
         body: JSON.stringify({ split_by_supplier: splitBySupplier, po_number_base: poBaseNumber.trim() || undefined }),
       })
       const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
-      window.alert(`已生成 ${res.count || lines.length} 張採購單\\n${lines.join('\\n')}`)
+      window.alert(`已依交貨進度生成 ${res.count || lines.length} 張採購單\\n${lines.join('\\n')}`)
       await load(status)
     } catch (e: any) {
       const msg = String(e?.message || '生成採購單失敗')
@@ -117,8 +117,8 @@ export default function OrderIntakePage() {
     <div>
       <div className="flex items-center justify-between mb-6">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">訂單收集池</h1>
-          <p className="text-xs text-slate-500 mt-1">彙總客戶訂單到出貨與核對的在製進度。</p>
+          <h1 className="text-xl font-bold text-slate-800">交貨進度</h1>
+          <p className="text-xs text-slate-500 mt-1">依客戶通知進度彙總需求，並驅動採購與出貨安排。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
@@ -143,7 +143,7 @@ export default function OrderIntakePage() {
           </select>
           <input
             className="rubber-input"
-            placeholder="採購單基礎編號(選填)"
+            placeholder="採購單基礎編號（選填）"
             value={poBaseNumber}
             onChange={(e) => setPoBaseNumber(e.target.value)}
           />

@@ -2218,7 +2218,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       const subTotal = items.reduce((s: number, it: any) => s + toMoney(it.quantity * it.unit_price), 0)
       const taxRate = 8
       const total = toMoney(subTotal * (1 + taxRate / 100))
-      const remark = `由訂單收集自動生成，來源客戶訂單 ${order.po_number}`
+      const remark = `由交貨進度自動生成，來源客戶訂單 ${order.po_number}`
       const r = await execute(
         'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
         [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
@@ -3196,25 +3196,6 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('deliver
     if (!row) return c.json({ error: 'Not found' }, 404)
     if (row.current_status === 'shipped') return c.json({ error: '此出貨單已出貨，不可重複操作' }, 400)
     if (status === 'shipped' && row.current_status !== 'confirmed') return c.json({ error: '出貨前需先確認出貨單' }, 400)
-
-    // When shipped: deduct stock from BOM
-    if (status === 'shipped') {
-      const items = await query<any>('SELECT * FROM delivery_note_items WHERE dn_id=?', [id])
-      for (const item of items) {
-        if (!item.material_code) continue
-        const qty = parseFloat(item.qty) || 0
-        const bom = await queryOne<any>('SELECT id, current_stock, product_name FROM bom WHERE product_sku=?', [item.material_code])
-        const before = parseFloat(bom?.current_stock) || 0
-        const after = Math.max(0, before - qty)
-        if (bom) {
-          await execute('UPDATE bom SET current_stock=? WHERE product_sku=?', [after, item.material_code])
-        }
-        await execute(
-          'INSERT INTO stock_ledger (material_code,material_name,transaction_type,ref_type,ref_id,ref_number,qty_change,qty_before,qty_after,unit,remark,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          [item.material_code, item.item_name || bom?.product_name || '', 'DN_OUT', 'delivery_note', id, row.dn_number, -qty, before, after, item.unit || 'PCS', `出貨 ${row.dn_number}`, u.userId, now8()]
-        )
-      }
-    }
 
     await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
 

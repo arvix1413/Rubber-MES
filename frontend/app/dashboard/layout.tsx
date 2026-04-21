@@ -18,14 +18,13 @@ const NAV: NavEntry[] = [
     icon: <IconFlow />,
     defaultOpen: true,
     children: [
-      { href: '/dashboard/order-intake', label: '訂單收集', icon: <IconList /> },
       { href: '/dashboard/customer-orders', label: '客戶訂單', icon: <IconDoc /> },
+      { href: '/dashboard/order-intake', label: '交貨進度', icon: <IconList /> },
       { href: '/dashboard/po', label: '採購下單', icon: <IconCart /> },
       { href: '/dashboard/delivery-notes', label: '出貨單', icon: <IconTruck /> },
       { href: '/dashboard/shipment-reconciliation', label: '數量核對', icon: <IconCheck /> },
       { href: '/dashboard/invoices', label: '發票管理', icon: <IconInvoice /> },
       { href: '/dashboard/payables', label: '供應商付款', icon: <IconPay /> },
-      { href: '/dashboard/inventory', label: '庫存扣減', icon: <IconWarehouse /> },
     ],
   },
   {
@@ -57,7 +56,6 @@ const BASE_DASHBOARD_ROUTES = new Set<string>([
   '/dashboard/shipment-reconciliation',
   '/dashboard/invoices',
   '/dashboard/payables',
-  '/dashboard/inventory',
   '/dashboard/materials',
   '/dashboard/bom',
   '/dashboard/customers',
@@ -79,7 +77,6 @@ function IconTruck() { return <svg viewBox="0 0 24 24" fill="none" stroke="curre
 function IconCheck() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><circle cx="12" cy="12" r="9" /><path d="M8 12l2.6 2.6L16 9.5" /></svg> }
 function IconInvoice() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M7 3h10a2 2 0 0 1 2 2v14l-2-1-2 1-2-1-2 1-2-1-2 1V5a2 2 0 0 1 2-2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /></svg> }
 function IconPay() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M12 2v20" /><path d="M7 8c0-2 1.8-3 5-3s5 1 5 3-1.5 2.8-5 3-5 1.2-5 3 1.8 3 5 3 5-1 5-3" /></svg> }
-function IconWarehouse() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35z" /><path d="M6 18h12" /><path d="M6 14h12" /></svg> }
 function IconBox() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg> }
 function IconLayers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><polygon points="12 2 22 7 12 12 2 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg> }
 function IconUsers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> }
@@ -117,6 +114,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     }
     setUser(getUser())
   }, [router])
+
+  useEffect(() => {
+    const syncUser = () => setUser(getUser())
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'rubber_user') syncUser()
+    }
+    window.addEventListener('rubber:user-updated', syncUser as EventListener)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('rubber:user-updated', syncUser as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
 
   useEffect(() => {
     if (!user) return
