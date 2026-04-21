@@ -26,8 +26,10 @@ async function uiLogin(page) {
   await page.goto(`${WEB}/login`, { waitUntil: 'domcontentloaded' })
   await page.fill('input[type="email"]', 'admin@rubber.local')
   await page.fill('input[type="password"]', 'admin123')
-  await page.click('button:has-text("登入")')
-  await page.waitForURL('**/dashboard**', { timeout: 20000 })
+  await Promise.all([
+    page.waitForURL('**/dashboard**', { timeout: 20000 }),
+    page.locator('button[type="submit"]').first().click(),
+  ])
 }
 
 async function uiSelectRow(page, path, marker) {
@@ -272,4 +274,3 @@ main().catch((e) => {
   console.error(e)
   process.exit(1)
 })
-
