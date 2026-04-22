@@ -523,7 +523,7 @@ export default function BomPage() {
                             const matchedMaterial =
                               materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
                               materials.find((m) => m.material_name === detail.material_name)
-                            setHeaderMaterialCode(matchedMaterial?.material_code || '')
+                            setHeaderMaterialCode(matchedMaterial ? String(matchedMaterial.id) : '')
                             setEditing({
                               ...detail,
                               unit: normalizeUnit(detail.unit),
