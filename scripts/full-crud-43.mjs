@@ -1,9 +1,10 @@
 import { chromium } from 'playwright'
 import fs from 'fs'
 
-const WEB = process.env.PW43_WEB || 'http://43.133.56.234'
-const API = process.env.PW43_API || 'http://43.133.56.234'
+const WEB = process.env.PW43_WEB || 'http://43.160.199.226'
+const API = process.env.PW43_API || 'http://43.160.199.226'
 const OUT = '/tmp/full-crud-43-report.json'
+const DEPLOY_WAIT_MS = Number(process.env.PW43_DEPLOY_WAIT_MS || 150000)
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
@@ -61,6 +62,11 @@ async function uiDeleteRow(page, path, marker) {
 async function main() {
   const tag = `ALL43${Date.now().toString().slice(-8)}`
   const report = { tag, created: [], updated: [], selected: [], deleted: [], notes: [] }
+
+  if (DEPLOY_WAIT_MS > 0) {
+    console.log(`[deploy-wait] waiting ${DEPLOY_WAIT_MS}ms before full CRUD starts`)
+    await sleep(DEPLOY_WAIT_MS)
+  }
 
   const login = await fetch(`${API}/api/auth/login`, {
     method: 'POST',

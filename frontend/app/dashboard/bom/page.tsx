@@ -214,9 +214,9 @@ export default function BomPage() {
     })
   }
 
-  const applyMaterialToHeader = (code: string) => {
-    setHeaderMaterialCode(code)
-    const m = materials.find((x) => x.material_code === code)
+  const applyMaterialToHeader = (selected: string) => {
+    setHeaderMaterialCode(selected)
+    const m = materials.find((x) => String(x.id) === selected) || materials.find((x) => x.material_code === selected)
     if (!m) return
     setEditing((p) => ({
       ...p,

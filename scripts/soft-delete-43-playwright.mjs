@@ -1,8 +1,8 @@
 import { chromium } from 'playwright'
 import { promises as fs } from 'fs'
 
-const WEB = process.env.PW43_WEB || 'http://43.133.56.234:10101'
-const API = process.env.PW43_API || 'http://43.133.56.234:10102'
+const WEB = process.env.PW43_WEB || 'http://43.160.199.226:10101'
+const API = process.env.PW43_API || 'http://43.160.199.226:10102'
 const ADMIN_EMAIL = process.env.PW43_ADMIN_EMAIL || 'admin@rubber.local'
 const ADMIN_PASSWORD = process.env.PW43_ADMIN_PASSWORD || 'admin123'
 const HEADLESS = process.env.PW43_HEADLESS !== 'false'
@@ -11,6 +11,7 @@ const RETRY = Number(process.env.PW43_API_RETRY || 2)
 const TIMEOUT_MS = Number(process.env.PW43_API_TIMEOUT_MS || 15000)
 const NAV_TIMEOUT_MS = Number(process.env.PW43_NAV_TIMEOUT_MS || 25000)
 const SHOT_DIR = process.env.PW43_SHOT_DIR || '/tmp'
+const DEPLOY_WAIT_MS = Number(process.env.PW43_DEPLOY_WAIT_MS || 150000)
 
 const CREATE_JOBS = [
   {
@@ -239,6 +240,8 @@ function log(message) {
   console.log(`[${ts}] ${message}`)
 }
 
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+
 async function safeJson(res) {
   const text = await res.text()
   try {
@@ -423,6 +426,10 @@ async function main() {
 
   try {
     log(`start soft-delete sweep tag=${tag}`)
+    if (DEPLOY_WAIT_MS > 0) {
+      log(`deploy-wait ${DEPLOY_WAIT_MS}ms before soft-delete sweep`)
+      await sleep(DEPLOY_WAIT_MS)
+    }
     const login = await loginApi()
     const token = login.token
 
