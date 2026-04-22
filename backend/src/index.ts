@@ -18,6 +18,7 @@ app.use('/api/*', cors({
 }))
 
 app.use('/api/*', async (_c, next) => {
+  await ensureDeliveryProgressTable()
   await ensureShipmentReconciliationTables()
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
@@ -28,6 +29,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureBomItemsExtraColumns()
   await ensurePoItemReceivedQtyColumn()
   await ensurePoItemMaterialIdColumn()
+  await ensurePoItemProgressIdColumn()
   await ensureMaterialReferenceColumns()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
@@ -464,6 +466,66 @@ const ensurePoItemMaterialIdColumn = async () => {
   await ensurePoItemMaterialIdColumnPromise
 }
 
+let ensurePoItemProgressIdColumnPromise: Promise<void> | null = null
+const ensurePoItemProgressIdColumn = async () => {
+  if (!ensurePoItemProgressIdColumnPromise) {
+    ensurePoItemProgressIdColumnPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column') && !msg.includes('duplicate key name') && !msg.includes('duplicate index')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE po_items ADD COLUMN progress_id INT NULL AFTER po_id')
+      await alterSafe('ALTER TABLE po_items ADD INDEX idx_po_items_progress_id (progress_id)')
+    })().catch((e) => {
+      ensurePoItemProgressIdColumnPromise = null
+      throw e
+    })
+  }
+  await ensurePoItemProgressIdColumnPromise
+}
+
+let ensureDeliveryProgressTablePromise: Promise<void> | null = null
+const ensureDeliveryProgressTable = async () => {
+  if (!ensureDeliveryProgressTablePromise) {
+    ensureDeliveryProgressTablePromise = (async () => {
+      await execute(`
+        CREATE TABLE IF NOT EXISTS delivery_progress (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          progress_no VARCHAR(100) NOT NULL UNIQUE,
+          customer_id INT NULL,
+          customer_name VARCHAR(255) DEFAULT '',
+          customer_order_id INT NULL,
+          order_item_id INT NULL,
+          order_po_number VARCHAR(100) DEFAULT '',
+          material_code VARCHAR(255) DEFAULT '',
+          material_name VARCHAR(255) DEFAULT '',
+          spec VARCHAR(255) DEFAULT '',
+          unit VARCHAR(50) DEFAULT 'PCS',
+          planned_qty DECIMAL(15,4) NOT NULL DEFAULT 0,
+          due_date DATE NULL,
+          status VARCHAR(50) NOT NULL DEFAULT 'pending',
+          remark TEXT,
+          created_by INT NULL,
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          deleted_at DATETIME NULL,
+          deleted_by INT NULL
+        )
+      `)
+      await addIndexSafe('CREATE INDEX idx_delivery_progress_order_item ON delivery_progress (customer_order_id, order_item_id)')
+      await addIndexSafe('CREATE INDEX idx_delivery_progress_status_created ON delivery_progress (status, created_at)')
+      await addIndexSafe('CREATE INDEX idx_delivery_progress_material ON delivery_progress (material_code)')
+    })().catch((e) => {
+      ensureDeliveryProgressTablePromise = null
+      throw e
+    })
+  }
+  await ensureDeliveryProgressTablePromise
+}
+
 let ensureMaterialReferenceColumnsPromise: Promise<void> | null = null
 const ensureMaterialReferenceColumns = async () => {
   if (!ensureMaterialReferenceColumnsPromise) {
@@ -690,6 +752,7 @@ const SOFT_DELETE_TABLES = [
   'production_orders',
   'stock_adjustments',
   'order_profit_entries',
+  'delivery_progress',
   'shipment_reconciliations',
   'shipment_reconciliation_items',
   'invoice_headers',
@@ -2042,98 +2105,95 @@ app.get('/api/order-intake', authMiddleware, async c => {
     const page = parsePositiveInt(url.searchParams.get('page'), 1, 1000000)
     const pageSize = parsePositiveInt(url.searchParams.get('page_size'), 200, 1000)
     const offset = (page - 1) * pageSize
-
-    const where: string[] = [
-      'co.deleted_at IS NULL',
-      "co.status <> 'cancelled'",
-    ]
+    const where: string[] = ['dp.deleted_at IS NULL']
     const params: any[] = []
 
-    if (customerId) { where.push('co.customer_id=?'); params.push(customerId) }
+    if (customerId) { where.push('dp.customer_id=?'); params.push(customerId) }
     if (search) {
-      where.push('(co.po_number LIKE ? OR c.customer_name LIKE ? OR b.product_sku LIKE ? OR b.product_name LIKE ?)')
+      where.push('(dp.order_po_number LIKE ? OR dp.customer_name LIKE ? OR dp.material_code LIKE ? OR dp.material_name LIKE ? OR dp.progress_no LIKE ?)')
       const term = `%${search}%`
-      params.push(term, term, term, term)
+      params.push(term, term, term, term, term)
     }
     if (status === 'open') {
-      where.push('(COALESCE(ci.arrived_qty, 0) > COALESCE(ci.reconciled_qty, 0) OR COALESCE(ci.arrived_qty, 0) < COALESCE(ci.qty, 0))')
-    } else if (status === 'completed') {
-      where.push('(COALESCE(ci.arrived_qty, 0) >= COALESCE(ci.qty, 0) AND COALESCE(ci.arrived_qty, 0) <= COALESCE(ci.reconciled_qty, 0))')
+      where.push("dp.status IN ('pending','partial')")
+    } else if (status) {
+      where.push('dp.status=?')
+      params.push(status)
     }
 
     const rows = await query<any>(`
       SELECT
-        co.id as order_id,
-        co.po_number,
+        dp.id,
+        dp.progress_no,
+        dp.customer_id,
+        dp.customer_name,
+        dp.customer_order_id as order_id,
+        dp.order_item_id,
+        dp.order_po_number as po_number,
         co.po_date,
-        co.status as order_status,
-        co.customer_id,
-        c.customer_name,
-        ci.id as order_item_id,
-        ci.qty as ordered_qty,
-        ci.arrived_qty as shipped_qty,
+        COALESCE(co.status, '') as order_status,
+        dp.material_code,
+        dp.material_name,
+        dp.spec,
+        dp.unit,
+        COALESCE(dp.planned_qty, 0) as planned_qty,
+        dp.due_date,
+        dp.status,
+        dp.remark,
+        dp.created_at,
+        COALESCE(ci.arrived_qty, 0) as shipped_qty,
         COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
-        COALESCE(ci.settled_qty, 0) as settled_qty,
-        (
-          SELECT COUNT(DISTINCT po.id)
-          FROM purchase_orders po
-          JOIN po_items pi ON pi.po_id = po.id
-          WHERE po.deleted_at IS NULL
-            AND po.status <> 'cancelled'
-            AND pi.po_ref = co.po_number
-        ) as linked_po_count,
-        COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '') as material_code,
-        b.product_name as material_name,
-        COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
-        COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit,
         (
           SELECT COALESCE(SUM(pi.quantity), 0)
-          FROM purchase_orders po
-          JOIN po_items pi ON pi.po_id = po.id
+          FROM po_items pi
+          JOIN purchase_orders po ON po.id = pi.po_id
           WHERE po.deleted_at IS NULL
             AND po.status <> 'cancelled'
-            AND pi.po_ref = co.po_number
-            AND pi.material_code = COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '')
-        ) as purchased_qty
-      FROM customer_order_items ci
-      JOIN customer_orders co ON co.id = ci.order_id
-      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
-      LEFT JOIN bom b ON b.id = ci.bom_id
+            AND pi.progress_id = dp.id
+        ) as purchased_qty,
+        (
+          SELECT COUNT(DISTINCT po.id)
+          FROM po_items pi
+          JOIN purchase_orders po ON po.id = pi.po_id
+          WHERE po.deleted_at IS NULL
+            AND po.status <> 'cancelled'
+            AND pi.progress_id = dp.id
+        ) as linked_po_count
+      FROM delivery_progress dp
+      LEFT JOIN customer_orders co ON co.id = dp.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN customer_order_items ci ON ci.id = dp.order_item_id
       WHERE ${where.join(' AND ')}
-      ORDER BY co.created_at DESC, ci.id ASC
+      ORDER BY dp.created_at DESC, dp.id DESC
       LIMIT ${pageSize} OFFSET ${offset}
     `, params)
 
     const enriched = rows.map((row: any) => {
-      const orderedQty = toQty(row.ordered_qty)
+      const plannedQty = toQty(row.planned_qty)
+      const purchasedQty = toQty(row.purchased_qty)
       const shippedQty = toQty(row.shipped_qty)
       const reconciledQty = toQty(row.reconciled_qty)
-      const purchasedQty = toQty(row.purchased_qty)
-      const purchaseGapQty = toQty(Math.max(0, orderedQty - purchasedQty))
-      const procurementStatus =
-        purchaseGapQty <= 0
-          ? 'procured'
-          : purchasedQty > 0
-            ? 'partial'
-            : 'pending'
+      const purchaseGapQty = toQty(Math.max(0, plannedQty - purchasedQty))
       const pendingReconcileQty = toQty(Math.max(0, shippedQty - reconciledQty))
-      const fulfillmentRate = orderedQty > 0 ? Math.min(100, Math.round((shippedQty / orderedQty) * 10000) / 100) : 0
-      const reconcileRate = shippedQty > 0 ? Math.min(100, Math.round((reconciledQty / shippedQty) * 10000) / 100) : 0
+      const fulfillmentRate = plannedQty > 0 ? Math.min(100, Math.round((shippedQty / plannedQty) * 10000) / 100) : 0
+      const reconcileRate = plannedQty > 0 ? Math.min(100, Math.round((reconciledQty / plannedQty) * 10000) / 100) : 0
+      let derivedStatus: 'pending' | 'partial' | 'completed' = 'pending'
+      if (reconciledQty >= plannedQty && plannedQty > 0) derivedStatus = 'completed'
+      else if (purchasedQty > 0 || shippedQty > 0 || reconciledQty > 0) derivedStatus = 'partial'
       return {
         ...row,
-        ordered_qty: orderedQty,
+        planned_qty: plannedQty,
+        purchased_qty: purchasedQty,
         shipped_qty: shippedQty,
         reconciled_qty: reconciledQty,
         linked_po_count: Number(row.linked_po_count || 0),
-        purchased_qty: purchasedQty,
         purchase_gap_qty: purchaseGapQty,
-        procurement_status: procurementStatus,
         pending_reconcile_qty: pendingReconcileQty,
         fulfillment_rate: fulfillmentRate,
         reconcile_rate: reconcileRate,
+        procurement_status: purchaseGapQty <= 0 ? 'procured' : purchasedQty > 0 ? 'partial' : 'pending',
+        status: derivedStatus,
       }
     })
-
     return c.json(enriched)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -2142,235 +2202,211 @@ app.get('/api/order-intake', authMiddleware, async c => {
 
 app.get('/api/order-intake/:id', authMiddleware, async c => {
   const id = c.req.param('id')
-  const order = await queryOne<any>(`
-    SELECT co.*, c.customer_name, c.customer_code
-    FROM customer_orders co
-    LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
-    WHERE co.id=? AND co.deleted_at IS NULL
-  `, [id])
-  if (!order) return c.json({ error: 'Not found' }, 404)
-
-  const items = await query<any>(`
+  const row = await queryOne<any>(`
     SELECT
-      ci.id as order_item_id,
-      ci.qty as ordered_qty,
-      ci.arrived_qty as shipped_qty,
-      COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
-      COALESCE(ci.settled_qty, 0) as settled_qty,
-      b.product_sku as material_code,
-      b.product_name as material_name,
-      COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
-      COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit
-    FROM customer_order_items ci
-    LEFT JOIN bom b ON b.id = ci.bom_id
-    WHERE ci.order_id=?
-    ORDER BY ci.id ASC
+      dp.*,
+      co.po_date,
+      co.status as order_status,
+      COALESCE(ci.qty, 0) as order_item_qty,
+      COALESCE(ci.arrived_qty, 0) as shipped_qty,
+      COALESCE(ci.reconciled_qty, 0) as reconciled_qty
+    FROM delivery_progress dp
+    LEFT JOIN customer_orders co ON co.id = dp.customer_order_id AND co.deleted_at IS NULL
+    LEFT JOIN customer_order_items ci ON ci.id = dp.order_item_id
+    WHERE dp.id=? AND dp.deleted_at IS NULL
+  `, [id])
+  if (!row) return c.json({ error: 'Not found' }, 404)
+
+  const purchased = await queryOne<any>(`
+    SELECT COALESCE(SUM(pi.quantity), 0) as qty
+    FROM po_items pi
+    JOIN purchase_orders po ON po.id = pi.po_id
+    WHERE po.deleted_at IS NULL AND po.status <> 'cancelled' AND pi.progress_id=?
   `, [id])
 
+  const plannedQty = toQty(row.planned_qty)
+  const purchasedQty = toQty(purchased?.qty || 0)
+  const shippedQty = toQty(row.shipped_qty)
+  const reconciledQty = toQty(row.reconciled_qty)
   return c.json({
-    ...order,
-    items: items.map((it: any) => ({
-      ...it,
-      ordered_qty: toQty(it.ordered_qty),
-      shipped_qty: toQty(it.shipped_qty),
-      reconciled_qty: toQty(it.reconciled_qty),
-      settled_qty: toQty(it.settled_qty),
-      pending_reconcile_qty: toQty(Math.max(0, toQty(it.shipped_qty) - toQty(it.reconciled_qty))),
-    })),
+    ...row,
+    planned_qty: plannedQty,
+    purchased_qty: purchasedQty,
+    purchase_gap_qty: toQty(Math.max(0, plannedQty - purchasedQty)),
+    shipped_qty: shippedQty,
+    reconciled_qty: reconciledQty,
+    pending_reconcile_qty: toQty(Math.max(0, shippedQty - reconciledQty)),
   })
+})
+
+app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const b = await c.req.json()
+    const u = c.get('user')
+    const plannedQty = toQty(b?.planned_qty)
+    if (plannedQty <= 0) return c.json({ error: 'planned_qty 必須大於 0' }, 400)
+
+    const orderId = b?.customer_order_id ? Number(b.customer_order_id) : null
+    const orderItemId = b?.order_item_id ? Number(b.order_item_id) : null
+    let customerId: number | null = b?.customer_id ? Number(b.customer_id) : null
+    let customerName = String(b?.customer_name || '').trim()
+    let orderPo = String(b?.order_po_number || '').trim()
+    let materialCode = String(b?.material_code || '').trim()
+    let materialName = String(b?.material_name || '').trim()
+    let spec = String(b?.spec || '').trim()
+    let unit = String(b?.unit || 'PCS').trim() || 'PCS'
+
+    if (orderId) {
+      const order = await queryOne<any>('SELECT id, customer_id, po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [orderId])
+      if (!order) return c.json({ error: '客戶訂單不存在' }, 404)
+      customerId = Number(order.customer_id || customerId || 0) || null
+      orderPo = String(order.po_number || orderPo || '')
+      if (customerId && !customerName) {
+        const cust = await queryOne<any>('SELECT customer_name FROM customers WHERE id=? AND deleted_at IS NULL', [customerId])
+        customerName = String(cust?.customer_name || '')
+      }
+    }
+    if (orderItemId) {
+      const item = await queryOne<any>(`
+        SELECT
+          ci.id, ci.order_id, ci.qty,
+          COALESCE(NULLIF(ci.material_code, ''), b.product_sku, '') as material_code,
+          COALESCE(NULLIF(ci.spec, ''), b.spec, '') as spec,
+          COALESCE(NULLIF(ci.unit, ''), b.unit, 'PCS') as unit,
+          COALESCE(b.product_name, '') as material_name
+        FROM customer_order_items ci
+        LEFT JOIN bom b ON b.id = ci.bom_id
+        WHERE ci.id=?
+      `, [orderItemId])
+      if (!item) return c.json({ error: '訂單明細不存在' }, 404)
+      if (orderId && Number(item.order_id) !== orderId) return c.json({ error: '訂單明細與訂單不匹配' }, 400)
+      materialCode = String(item.material_code || materialCode || '')
+      materialName = String(item.material_name || materialName || '')
+      spec = String(item.spec || spec || '')
+      unit = String(item.unit || unit || 'PCS')
+    }
+    if (!customerName && customerId) {
+      const cust = await queryOne<any>('SELECT customer_name FROM customers WHERE id=? AND deleted_at IS NULL', [customerId])
+      customerName = String(cust?.customer_name || '')
+    }
+    if (!customerName) return c.json({ error: 'customer_name 必填' }, 400)
+    if (!materialCode) return c.json({ error: 'material_code 必填' }, 400)
+
+    const progressNo = `DP${Date.now()}`
+    const r = await execute(`
+      INSERT INTO delivery_progress
+        (progress_no, customer_id, customer_name, customer_order_id, order_item_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_by, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+    `, [
+      progressNo, customerId, customerName, orderId, orderItemId, orderPo, materialCode, materialName, spec, unit,
+      plannedQty, b?.due_date ? toDateStr(b.due_date) : null, 'pending', b?.remark || '', u?.userId || null, now8(),
+    ])
+    await audit(u, 'CREATE', '交貨進度', r.insertId, `${progressNo} / ${customerName}`)
+    return c.json({ id: r.insertId, progress_no: progressNo }, 201)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const id = c.req.param('id')
+    const b = await c.req.json()
+    const row = await queryOne<any>('SELECT id FROM delivery_progress WHERE id=? AND deleted_at IS NULL', [id])
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    const plannedQty = toQty(b?.planned_qty)
+    if (plannedQty <= 0) return c.json({ error: 'planned_qty 必須大於 0' }, 400)
+    await execute(`
+      UPDATE delivery_progress
+      SET due_date=?, planned_qty=?, remark=?, status=?, material_name=?, spec=?, unit=?
+      WHERE id=? AND deleted_at IS NULL
+    `, [
+      b?.due_date ? toDateStr(b.due_date) : null,
+      plannedQty,
+      b?.remark || '',
+      ['pending', 'partial', 'completed'].includes(String(b?.status || '')) ? String(b.status) : 'pending',
+      String(b?.material_name || ''),
+      String(b?.spec || ''),
+      String(b?.unit || 'PCS') || 'PCS',
+      id,
+    ])
+    await audit(c.get('user'), 'UPDATE', '交貨進度', id, `id=${id}`)
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.delete('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.delete'), async c => {
+  const id = c.req.param('id')
+  const row = await queryOne<any>('SELECT progress_no, customer_name FROM delivery_progress WHERE id=? AND deleted_at IS NULL', [id])
+  if (!row) return c.json({ error: 'Not found' }, 404)
+  await softDeleteById('delivery_progress', id, c.get('user')?.userId)
+  await audit(c.get('user'), 'DELETE', '交貨進度', id, `${row?.progress_no} / ${row?.customer_name}`)
+  return c.json({ ok: true })
 })
 
 app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.create'), async c => {
   try {
     const id = c.req.param('id')
     const u = c.get('user')
-    const order = await queryOne<any>(`
-      SELECT co.id, co.po_number, co.customer_id, co.status, c.customer_name
-      FROM customer_orders co
-      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
-      WHERE co.id=? AND co.deleted_at IS NULL
+    const progress = await queryOne<any>(`
+      SELECT *
+      FROM delivery_progress
+      WHERE id=? AND deleted_at IS NULL
     `, [id])
-    if (!order) return c.json({ error: '訂單不存在' }, 404)
-    if (order.status === 'cancelled') return c.json({ error: '已取消訂單不可生成採購單' }, 400)
+    if (!progress) return c.json({ error: '交貨進度不存在' }, 404)
 
-    const sourceItems = await query<any>(`
-      SELECT
-        ci.id as order_item_id,
-        ci.qty,
-        ci.unit_price as order_unit_price,
-        ci.material_code as order_material_code,
-        ci.spec as order_spec,
-        ci.unit as order_unit,
-        ci.thickness,
-        b.id as bom_id,
-        b.product_sku,
-        b.product_name,
-        b.spec as bom_spec,
-        b.unit as bom_unit,
-        b.supplier_id,
-        b.supplier_name,
-        b.supplier_price,
-        b.company_price
-      FROM customer_order_items ci
-      LEFT JOIN bom b ON b.id = ci.bom_id
-      WHERE ci.order_id=?
-      ORDER BY ci.id ASC
+    const plannedQty = toQty(progress.planned_qty)
+    if (plannedQty <= 0) return c.json({ error: '交貨進度數量必須大於 0' }, 400)
+
+    const purchasedRow = await queryOne<any>(`
+      SELECT COALESCE(SUM(pi.quantity), 0) as qty
+      FROM po_items pi
+      JOIN purchase_orders po ON po.id = pi.po_id
+      WHERE po.deleted_at IS NULL
+        AND po.status <> 'cancelled'
+        AND pi.progress_id = ?
     `, [id])
-    if (!sourceItems.length) return c.json({ error: '訂單明細為空，無法生成採購單' }, 400)
-
-    const bomIds = Array.from(new Set(sourceItems.map((it: any) => Number(it.bom_id)).filter((x) => Number.isFinite(x) && x > 0)))
-    const bomItemRows = bomIds.length
-      ? await query<any>(`
-          SELECT bom_id, material_code, material_name, spec, unit, quantity, supplier_name, supplier_price, company_price, currency, remark, color, lt, moq
-          FROM bom_items
-          WHERE bom_id IN (${bomIds.map(() => '?').join(',')})
-          ORDER BY id ASC
-        `, bomIds)
-      : []
-    const bomItemsMap = new Map<number, any[]>()
-    for (const row of bomItemRows) {
-      const key = Number(row.bom_id)
-      if (!bomItemsMap.has(key)) bomItemsMap.set(key, [])
-      bomItemsMap.get(key)!.push(row)
-    }
-    const supplierNames = Array.from(new Set(bomItemRows.map((r: any) => String(r.supplier_name || '').trim()).filter(Boolean)))
-    const suppliersByName = new Map<string, number>()
-    if (supplierNames.length) {
-      const supplierRows = await query<any>(`SELECT id, name FROM suppliers WHERE deleted_at IS NULL AND name IN (${supplierNames.map(() => '?').join(',')})`, supplierNames)
-      for (const s of supplierRows) suppliersByName.set(String(s.name || '').trim(), Number(s.id))
-    }
+    const purchasedQty = toQty(purchasedRow?.qty || 0)
+    const remainingQty = toQty(Math.max(0, plannedQty - purchasedQty))
+    if (remainingQty <= 0) return c.json({ error: `進度 ${progress.progress_no} 已採購完成` }, 409)
 
     let payload: any = {}
     try { payload = await c.req.json() } catch { payload = {} }
-    const splitBySupplier = Boolean(payload?.split_by_supplier ?? true)
     const poBaseNumber = String(payload?.po_number_base || '').trim()
+    const poNum = poBaseNumber || `PO${Date.now()}`
+    const duplicated = await queryOne<any>('SELECT id FROM purchase_orders WHERE po_number=? AND deleted_at IS NULL', [poNum])
+    if (duplicated) return c.json({ error: `採購單號「${poNum}」已存在，請更換編號` }, 409)
 
-    const purchasedRows = await query<any>(`
-      SELECT
-        pi.material_code,
-        COALESCE(SUM(pi.quantity), 0) as purchased_qty
-      FROM purchase_orders po
-      JOIN po_items pi ON pi.po_id = po.id
-      WHERE po.deleted_at IS NULL
-        AND po.status <> 'cancelled'
-        AND pi.po_ref = ?
-      GROUP BY pi.material_code
-    `, [order.po_number])
-    const purchasedMap = new Map<string, number>()
-    for (const row of purchasedRows) {
-      purchasedMap.set(String(row.material_code || ''), toQty(row.purchased_qty))
-    }
-    const purchasedPoolMap = new Map<string, number>(purchasedMap)
+    const bom = await queryOne<any>(`
+      SELECT supplier_id, supplier_name, supplier_price, company_price
+      FROM bom
+      WHERE product_sku=? AND deleted_at IS NULL
+      LIMIT 1
+    `, [progress.material_code])
 
-    const normalizedItems = sourceItems
-      .flatMap((it: any) => {
-        const qty = toQty(it.qty || 0)
-        if (qty <= 0) return []
-        const bomComponents = it.bom_id ? (bomItemsMap.get(Number(it.bom_id)) || []) : []
-        const sourceList = bomComponents.length
-          ? bomComponents.map((bi: any) => ({
-              material_code: bi.material_code,
-              material_name: bi.material_name,
-              spec: bi.spec || it.order_spec || it.bom_spec || '',
-              unit: bi.unit || it.order_unit || it.bom_unit || 'PCS',
-              supplier_name: bi.supplier_name || '',
-              supplier_price: bi.supplier_price,
-              company_price: bi.company_price,
-              currency: bi.currency || 'VND',
-              remark: bi.remark || '',
-              ratio_qty: Number(bi.quantity) || 1,
-            }))
-          : [{
-              material_code: it.product_sku || it.order_material_code || '',
-              material_name: it.product_name || '',
-              spec: it.order_spec || it.bom_spec || '',
-              unit: it.order_unit || it.bom_unit || 'PCS',
-              supplier_name: it.supplier_name || '',
-              supplier_price: it.supplier_price,
-              company_price: it.company_price,
-              currency: 'VND',
-              remark: '',
-              ratio_qty: 1,
-            }]
+    const supplierId = bom?.supplier_id || null
+    const supplierName = String(bom?.supplier_name || '待分配供應商')
+    const unitPrice = toMoney(bom?.supplier_price || bom?.company_price || 0)
+    const totalPrice = toMoney(remainingQty * unitPrice)
+    const taxRate = 8
+    const total = toMoney(totalPrice * (1 + taxRate / 100))
+    const remark = `由交貨進度自動生成，來源 ${progress.progress_no}`
+    const poRef = String(progress.order_po_number || progress.progress_no || '')
+    const r = await execute(
+      'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
+    )
+    const poId = r.insertId
+    const materialId = await resolveMaterialId(null, progress.material_code)
+    await execute(
+      'INSERT INTO po_items (po_id,progress_id,material_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [poId, id, materialId, progress.material_code, progress.material_name, progress.spec || '', progress.unit || 'PCS', remainingQty, unitPrice, totalPrice, 'VND', remark, poRef, null]
+    )
 
-        return sourceList.map((src: any) => {
-          const materialCode = String(src.material_code || '').trim()
-          const materialName = String(src.material_name || '').trim()
-          if (!materialCode && !materialName) return null
-          const demandQty = toQty(qty * (Number(src.ratio_qty) || 1))
-          const purchasedPool = toQty(purchasedPoolMap.get(materialCode) || 0)
-          const consumedByPool = Math.min(demandQty, purchasedPool)
-          purchasedPoolMap.set(materialCode, toQty(Math.max(0, purchasedPool - consumedByPool)))
-          const remainingQty = toQty(Math.max(0, demandQty - consumedByPool))
-          if (remainingQty <= 0) return null
-          const supplierName = String(src.supplier_name || '').trim()
-          const unitPrice = toMoney(src.supplier_price || src.company_price || it.order_unit_price || 0)
-          return {
-            material_code: materialCode,
-            material_name: materialName || materialCode,
-            spec: String(src.spec || '').trim(),
-            unit: String(src.unit || 'PCS').trim() || 'PCS',
-            quantity: remainingQty,
-            unit_price: unitPrice,
-            currency: String(src.currency || 'VND').trim() || 'VND',
-            remark: String(src.remark || '').trim(),
-            po_ref: order.po_number,
-            thickness: it.thickness ?? null,
-            supplier_id: suppliersByName.get(supplierName) || it.supplier_id || null,
-            supplier_name: supplierName,
-          }
-        }).filter(Boolean)
-      })
-      .filter(Boolean) as any[]
-
-    if (!normalizedItems.length) {
-      return c.json({ error: `訂單 ${order.po_number} 已採購完成，無需再生成採購單` }, 409)
-    }
-
-    const grouped = new Map<string, any[]>()
-    if (splitBySupplier) {
-      for (const item of normalizedItems) {
-        const key = `${item.supplier_id || ''}::${item.supplier_name || ''}`
-        if (!grouped.has(key)) grouped.set(key, [])
-        grouped.get(key)!.push(item)
-      }
-    } else {
-      grouped.set('single::single', normalizedItems)
-    }
-    const groups = Array.from(grouped.values())
-
-    const created: Array<{ id: number; po_number: string; supplier_name: string }> = []
-    for (let idx = 0; idx < groups.length; idx++) {
-      const items = groups[idx]
-      const preferredSupplier = items.find((it: any) => it.supplier_id || it.supplier_name)
-      const supplierId = preferredSupplier?.supplier_id || null
-      const supplierName = preferredSupplier?.supplier_name || '待分配供應商'
-      const poNum = poBaseNumber
-        ? `${poBaseNumber}-${idx + 1}`
-        : `PO${Date.now()}${String(idx + 1).padStart(2, '0')}`
-      const duplicated = await queryOne<any>('SELECT id FROM purchase_orders WHERE po_number=? AND deleted_at IS NULL', [poNum])
-      if (duplicated) return c.json({ error: `採購單號「${poNum}」已存在，請更換編號` }, 409)
-
-      const subTotal = items.reduce((s: number, it: any) => s + toMoney(it.quantity * it.unit_price), 0)
-      const taxRate = 8
-      const total = toMoney(subTotal * (1 + taxRate / 100))
-      const remark = `由交貨進度自動生成，來源客戶訂單 ${order.po_number}`
-      const r = await execute(
-        'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-        [poNum, supplierId, supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]
-      )
-      const poId = r.insertId
-      for (const item of items) {
-        const totalPrice = toMoney(item.quantity * item.unit_price)
-        await execute(
-          'INSERT INTO po_items (po_id,material_id,material_code,material_name,spec,unit,quantity,unit_price,total_price,currency,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          [poId, item.material_id || null, item.material_code, item.material_name, item.spec, item.unit, item.quantity, item.unit_price, totalPrice, 'VND', item.remark, item.po_ref, item.thickness]
-        )
-      }
-      await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${order.po_number}`)
-      created.push({ id: poId, po_number: poNum, supplier_name: supplierName })
-    }
-    return c.json({ created, count: created.length }, 201)
+    await audit(u, 'CREATE', '採購單', poId, `${poNum} ← ${progress.progress_no}`)
+    return c.json({ created: [{ id: poId, po_number: poNum, supplier_name: supplierName }], count: 1 }, 201)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }
@@ -2380,36 +2416,38 @@ app.get('/api/order-intake/export/csv', authMiddleware, async c => {
   try {
     const rows = await query<any>(`
       SELECT
-        co.po_number,
-        co.po_date,
-        co.status as order_status,
-        c.customer_name,
-        b.product_sku as material_code,
-        b.product_name as material_name,
-        ci.qty as ordered_qty,
-        ci.arrived_qty as shipped_qty,
-        COALESCE(ci.reconciled_qty, 0) as reconciled_qty,
-        COALESCE(ci.settled_qty, 0) as settled_qty
-      FROM customer_order_items ci
-      JOIN customer_orders co ON co.id = ci.order_id
-      LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
-      LEFT JOIN bom b ON b.id = ci.bom_id
-      WHERE co.deleted_at IS NULL
-      ORDER BY co.created_at DESC, ci.id ASC
+        dp.progress_no,
+        dp.order_po_number as po_number,
+        dp.customer_name,
+        dp.material_code,
+        dp.material_name,
+        dp.spec,
+        dp.unit,
+        dp.planned_qty,
+        dp.due_date,
+        dp.status,
+        dp.created_at
+      FROM delivery_progress dp
+      WHERE dp.deleted_at IS NULL
+      ORDER BY dp.created_at DESC
       LIMIT 5000
     `)
     const esc = (v: any) => `"${String(v ?? '').replace(/"/g, '""')}"`
-    const header = ['po_number', 'po_date', 'order_status', 'customer_name', 'material_code', 'material_name', 'ordered_qty', 'shipped_qty', 'reconciled_qty', 'settled_qty', 'pending_reconcile_qty']
+    const header = ['progress_no', 'po_number', 'customer_name', 'material_code', 'material_name', 'spec', 'unit', 'planned_qty', 'due_date', 'status', 'created_at']
     const lines = [header.join(',')]
     for (const row of rows) {
-      const ordered = toQty(row.ordered_qty)
-      const shipped = toQty(row.shipped_qty)
-      const reconciled = toQty(row.reconciled_qty)
-      const settled = toQty(row.settled_qty)
-      const pending = toQty(Math.max(0, shipped - reconciled))
       lines.push([
-        row.po_number, row.po_date, row.order_status, row.customer_name, row.material_code, row.material_name,
-        ordered, shipped, reconciled, settled, pending,
+        row.progress_no,
+        row.po_number,
+        row.customer_name,
+        row.material_code,
+        row.material_name,
+        row.spec,
+        row.unit,
+        toQty(row.planned_qty),
+        row.due_date,
+        row.status,
+        row.created_at,
       ].map(esc).join(','))
     }
     return c.text(lines.join('\n'))
@@ -2735,33 +2773,81 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('deliv
     if (header.status !== 'draft') return c.json({ error: 'already confirmed' }, 400)
 
     const items = await query<any>(`
-      SELECT id, order_item_id, accepted_qty
+      SELECT id, customer_order_id, order_item_id, accepted_qty
       FROM shipment_reconciliation_items
       WHERE reconciliation_id=? AND deleted_at IS NULL
     `, [id])
     if (!items.length) return c.json({ error: 'no items' }, 400)
 
     const reconcileMap = new Map<number, number>()
+    const orderIdsFromReconcile = new Set<number>()
     for (const item of items) {
       const orderItemId = Number(item.order_item_id || 0)
       const qty = toQty(item.accepted_qty)
+      const orderId = Number(item.customer_order_id || 0)
+      if (orderId > 0) orderIdsFromReconcile.add(orderId)
       if (!orderItemId || qty <= 0) continue
       reconcileMap.set(orderItemId, toQty((reconcileMap.get(orderItemId) || 0) + qty))
     }
     const orderItemIds = Array.from(reconcileMap.keys())
     if (orderItemIds.length) {
-      const caseClause = orderItemIds.map(() => 'WHEN ? THEN ?').join(' ')
       const inClause = orderItemIds.map(() => '?').join(',')
+      const orderItems = await query<any>(
+        `SELECT id, order_id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id IN (${inClause})`,
+        [...orderItemIds]
+      )
+
+      const arrivedCase: string[] = []
+      const reconciledCase: string[] = []
+      const balanceCase: string[] = []
+      const statusCase: string[] = []
       const params: any[] = []
-      for (const oid of orderItemIds) {
-        params.push(oid, reconcileMap.get(oid) || 0)
+      const touchedOrderIds = new Set<number>(Array.from(orderIdsFromReconcile))
+
+      for (const row of orderItems) {
+        const itemId = Number(row.id || 0)
+        const delta = toQty(reconcileMap.get(itemId) || 0)
+        if (!itemId || delta <= 0) continue
+        const qty = toQty(row.qty)
+        const nextArrived = toQty(Math.min(qty, toQty(row.arrived_qty) + delta))
+        const nextReconciled = toQty(Math.min(qty, toQty(row.reconciled_qty) + delta))
+        const nextBalance = toQty(Math.max(0, qty - nextArrived))
+        const nextStatus = nextArrived >= qty && qty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
+        const orderId = Number(row.order_id || 0)
+        if (orderId > 0) touchedOrderIds.add(orderId)
+
+        arrivedCase.push('WHEN ? THEN ?')
+        params.push(itemId, nextArrived)
+        reconciledCase.push('WHEN ? THEN ?')
+        params.push(itemId, nextReconciled)
+        balanceCase.push('WHEN ? THEN ?')
+        params.push(itemId, nextBalance)
+        statusCase.push('WHEN ? THEN ?')
+        params.push(itemId, nextStatus)
       }
-      params.push(...orderItemIds)
-      await execute(`
-        UPDATE customer_order_items
-        SET reconciled_qty = LEAST(qty, COALESCE(reconciled_qty, 0) + CASE id ${caseClause} ELSE 0 END)
-        WHERE id IN (${inClause})
-      `, params)
+
+      if (arrivedCase.length > 0) {
+        await execute(`
+          UPDATE customer_order_items
+          SET
+            arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
+            reconciled_qty = CASE id ${reconciledCase.join(' ')} ELSE reconciled_qty END,
+            balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
+            status = CASE id ${statusCase.join(' ')} ELSE status END
+          WHERE id IN (${inClause})
+        `, [...params, ...orderItemIds])
+      }
+
+      for (const orderId of Array.from(touchedOrderIds)) {
+        const summary = await queryOne<any>(
+          'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=?',
+          [orderId]
+        )
+        const totalQty = toQty(summary?.total_qty || 0)
+        const arrivedQty = toQty(summary?.arrived_qty || 0)
+        const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
+        await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
+      }
     }
 
     await execute(
@@ -3339,48 +3425,7 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('deliver
 
     await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
 
-    // When shipped: update linked customer order shipped qty and status
-    if (status === 'shipped') {
-      const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
-      if (dn?.customer_order_id) {
-        const coId = dn.customer_order_id
-        const order = await queryOne<any>('SELECT po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [coId])
-        const orderPo = String(order?.po_number || '')
-        // Recalculate shipped qty by material_code + PO No, then overwrite arrived_qty/balance/status
-        await execute(`
-          UPDATE customer_order_items ci
-          JOIN bom b ON ci.bom_id = b.id
-          LEFT JOIN (
-            SELECT
-              dn2.customer_order_id,
-              dni.material_code,
-              COALESCE(NULLIF(TRIM(dni.po_ref), ''), '') as po_key_raw,
-              SUM(COALESCE(dni.qty, 0)) as shipped_qty
-            FROM delivery_note_items dni
-            JOIN delivery_notes dn2 ON dni.dn_id = dn2.id
-            WHERE dn2.customer_order_id = ? AND dn2.status = 'shipped' AND dn2.deleted_at IS NULL
-            GROUP BY dn2.customer_order_id, dni.material_code, COALESCE(NULLIF(TRIM(dni.po_ref), ''), '')
-          ) s ON s.customer_order_id = ci.order_id
-             AND s.material_code = b.product_sku
-             AND (CASE WHEN s.po_key_raw = ? THEN '' ELSE s.po_key_raw END) = COALESCE(NULLIF(TRIM(ci.po_no), ''), '')
-          SET ci.arrived_qty = LEAST(ci.qty, COALESCE(s.shipped_qty, 0)),
-              ci.balance = GREATEST(0, ci.qty - LEAST(ci.qty, COALESCE(s.shipped_qty, 0))),
-              ci.status = CASE
-                WHEN LEAST(ci.qty, COALESCE(s.shipped_qty, 0)) >= ci.qty THEN 'completed'
-                WHEN LEAST(ci.qty, COALESCE(s.shipped_qty, 0)) > 0 THEN 'partial'
-                ELSE 'pending'
-              END
-          WHERE ci.order_id = ?
-        `, [coId, orderPo, coId])
-        // Check if all items fully shipped → mark completed, else partial
-        const coItems = await query<any>('SELECT qty, arrived_qty FROM customer_order_items WHERE order_id=?', [coId])
-        const allDone = coItems.every((ci: any) => Number(ci.arrived_qty) >= Number(ci.qty))
-        const anyDone = coItems.some((ci: any) => Number(ci.arrived_qty) > 0)
-        const newCoStatus = allDone ? 'completed' : anyDone ? 'partial' : 'pending'
-        await execute('UPDATE customer_orders SET status=? WHERE id=?', [newCoStatus, coId])
-        await audit(u, 'AUTO_UPDATE', '客戶訂單', coId, `出貨後自動更新狀態 → ${newCoStatus}`)
-      }
-    }
+    // 客戶訂單數量回寫改為在「數量核對確認」階段執行，出貨確認僅更新出貨單狀態。
 
     await audit(u, 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`)
     return c.json({ ok: true })
