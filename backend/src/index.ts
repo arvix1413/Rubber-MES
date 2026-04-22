@@ -369,6 +369,7 @@ const ensureMaterialExtraColumns = async () => {
       }
       await alterSafe('ALTER TABLE materials ADD COLUMN color VARCHAR(100) DEFAULT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN leadtime_days INT DEFAULT NULL')
+      await alterSafe('ALTER TABLE materials ADD COLUMN leadtime_text VARCHAR(100) DEFAULT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN moq DECIMAL(15,4) DEFAULT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN moq_tiers TEXT NULL')
       await alterSafe('ALTER TABLE materials ADD COLUMN remark TEXT')
@@ -1081,7 +1082,10 @@ app.get('/api/materials', authMiddleware, async c => {
   const url = new URL(c.req.url)
   const supplierId = url.searchParams.get('supplier_id')
   const supplierName = url.searchParams.get('supplier_name')
-  let sql = `SELECT m.*, s.name as supplier_name, s.supplier_code, s.currency as supplier_currency
+  let sql = `SELECT
+               m.*,
+               COALESCE(NULLIF(m.leadtime_text, ''), CASE WHEN m.leadtime_days IS NULL THEN '' ELSE CAST(m.leadtime_days AS CHAR) END) as leadtime,
+               s.name as supplier_name, s.supplier_code, s.currency as supplier_currency
              FROM materials m LEFT JOIN suppliers s ON m.supplier_id = s.id AND s.deleted_at IS NULL`
   const params: any[] = []
   const where: string[] = ['m.deleted_at IS NULL']
@@ -1104,12 +1108,16 @@ app.post('/api/materials', authMiddleware, requirePerm('bom.create'), async c =>
     if (!b.material_code || !b.material_name) return c.json({ error: 'material_code and material_name required' }, 400)
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
     const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
+    const leadtimeText = String(b.leadtime_text ?? b.leadtime ?? '').trim()
+    const leadtimeDays = leadtimeText
+      ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
+      : (b.leadtime_days ? Number(b.leadtime_days) : null)
     const r = await execute(
-      'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,color,leadtime_days,moq,moq_tiers,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,company_price,currency,stock,image_url,color,leadtime_days,leadtime_text,moq,moq_tiers,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [
         b.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
         b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
-        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', now8(),
+        b.color || '', leadtimeDays, leadtimeText || null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', now8(),
       ]
     )
     return c.json({ id: r.insertId, ...b }, 201)
@@ -1124,12 +1132,16 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
     if (!existing) return c.json({ error: 'Not found' }, 404)
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
     const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
+    const leadtimeText = String(b.leadtime_text ?? b.leadtime ?? '').trim()
+    const leadtimeDays = leadtimeText
+      ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
+      : (b.leadtime_days ? Number(b.leadtime_days) : null)
     await execute(
-      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
+      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,leadtime_text=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
       [
         existing.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
         b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
-        b.color || '', b.leadtime_days ? Number(b.leadtime_days) : null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
+        b.color || '', leadtimeDays, leadtimeText || null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
       ]
     )
     return c.json({ ok: true })
@@ -1161,22 +1173,30 @@ app.post('/api/materials/bulk', authMiddleware, requirePerm('bom.create'), async
         }
         const existing = await queryOne<any>('SELECT id FROM materials WHERE material_code=? AND deleted_at IS NULL', [item.material_code])
         if (existing) {
+          const leadtimeText = String(item.leadtime_text ?? item.leadtime ?? '').trim()
+          const leadtimeDays = leadtimeText
+            ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
+            : (item.leadtime_days ? Number(item.leadtime_days) : null)
           await execute(
-            'UPDATE materials SET material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,currency=?,color=?,leadtime_days=?,moq=?,remark=? WHERE material_code=?',
+            'UPDATE materials SET material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,currency=?,color=?,leadtime_days=?,leadtime_text=?,moq=?,remark=? WHERE material_code=?',
             [
               item.material_name, item.spec || '', item.unit || 'PCS', item.category || '', item.product_category || '',
               supplierId, item.supplier_price || 0, item.currency || 'VND', item.color || '',
-              item.leadtime_days ? Number(item.leadtime_days) : null, item.moq ? Number(item.moq) : null, item.remark || '', item.material_code,
+              leadtimeDays, leadtimeText || null, item.moq ? Number(item.moq) : null, item.remark || '', item.material_code,
             ]
           )
           updated++
         } else {
+          const leadtimeText = String(item.leadtime_text ?? item.leadtime ?? '').trim()
+          const leadtimeDays = leadtimeText
+            ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
+            : (item.leadtime_days ? Number(item.leadtime_days) : null)
           await execute(
-            'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,currency,stock,color,leadtime_days,moq,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
+            'INSERT INTO materials (material_code,material_name,spec,unit,category,product_category,supplier_id,supplier_price,currency,stock,color,leadtime_days,leadtime_text,moq,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
             [
               item.material_code, item.material_name, item.spec || '', item.unit || 'PCS', item.category || '', item.product_category || '',
               supplierId, item.supplier_price || 0, item.currency || 'VND', 0, item.color || '',
-              item.leadtime_days ? Number(item.leadtime_days) : null, item.moq ? Number(item.moq) : null, item.remark || '', now8(),
+              leadtimeDays, leadtimeText || null, item.moq ? Number(item.moq) : null, item.remark || '', now8(),
             ]
           )
           success++
@@ -1192,26 +1212,79 @@ app.get('/api/bom', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
   await ensureBomExtraColumns()
   const rows = await query<any>(`
-    SELECT b.*, s.name as supplier_display_name
-    FROM bom b LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    SELECT
+      b.*,
+      s.name as supplier_display_name,
+      COALESCE(bs.item_count, 0) as item_count,
+      COALESCE(bs.agg_supplier_price, 0) as agg_supplier_price,
+      COALESCE(bs.agg_company_price, 0) as agg_company_price
+    FROM bom b
+    LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT
+        bom_id,
+        COUNT(*) as item_count,
+        COALESCE(SUM(COALESCE(supplier_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_supplier_price,
+        COALESCE(SUM(COALESCE(company_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_company_price
+      FROM bom_items
+      GROUP BY bom_id
+    ) bs ON bs.bom_id = b.id
     WHERE b.deleted_at IS NULL
     ORDER BY b.category, b.created_at DESC
   `)
-  return c.json(rows.map((row: any) => ({ ...row, moq_tiers: parseMoqTiersFromDb(row.moq_tiers) })))
+  return c.json(rows.map((row: any) => {
+    const itemCount = Number(row.item_count || 0)
+    const effectiveSupplier = itemCount > 0 ? toAmount(row.agg_supplier_price || 0) : toAmount(row.supplier_price || 0)
+    const effectiveCompany = itemCount > 0 ? toAmount(row.agg_company_price || 0) : toAmount(row.company_price || 0)
+    return {
+      ...row,
+      base_supplier_price: toAmount(row.supplier_price || 0),
+      base_company_price: toAmount(row.company_price || 0),
+      supplier_price: effectiveSupplier,
+      company_price: effectiveCompany,
+      moq_tiers: parseMoqTiersFromDb(row.moq_tiers),
+    }
+  }))
 })
 app.get('/api/bom/:id', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
   await ensureBomExtraColumns()
   const bom = await queryOne<any>(`
-    SELECT b.*, s.name as supplier_display_name
-    FROM bom b LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    SELECT
+      b.*,
+      s.name as supplier_display_name,
+      COALESCE(bs.item_count, 0) as item_count,
+      COALESCE(bs.agg_supplier_price, 0) as agg_supplier_price,
+      COALESCE(bs.agg_company_price, 0) as agg_company_price
+    FROM bom b
+    LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT
+        bom_id,
+        COUNT(*) as item_count,
+        COALESCE(SUM(COALESCE(supplier_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_supplier_price,
+        COALESCE(SUM(COALESCE(company_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_company_price
+      FROM bom_items
+      GROUP BY bom_id
+    ) bs ON bs.bom_id = b.id
     WHERE b.id=? AND b.deleted_at IS NULL`, [c.req.param('id')])
   if (!bom) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT bi.*, bi.material_name as mat_name, bi.spec as mat_spec, bi.unit as mat_unit
     FROM bom_items bi
     WHERE bi.bom_id=?`, [c.req.param('id')])
-  return c.json({ ...bom, moq_tiers: parseMoqTiersFromDb(bom.moq_tiers), items })
+  const itemCount = Number(bom.item_count || 0)
+  const effectiveSupplier = itemCount > 0 ? toAmount(bom.agg_supplier_price || 0) : toAmount(bom.supplier_price || 0)
+  const effectiveCompany = itemCount > 0 ? toAmount(bom.agg_company_price || 0) : toAmount(bom.company_price || 0)
+  return c.json({
+    ...bom,
+    base_supplier_price: toAmount(bom.supplier_price || 0),
+    base_company_price: toAmount(bom.company_price || 0),
+    supplier_price: effectiveSupplier,
+    company_price: effectiveCompany,
+    moq_tiers: parseMoqTiersFromDb(bom.moq_tiers),
+    items,
+  })
 })
 
 const parseRequiredMoney = (value: any): number | null => {
@@ -1219,6 +1292,20 @@ const parseRequiredMoney = (value: any): number | null => {
   const num = Number(value)
   if (!Number.isFinite(num) || num < 0) return null
   return toAmount(num)
+}
+
+const calcBomTotals = (rawItems: any): { hasItems: boolean; supplierTotal: number; companyTotal: number } => {
+  const items = Array.isArray(rawItems) ? rawItems : []
+  if (!items.length) return { hasItems: false, supplierTotal: 0, companyTotal: 0 }
+  let supplierTotal = 0
+  let companyTotal = 0
+  for (const item of items) {
+    const qty = Number(item?.quantity)
+    const qtyFactor = Number.isFinite(qty) && qty > 0 ? qty : 1
+    supplierTotal += (Number(item?.supplier_price) || 0) * qtyFactor
+    companyTotal += (Number(item?.company_price) || 0) * qtyFactor
+  }
+  return { hasItems: true, supplierTotal: toAmount(supplierTotal), companyTotal: toAmount(companyTotal) }
 }
 
 const normalizeRequiredText = (value: any): string => String(value ?? '').trim()
@@ -1232,8 +1319,9 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
     const productName = normalizeRequiredText(b.product_name)
     const unit = normalizeRequiredText(b.unit)
     const currency = normalizeRequiredText(b.currency)
-    const supplierPrice = parseRequiredMoney(b.supplier_price)
-    const companyPrice = parseRequiredMoney(b.company_price)
+    const totals = calcBomTotals(b.items)
+    const supplierPrice = totals.hasItems ? totals.supplierTotal : parseRequiredMoney(b.supplier_price)
+    const companyPrice = totals.hasItems ? totals.companyTotal : parseRequiredMoney(b.company_price)
     if (!productSku) return c.json({ error: 'product_sku required' }, 400)
     if (!productName) return c.json({ error: 'product_name required' }, 400)
     if (!unit) return c.json({ error: 'unit required' }, 400)
@@ -1272,8 +1360,9 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
     const productName = normalizeRequiredText(b.product_name)
     const unit = normalizeRequiredText(b.unit)
     const currency = normalizeRequiredText(b.currency)
-    const supplierPrice = parseRequiredMoney(b.supplier_price)
-    const companyPrice = parseRequiredMoney(b.company_price)
+    const totals = calcBomTotals(b.items)
+    const supplierPrice = totals.hasItems ? totals.supplierTotal : parseRequiredMoney(b.supplier_price)
+    const companyPrice = totals.hasItems ? totals.companyTotal : parseRequiredMoney(b.company_price)
     if (!productName) return c.json({ error: 'product_name required' }, 400)
     if (!unit) return c.json({ error: 'unit required' }, 400)
     if (!currency) return c.json({ error: 'currency required' }, 400)

@@ -25,6 +25,7 @@ type Material = {
   image_url: string
   color?: string
   leadtime_days?: number | null
+  leadtime?: string
   moq?: number | null
   moq_tiers?: MoqTier[]
   remark?: string
@@ -42,13 +43,14 @@ const empty = (): Partial<Material> => ({
   category: '',
   product_category: '',
   supplier_id: null,
-  supplier_price: 0,
-  company_price: 0,
+  supplier_price: undefined,
+  company_price: undefined,
   currency: 'VND',
   stock: 0,
   image_url: '',
   color: '',
   leadtime_days: null,
+  leadtime: '',
   moq: null,
   moq_tiers: emptyTiers(),
   remark: '',
@@ -216,7 +218,7 @@ export default function MaterialsPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime（天）</label>
-                <input type="number" className="rubber-input" value={editing.leadtime_days ?? ''} onChange={(e) => setEditing((p) => ({ ...p, leadtime_days: e.target.value ? Number(e.target.value) : null }))} />
+                <input className="rubber-input" placeholder="例如：25~30 或 15-20" value={editing.leadtime ?? (editing.leadtime_days != null ? String(editing.leadtime_days) : '')} onChange={(e) => setEditing((p) => ({ ...p, leadtime: e.target.value, leadtime_days: null }))} />
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>
@@ -290,29 +292,34 @@ export default function MaterialsPage() {
               <table className="w-full text-sm" style={{ minWidth: 1540 }}>
                 <thead>
                   <tr className="border-b border-slate-200">
-                    {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ階梯', '幣別', '備註', '操作'].map((h) => (
-                      <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
+                    {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ階梯', '幣別', '備註', '操作'].map((h, idx) => (
+                      <th
+                        key={h}
+                        className={`px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap sticky top-0 bg-slate-50 z-[3] ${idx === 0 ? 'left-0 z-[5]' : ''} ${idx === 1 ? 'left-[124px] z-[5]' : ''}`}
+                      >
+                        {h}
+                      </th>
                     ))}
                   </tr>
                 </thead>
                 <tbody>
                   {paged.map((r) => (
-                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap">{r.material_code}</td>
-                      <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap">{r.material_name}</td>
+                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 odd:bg-white even:bg-slate-50/40">
+                      <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap sticky left-0 bg-inherit z-[2]">{r.material_code}</td>
+                      <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap sticky left-[124px] bg-inherit z-[2]">{r.material_name}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.spec || '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.supplier_name || '—'}</td>
                       <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.supplier_price || 0).toLocaleString()}</td>
                       <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.company_price || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.leadtime_days ?? '—'}</td>
+                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.leadtime || (r.leadtime_days ?? '—')}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={tierSummary(r)}>{tierSummary(r)}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.currency || 'VND'}</td>
                       <td className="px-3 py-2.5 text-slate-500 max-w-[240px] truncate" title={r.remark || ''}>{r.remark || '—'}</td>
                       <td className="px-3 py-2.5 whitespace-nowrap">
                         <div className="flex gap-1">
-                          {canEdit && <button onClick={() => setEditing({ ...r, moq_tiers: (() => {
+                          {canEdit && <button onClick={() => setEditing({ ...r, leadtime: r.leadtime || (r.leadtime_days != null ? String(r.leadtime_days) : ''), moq_tiers: (() => {
                             const parsed = normalizeMoqTiers((r as any).moq_tiers)
                             return [...parsed, ...emptyTiers()].slice(0, 5)
                           })() })} className="btn-ghost text-blue-600">編輯</button>}

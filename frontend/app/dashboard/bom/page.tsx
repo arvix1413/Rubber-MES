@@ -6,6 +6,7 @@ import { apiFetch, API, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
+import { SearchableSelect } from '@/components/SearchableSelect'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
 
@@ -34,6 +35,7 @@ type BomItem = {
 }
 type Material = {
   id: number
+  supplier_id?: number | null
   material_code: string
   material_name: string
   spec: string
@@ -44,12 +46,14 @@ type Material = {
   currency?: string
   color?: string
   leadtime_days?: number | null
+  leadtime?: string
   moq?: number | null
+  remark?: string
 }
 const emptyTiers = (): MoqTier[] => Array.from({ length: 5 }, () => ({ moq: 0, price: 0 }))
 const empty = (): Partial<Bom> => ({
   product_sku:'', product_name:'', material_name:'', spec:'', unit:'PCS',
-  supplier_id:null, supplier_name:'', supplier_price:0, company_price:0,
+  supplier_id:null, supplier_name:'', supplier_price:undefined, company_price:undefined,
   currency:'VND', category:'', version:'V1', cert_code:'', brand:'', image_url:'', color:'', lt:'', moq:null, moq_tiers: emptyTiers(), items:[]
 })
 
@@ -69,6 +73,7 @@ export default function BomPage() {
   const [boms, setBoms] = useState<Bom[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
+  const [headerMaterialCode, setHeaderMaterialCode] = useState('')
   const [editing, setEditing] = useState<Partial<Bom>|null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -142,21 +147,49 @@ export default function BomPage() {
       return { ...p, moq_tiers: tiers }
     })
   }
+  const calcItemTotals = (items: BomItem[]) => {
+    if (!items.length) return null
+    const supplierTotal = items.reduce((sum, item) => {
+      const qty = Number(item.quantity)
+      const qtyFactor = Number.isFinite(qty) && qty > 0 ? qty : 1
+      return sum + (Number(item.supplier_price) || 0) * qtyFactor
+    }, 0)
+    const companyTotal = items.reduce((sum, item) => {
+      const qty = Number(item.quantity)
+      const qtyFactor = Number.isFinite(qty) && qty > 0 ? qty : 1
+      return sum + (Number(item.company_price) || 0) * qtyFactor
+    }, 0)
+    return {
+      supplierTotal: Math.round(supplierTotal * 100) / 100,
+      companyTotal: Math.round(companyTotal * 100) / 100,
+    }
+  }
   const addItem = () => {
-    setEditing((p) => ({ ...p, items: [...(p?.items || []), { material_code: '', material_name: '', spec: '', unit: 'PCS', quantity: 1, currency: 'VND' }] }))
+    setEditing((p) => {
+      const nextItems = [...(p?.items || []), { material_code: '', material_name: '', spec: '', unit: 'PCS', quantity: 1, currency: 'VND' }]
+      const totals = calcItemTotals(nextItems)
+      return { ...p, items: nextItems, supplier_price: totals ? totals.supplierTotal : p?.supplier_price, company_price: totals ? totals.companyTotal : p?.company_price }
+    })
   }
   const removeItem = (idx:number) => {
-    setEditing((p) => ({ ...p, items: (p?.items || []).filter((_, i) => i !== idx) }))
+    setEditing((p) => {
+      const nextItems = (p?.items || []).filter((_, i) => i !== idx)
+      const totals = calcItemTotals(nextItems)
+      return { ...p, items: nextItems, supplier_price: totals ? totals.supplierTotal : p?.supplier_price, company_price: totals ? totals.companyTotal : p?.company_price }
+    })
   }
   const updateItem = (idx:number, key:keyof BomItem, val:any) => {
-    setEditing((p) => ({ ...p, items: (p?.items || []).map((it, i) => i === idx ? { ...it, [key]: val } : it) }))
+    setEditing((p) => {
+      const nextItems = (p?.items || []).map((it, i) => i === idx ? { ...it, [key]: val } : it)
+      const totals = calcItemTotals(nextItems)
+      return { ...p, items: nextItems, supplier_price: totals ? totals.supplierTotal : p?.supplier_price, company_price: totals ? totals.companyTotal : p?.company_price }
+    })
   }
   const applyMaterialToItem = (idx:number, code:string) => {
     const m = materials.find((x) => x.material_code === code)
     if (!m) return
-    setEditing((p) => ({
-      ...p,
-      items: (p?.items || []).map((it, i) => i !== idx ? it : ({
+    setEditing((p) => {
+      const nextItems = (p?.items || []).map((it, i) => i !== idx ? it : ({
         ...it,
         material_code: m.material_code,
         material_name: m.material_name,
@@ -167,9 +200,37 @@ export default function BomPage() {
         company_price: Number(m.company_price || 0),
         currency: m.currency || 'VND',
         color: m.color || '',
-        lt: m.leadtime_days ? `${m.leadtime_days}` : '',
+        lt: m.leadtime || (m.leadtime_days ? `${m.leadtime_days}` : ''),
         moq: m.moq ?? null,
-      })),
+        remark: m.remark || '',
+      }))
+      const totals = calcItemTotals(nextItems)
+      return {
+        ...p,
+        items: nextItems,
+        supplier_price: totals ? totals.supplierTotal : p?.supplier_price,
+        company_price: totals ? totals.companyTotal : p?.company_price,
+      }
+    })
+  }
+
+  const applyMaterialToHeader = (code: string) => {
+    setHeaderMaterialCode(code)
+    const m = materials.find((x) => x.material_code === code)
+    if (!m) return
+    setEditing((p) => ({
+      ...p,
+      material_name: m.material_name || '',
+      spec: m.spec || '',
+      unit: normalizeUnit(m.unit || p?.unit || 'PCS'),
+      supplier_id: m.supplier_id ?? p?.supplier_id ?? null,
+      supplier_name: m.supplier_name || p?.supplier_name || '',
+      supplier_price: m.supplier_price ?? p?.supplier_price ?? undefined,
+      company_price: m.company_price ?? p?.company_price ?? undefined,
+      currency: m.currency || p?.currency || 'VND',
+      color: m.color || p?.color || '',
+      lt: m.leadtime || (m.leadtime_days ? `${m.leadtime_days}` : p?.lt || ''),
+      moq: m.moq ?? p?.moq ?? null,
     }))
   }
 
@@ -195,7 +256,7 @@ export default function BomPage() {
           <h1 className="text-xl font-bold text-slate-800">產品規格 / BOM</h1>
           <p className="text-xs text-slate-500 mt-0.5">主產品 + 組合加工材料明細（顏色 / Leadtime / MOQ）</p>
         </div>
-        {canWrite && <button onClick={()=>setEditing(empty())} className="btn-primary">+ 建立 BOM</button>}
+        {canWrite && <button onClick={()=>{ setEditing(empty()); setHeaderMaterialCode('') }} className="btn-primary">+ 建立 BOM</button>}
       </div>
 
       {/* Edit / Create Modal */}
@@ -225,8 +286,20 @@ export default function BomPage() {
                 <input className={inp} value={editing.product_name||''} onChange={e=>setEditing(p=>({...p,product_name:e.target.value}))} />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">材料名稱</label>
-                <input className={inp} value={editing.material_name||''} onChange={e=>setEditing(p=>({...p,material_name:e.target.value}))} />
+                <label className="block text-[11px] text-slate-500 mb-1.5">主料（面料）</label>
+                <SearchableSelect
+                  options={materials}
+                  value={headerMaterialCode}
+                  onChange={applyMaterialToHeader}
+                  placeholder="-- 選擇主料（自動帶入資料）--"
+                  renderOption={(m) => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
+                  filterFn={(m, search) =>
+                    m.material_code.toLowerCase().includes(search) ||
+                    m.material_name.toLowerCase().includes(search) ||
+                    (m.spec || '').toLowerCase().includes(search)
+                  }
+                />
+                <p className="text-[10px] text-slate-400 mt-1">選擇後會自動帶入名稱/規格/供應商/單價/Leadtime/MOQ</p>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">規格</label>
@@ -447,6 +520,10 @@ export default function BomPage() {
                         <div className="flex gap-1">
                           {canEdit && <button onClick={async ()=>{
                             const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
+                            const matchedMaterial =
+                              materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
+                              materials.find((m) => m.material_name === detail.material_name)
+                            setHeaderMaterialCode(matchedMaterial?.material_code || '')
                             setEditing({
                               ...detail,
                               unit: normalizeUnit(detail.unit),

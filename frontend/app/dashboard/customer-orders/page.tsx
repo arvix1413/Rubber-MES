@@ -159,7 +159,7 @@ export default function CustomerOrdersPage() {
         return {
           bom_id: i.bom_id ?? matchedBom?.id ?? null,
           qty: Number(i.qty),
-          unit_price: Number(i.unit_price) || Number(matchedBom?.company_price) || 0,
+          unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
           po_no: (i as any).po_no || '',
           rta_date: formatDateYMD((i as any).rta_date),
           remark: (i as any).remark || '',
@@ -226,7 +226,7 @@ export default function CustomerOrdersPage() {
     const updates: Partial<OrderItem> = { bom_id: bomId ? Number(bomId) : null }
     
     if (bom) {
-      if (bom.company_price) updates.unit_price = Number(bom.company_price)
+      updates.unit_price = Number(bom.company_price ?? 0)
       if (bom.spec) updates.spec = bom.spec
       if (bom.unit) updates.unit = bom.unit
       if (bom.image_url) updates.image_url = bom.image_url
