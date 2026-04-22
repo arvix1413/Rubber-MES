@@ -129,7 +129,7 @@ export default function PayablesPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{Number(editing.total_amount||0).toLocaleString()} {editing.currency}）</label>
-                <input type="number" className="rubber-input" value={form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: Number(e.target.value) }))} />
+                <input type="number" className="rubber-input" value={form.paid_amount === 0 ? '' : form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: e.target.value === '' ? 0 : Number(e.target.value) }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款日期</label>

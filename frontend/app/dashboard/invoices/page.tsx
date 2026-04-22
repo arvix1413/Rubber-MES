@@ -80,7 +80,7 @@ export default function InvoicesPage() {
   const [headers, setHeaders] = useState<InvoiceHeader[]>([])
   const [selected, setSelected] = useState<Record<number, { qty: number; unit_price: number }>>({})
   const [invoiceDate, setInvoiceDate] = useState('')
-  const [taxRate, setTaxRate] = useState(0)
+  const [taxRate, setTaxRate] = useState<number | ''>('')
   const [remark, setRemark] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [details, setDetails] = useState<Record<number, InvoiceDetail>>({})
@@ -163,7 +163,7 @@ export default function InvoicesPage() {
         body: JSON.stringify({
           invoice_type: invoiceType,
           invoice_date: invoiceDate || null,
-          tax_rate: taxRate,
+          tax_rate: Number(taxRate || 0),
           remark,
           items: ids.map((id) => ({
             reconciliation_item_id: Number(id),
@@ -176,7 +176,7 @@ export default function InvoicesPage() {
       setCreating(false)
       setSelected({})
       setInvoiceDate('')
-      setTaxRate(0)
+      setTaxRate('')
       setRemark('')
       await Promise.all([loadHeaders(), loadPending()])
     } catch (e: any) {
@@ -355,7 +355,7 @@ export default function InvoicesPage() {
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">稅率 %</label>
-              <input type="number" className="rubber-input" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value || 0))} />
+              <input type="number" className="rubber-input" value={taxRate} onChange={(e) => setTaxRate(e.target.value === '' ? '' : Number(e.target.value))} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-slate-500 mb-1">備註</label>
@@ -493,8 +493,8 @@ export default function InvoicesPage() {
                                 type="number"
                                 className="rubber-input"
                                 disabled={detail.status !== 'draft'}
-                                value={detail.tax_rate || 0}
-                                onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, tax_rate: Number(e.target.value || 0) } }))}
+                                value={detail.tax_rate === 0 ? '' : detail.tax_rate}
+                                onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, tax_rate: e.target.value === '' ? 0 : Number(e.target.value) } }))}
                               />
                             </div>
                             <div>

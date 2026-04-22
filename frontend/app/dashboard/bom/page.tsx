@@ -279,7 +279,7 @@ export default function BomPage() {
                   step="0.01"
                   required
                   className={inp}
-                  value={editing.supplier_price ?? 0}
+                  value={editing.supplier_price ?? ''}
                   onChange={e=>setEditing(p=>({...p,supplier_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
                 />
               </div>
@@ -291,7 +291,7 @@ export default function BomPage() {
                   step="0.01"
                   required
                   className={inp}
-                  value={editing.company_price ?? 0}
+                  value={editing.company_price ?? ''}
                   onChange={e=>setEditing(p=>({...p,company_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
                 />
               </div>
@@ -370,8 +370,8 @@ export default function BomPage() {
                           <td className="p-1"><input className={inp} value={item.color || ''} onChange={e => updateItem(i, 'color', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.supplier_name || ''} onChange={e => updateItem(i, 'supplier_name', e.target.value)} /></td>
-                          <td className="p-1"><input type="number" className={inp} value={item.supplier_price ?? 0} onChange={e => updateItem(i, 'supplier_price', Number(e.target.value))} /></td>
-                          <td className="p-1"><input type="number" className={inp} value={item.company_price ?? 0} onChange={e => updateItem(i, 'company_price', Number(e.target.value))} /></td>
+                          <td className="p-1"><input type="number" className={inp} value={item.supplier_price ?? ''} onChange={e => updateItem(i, 'supplier_price', e.target.value === '' ? undefined : Number(e.target.value))} /></td>
+                          <td className="p-1"><input type="number" className={inp} value={item.company_price ?? ''} onChange={e => updateItem(i, 'company_price', e.target.value === '' ? undefined : Number(e.target.value))} /></td>
                           <td className="p-1"><input className={inp} value={item.currency || 'VND'} onChange={e => updateItem(i, 'currency', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.lt || ''} onChange={e => updateItem(i, 'lt', e.target.value)} /></td>
                           <td className="p-1"><input type="number" className={inp} value={item.moq ?? ''} onChange={e => updateItem(i, 'moq', e.target.value ? Number(e.target.value) : null)} /></td>

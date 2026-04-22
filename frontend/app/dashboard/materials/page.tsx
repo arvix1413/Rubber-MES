@@ -208,11 +208,11 @@ export default function MaterialsPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
-                <input type="number" className="rubber-input" value={editing.supplier_price ?? 0} onChange={(e) => setEditing((p) => ({ ...p, supplier_price: Number(e.target.value) }))} />
+                <input type="number" className="rubber-input" value={editing.supplier_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, supplier_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">銷售單價</label>
-                <input type="number" className="rubber-input" value={editing.company_price ?? 0} onChange={(e) => setEditing((p) => ({ ...p, company_price: Number(e.target.value) }))} />
+                <input type="number" className="rubber-input" value={editing.company_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, company_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime（天）</label>
