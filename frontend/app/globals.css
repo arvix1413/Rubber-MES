@@ -123,6 +123,16 @@ input[type='number'] { -moz-appearance: textfield; }
 .expand-row-empty { @apply px-8 py-4 text-xs; color: #7e7367; }
 .expand-row-actions { @apply px-4 py-2.5 border-t flex items-center gap-2; border-color: #e6dccc; background: #f3ece2; }
 
+/* Unified hierarchy style (MES palette) */
+.layer-row-open { background: #f3ece2; box-shadow: inset 0 0 0 1px rgba(31, 79, 95, 0.16); }
+.layer-row-hover:hover { background: #f7f1e8; }
+.layer-panel-l2 { background: linear-gradient(180deg, #fbf5ec 0%, #f3e9db 100%); border-left: 4px solid #cfb594; padding-left: 12px; }
+.layer-head-l2 { border-bottom: 1px solid #dccab2; background: #f0e4d4; }
+.layer-row-l2-open { background: #efdfca; }
+.layer-row-l2-hover:hover { background: #f5e8d7; }
+.layer-panel-l3 { padding-left: 32px; padding-right: 0; padding-top: 0; padding-bottom: 0; background: linear-gradient(180deg, #f2e5d6 0%, #ebdac6 100%); border-left: 4px solid #b99873; }
+.layer-head-l3 { border-bottom: 1px solid #ceb492; background: #e9d6bf; }
+
 .scroll-x-unified {
   @apply overflow-x-auto overscroll-x-contain;
   overflow-y: hidden;

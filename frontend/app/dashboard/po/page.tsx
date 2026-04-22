@@ -427,7 +427,7 @@ export default function PoPage() {
                   return (
                     <>
                       <tr key={p.id}
-                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(p.id)}>
                         <td className="pl-4 py-3">
                           <span className="text-slate-500"><ChevronIcon open={isOpen} /></span>
@@ -464,7 +464,7 @@ export default function PoPage() {
                       {isOpen && (
                         <tr key={`${p.id}-items`} className="border-b border-slate-100">
                           <td colSpan={8} className="px-0 py-0">
-                            <div className="expand-row-wrap">
+                            <div className="expand-row-wrap layer-panel-l2">
                               {items.length === 0 ? (
                                 <div className="expand-row-loading">
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
@@ -473,7 +473,7 @@ export default function PoPage() {
                                 <div className="table-scroll-x">
                                   <table className="w-full text-xs" style={{minWidth:700}}>
                                     <thead>
-                                      <tr className="border-b border-slate-100">
+                                      <tr className="layer-head-l2">
                                         {['PO訂單編號','料號','材料名稱','規格'].map(h=>(
                                           <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                         ))}
@@ -487,7 +487,7 @@ export default function PoPage() {
                                     </thead>
                                     <tbody>
                                       {items.map((item, i) => (
-                                        <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                        <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.po_ref}</td>
                                           <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code}</td>
                                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[160px] truncate" title={item.material_name}>{item.material_name}</td>
@@ -503,7 +503,7 @@ export default function PoPage() {
                                       ))}
                                     </tbody>
                                     <tfoot>
-                                      <tr className="border-t border-slate-200">
+                                      <tr className="border-t" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
                                         <td colSpan={7} className="px-3 py-2 text-right text-[10px] text-slate-300 font-semibold uppercase">未稅合計</td>
                                         <td className="px-3 py-2 text-right text-slate-600 font-bold">{items.reduce((s,i)=>s+Number(i.total_price),0).toLocaleString()}</td>
                                         <td className="px-3 py-2 text-slate-400 text-xs">{Number((p as any).tax_rate || 8)}%</td>

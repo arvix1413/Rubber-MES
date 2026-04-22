@@ -468,7 +468,7 @@ export default function CustomerOrdersPage() {
                   return (
                     <>
                       <tr key={o.id}
-                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(o.id)}>
                         <td className="pl-4 py-3"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
                         <td className="px-4 py-3 font-mono text-xs text-blue-600">{o.po_number}</td>
@@ -508,9 +508,9 @@ export default function CustomerOrdersPage() {
                       {isOpen && (
                         <tr key={`${o.id}-items`} className="border-b border-slate-100">
                           <td colSpan={canViewProfit ? 12 : 11} className="px-0 py-0">
-                            <div className="expand-row-wrap">
+                            <div className="expand-row-wrap layer-panel-l2">
                               {canViewProfit && profit && (
-                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                                <div className="px-4 py-3 border-b" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
                                     <div><span className="text-slate-400">營收</span><div className="font-semibold text-slate-700">{money(profit.revenue)}</div></div>
                                     <div><span className="text-slate-400">成本</span><div className="font-semibold text-slate-700">{money(profit.cogs)}</div></div>
@@ -537,7 +537,7 @@ export default function CustomerOrdersPage() {
                                 <div className="expand-row-empty">尚無品項</div>
                               ) : (
                                 <table className="w-full text-xs">
-                                  <thead><tr className="border-b border-slate-100">
+                                  <thead><tr className="layer-head-l2">
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">PO No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Mtl No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Description</th>
@@ -552,7 +552,7 @@ export default function CustomerOrdersPage() {
                                   </tr></thead>
                                   <tbody>
                                     {items.map((item,i)=>(
-                                      <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                      <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
                                         <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
                                         <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
                                         <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>

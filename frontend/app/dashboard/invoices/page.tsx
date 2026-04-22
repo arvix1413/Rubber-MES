@@ -452,7 +452,7 @@ export default function InvoicesPage() {
                 const detail = details[h.id]
                 return (
                   <Fragment key={h.id}>
-                    <tr className="border-t border-slate-100">
+                    <tr className={`border-t border-slate-100 transition-colors ${expandedId === h.id ? 'layer-row-open' : 'layer-row-hover'}`}>
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.invoice_no}</td>
                       <td className="px-3 py-2">{h.party_name || '-'}</td>
                       <td className="px-3 py-2">{formatDateYMD(h.invoice_date) || '-'}</td>
@@ -471,7 +471,7 @@ export default function InvoicesPage() {
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={9} className="bg-slate-50 border-t border-slate-100 p-3">
+                        <td colSpan={9} className="layer-panel-l2 border-t border-[#dccab2] p-3">
                           <div className="grid md:grid-cols-2 gap-3 mb-3">
                             <div className="text-xs text-slate-700">驗證碼：<span className="font-mono font-semibold">{detail.verification_code || '-'}</span></div>
                             <div className="text-xs text-slate-500 truncate">QR Payload：{detail.qr_payload || '-'}</div>
@@ -511,7 +511,7 @@ export default function InvoicesPage() {
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
                             <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
                               <thead>
-                                <tr>
+                                <tr className="layer-head-l2">
                                   <th className="px-3 py-2 text-left">PO</th>
                                   <th className="px-3 py-2 text-left">品項</th>
                                   <th className="px-3 py-2 text-right">數量</th>

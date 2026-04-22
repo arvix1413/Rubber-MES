@@ -368,7 +368,7 @@ export default function ShipmentReconciliationPage() {
                 const sm = STATUS_MAP[h.status] || { label: h.status, badge: 'badge-gray' }
                 return (
                   <Fragment key={h.id}>
-                    <tr className="border-t border-slate-100">
+                    <tr className={`border-t border-slate-100 transition-colors ${expandedId === h.id ? 'layer-row-open' : 'layer-row-hover'}`}>
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.reconciliation_no}</td>
                       <td className="px-3 py-2">{formatDateYMD(h.reconcile_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
@@ -388,7 +388,7 @@ export default function ShipmentReconciliationPage() {
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={8} className="bg-slate-50 border-t border-slate-100 p-3">
+                        <td colSpan={8} className="layer-panel-l2 border-t border-[#dccab2] p-3">
                           <div className="grid md:grid-cols-3 gap-3 mb-3">
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">核對日期</label>
@@ -413,7 +413,7 @@ export default function ShipmentReconciliationPage() {
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
                             <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
                               <thead>
-                                <tr>
+                                <tr className="layer-head-l2">
                                   <th className="px-3 py-2 text-left">出貨單/訂單</th>
                                   <th className="px-3 py-2 text-left">品項</th>
                                   <th className="px-3 py-2 text-right">出貨</th>
