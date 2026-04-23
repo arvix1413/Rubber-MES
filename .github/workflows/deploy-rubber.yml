@@ -60,3 +60,58 @@ jobs:
           password: ${{ env.TARGET_PASSWORD }}
           port: ${{ env.TARGET_PORT }}
           script: IMAGE_TAG=${{ env.DEPLOY_ENV }} /opt/rubber/deploy.sh
+
+      - name: Notify Telegram
+        if: always()
+        env:
+          TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
+          TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+          DEPLOY_STATUS: ${{ job.status }}
+          PROJECT_NAME: Rubber-MES
+          REPO: ${{ github.repository }}
+          BRANCH: ${{ github.ref_name }}
+          SERVER_HOST: ${{ env.TARGET_HOST }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "${TELEGRAM_BOT_TOKEN}" ] || [ -z "${TELEGRAM_CHAT_ID}" ]; then
+            echo "Telegram notification skipped: missing bot token or chat id"
+            exit 0
+          fi
+
+          if [ "${DEPLOY_STATUS}" = "success" ]; then
+            STATUS_TEXT="部署成功"
+          else
+            STATUS_TEXT="部署失败"
+          fi
+
+          COMMIT_MESSAGE=$(git log -1 --pretty=%B | sed '/^[[:space:]]*$/d')
+
+          MESSAGE=$(cat <<EOF
+          [部署通知]
+
+          项目:
+          ${PROJECT_NAME}
+
+          仓库:
+          ${REPO}
+
+          分支:
+          ${BRANCH}
+
+          部署服务器:
+          ${SERVER_HOST}
+
+          部署结果:
+          ${STATUS_TEXT}
+
+          提交内容:
+          ${COMMIT_MESSAGE}
+
+          运行详情:
+          ${RUN_URL}
+          EOF
+          )
+
+          curl -sS -X POST "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
+            -d "chat_id=${TELEGRAM_CHAT_ID}" \
+            --data-urlencode "text=${MESSAGE}"
