@@ -90,13 +90,14 @@ export default function MaterialsPage() {
     setCompanyPriceInput(editing.company_price == null ? '' : formatDecimal(editing.company_price))
   }, [editing?.id, editing?.material_code])
 
-  const normalizeMoneyInput = (raw: string) => {
-    const cleaned = raw.replace(/[^0-9.]/g, '')
-    const firstDot = cleaned.indexOf('.')
-    if (firstDot === -1) return cleaned
-    const intPart = cleaned.slice(0, firstDot)
-    const decPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, 3)
-    return `${intPart}.${decPart}`
+  const normalizeMoneyInput = (raw: string) => raw.trim()
+  const parseMoney = (raw: string) => {
+    const t = raw.trim().replace(/,/g, '')
+    if (!t) return undefined
+    if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(t)) return null
+    const n = Number(t)
+    if (!Number.isFinite(n) || n < 0) return null
+    return n
   }
 
   const bindMoney = (field: 'supplier_price' | 'company_price', raw: string) => {
@@ -106,8 +107,8 @@ export default function MaterialsPage() {
     setEditing((p) => {
       if (!p) return p
       if (!next) return { ...p, [field]: undefined }
-      const n = Number(next)
-      if (!Number.isFinite(n)) return p
+      const n = parseMoney(next)
+      if (n === null || n === undefined) return p
       return { ...p, [field]: n }
     })
   }
@@ -115,8 +116,8 @@ export default function MaterialsPage() {
   const blurMoney = (field: 'supplier_price' | 'company_price') => {
     const current = field === 'supplier_price' ? supplierPriceInput : companyPriceInput
     if (!current) return
-    const n = Number(current)
-    if (!Number.isFinite(n)) return
+    const n = parseMoney(current)
+    if (n === null || n === undefined) return
     const normalized = formatDecimal(n)
     if (field === 'supplier_price') setSupplierPriceInput(normalized)
     else setCompanyPriceInput(normalized)

@@ -78,6 +78,8 @@ export default function BomPage() {
   const [loadedItems, setLoadedItems] = useState<Record<number, BomItem[]>>({})
   const [headerMaterialCode, setHeaderMaterialCode] = useState('')
   const [editing, setEditing] = useState<Partial<Bom>|null>(null)
+  const [supplierPriceInput, setSupplierPriceInput] = useState('')
+  const [companyPriceInput, setCompanyPriceInput] = useState('')
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
@@ -92,6 +94,44 @@ export default function BomPage() {
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(()=>{})
     apiFetch<Material[]>('/api/materials').then(setMaterials).catch(()=>{})
   },[])
+  useEffect(() => {
+    if (!editing) {
+      setSupplierPriceInput('')
+      setCompanyPriceInput('')
+      return
+    }
+    setSupplierPriceInput(editing.supplier_price == null ? '' : formatDecimal(editing.supplier_price))
+    setCompanyPriceInput(editing.company_price == null ? '' : formatDecimal(editing.company_price))
+  }, [editing?.id, editing?.product_sku])
+
+  const parseMoney = (raw: string) => {
+    const t = String(raw || '').trim().replace(/,/g, '')
+    if (!t) return undefined
+    if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(t)) return null
+    const n = Number(t)
+    if (!Number.isFinite(n) || n < 0) return null
+    return n
+  }
+  const bindMoney = (field: 'supplier_price' | 'company_price', raw: string) => {
+    if (field === 'supplier_price') setSupplierPriceInput(raw)
+    else setCompanyPriceInput(raw)
+    setEditing((p) => {
+      if (!p) return p
+      if (!raw.trim()) return { ...p, [field]: undefined }
+      const n = parseMoney(raw)
+      if (n === null || n === undefined) return p
+      return { ...p, [field]: n }
+    })
+  }
+  const blurMoney = (field: 'supplier_price' | 'company_price') => {
+    const current = field === 'supplier_price' ? supplierPriceInput : companyPriceInput
+    if (!current.trim()) return
+    const n = parseMoney(current)
+    if (n === null || n === undefined) return
+    const normalized = formatDecimal(n)
+    if (field === 'supplier_price') setSupplierPriceInput(normalized)
+    else setCompanyPriceInput(normalized)
+  }
   const toggleExpand = async (id: number) => {
     const next = new Set(expanded)
     if (next.has(id)) {
@@ -364,28 +404,26 @@ export default function BomPage() {
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
                 <input
-                  type="number"
-                  min={0}
-                  step="0.001"
+                  type="text"
+                  inputMode="decimal"
                   required
                   className={inp}
-                  value={editing.supplier_price ?? ''}
-                  onChange={e=>setEditing(p=>({...p,supplier_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
+                  value={supplierPriceInput}
+                  onChange={e=>bindMoney('supplier_price', e.target.value)}
+                  onBlur={() => blurMoney('supplier_price')}
                 />
-                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.supplier_price == null ? '—' : formatDecimal(editing.supplier_price)}</div>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">公司售價</label>
                 <input
-                  type="number"
-                  min={0}
-                  step="0.001"
+                  type="text"
+                  inputMode="decimal"
                   required
                   className={inp}
-                  value={editing.company_price ?? ''}
-                  onChange={e=>setEditing(p=>({...p,company_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
+                  value={companyPriceInput}
+                  onChange={e=>bindMoney('company_price', e.target.value)}
+                  onBlur={() => blurMoney('company_price')}
                 />
-                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.company_price == null ? '—' : formatDecimal(editing.company_price)}</div>
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>

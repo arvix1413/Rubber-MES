@@ -2,7 +2,7 @@ export const formatDecimal = (value: any, digits = 3): string => {
   const num = Number(value)
   if (!Number.isFinite(num)) return (0).toFixed(digits)
   return num.toLocaleString(undefined, {
-    useGrouping: false,
+    useGrouping: true,
     minimumFractionDigits: digits,
     maximumFractionDigits: digits,
   })
