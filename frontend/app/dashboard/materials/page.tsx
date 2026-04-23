@@ -213,11 +213,13 @@ export default function MaterialsPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
-                <input type="number" className="rubber-input" value={editing.supplier_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, supplier_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+                <input type="number" min={0} step="0.001" className="rubber-input" value={editing.supplier_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, supplier_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.supplier_price == null ? '—' : formatDecimal(editing.supplier_price)}</div>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">銷售單價</label>
-                <input type="number" className="rubber-input" value={editing.company_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, company_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+                <input type="number" min={0} step="0.001" className="rubber-input" value={editing.company_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, company_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
+                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.company_price == null ? '—' : formatDecimal(editing.company_price)}</div>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime（天）</label>

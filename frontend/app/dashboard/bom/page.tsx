@@ -366,24 +366,26 @@ export default function BomPage() {
                 <input
                   type="number"
                   min={0}
-                  step="0.01"
+                  step="0.001"
                   required
                   className={inp}
                   value={editing.supplier_price ?? ''}
                   onChange={e=>setEditing(p=>({...p,supplier_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
                 />
+                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.supplier_price == null ? '—' : formatDecimal(editing.supplier_price)}</div>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">公司售價</label>
                 <input
                   type="number"
                   min={0}
-                  step="0.01"
+                  step="0.001"
                   required
                   className={inp}
                   value={editing.company_price ?? ''}
                   onChange={e=>setEditing(p=>({...p,company_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
                 />
+                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.company_price == null ? '—' : formatDecimal(editing.company_price)}</div>
               </div>
               <div className="col-span-2">
                 <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>
