@@ -120,11 +120,17 @@ async function loginUi(page) {
     // BOM level-2 details
     await page.goto(`${WEB}/dashboard/bom`, { waitUntil: 'domcontentloaded' })
     await page.locator('input[placeholder="搜尋物料編號、產品名稱..."]').fill(`${tag}-SKU`)
-    const bomRow = page.locator('tr', { hasText: `${tag}-SKU` }).first()
+    const bomRow = page.locator('tbody tr', { hasText: `${tag}-SKU` }).first()
     await bomRow.waitFor({ state: 'visible', timeout: 10000 })
     await bomRow.click()
-    await page.locator('div.expand-row-wrap.layer-panel-l2').first().waitFor({ state: 'visible', timeout: 10000 })
-    const bomDetailText = await page.locator('div.expand-row-wrap.layer-panel-l2').first().innerText()
+    const bomPanel = page.locator('div.expand-row-wrap.layer-panel-l2').first()
+    await bomPanel.waitFor({ state: 'visible', timeout: 10000 })
+    const bomWaitStart = Date.now()
+    let bomDetailText = await bomPanel.innerText()
+    while (Date.now() - bomWaitStart < 10000 && (!bomDetailText.includes(`${tag}-M1`) || !bomDetailText.includes(`${tag}-M2`))) {
+      await page.waitForTimeout(250)
+      bomDetailText = await bomPanel.innerText()
+    }
     if (!bomDetailText.includes(`${tag}-M1`) || !bomDetailText.includes(`${tag}-M2`)) throw new Error('BOM expanded detail missing material rows')
     ok('ui', 'bom.expand.material-rows')
 
@@ -164,7 +170,7 @@ async function loginUi(page) {
     const rowCount = await dataRows.count()
     if (rowCount !== 1) throw new Error(`expected 1 row after supplier filter, got ${rowCount}`)
 
-    await page.getByRole('button', { name: '建立採購單' }).click()
+    await page.getByRole('button', { name: '建立採購單', exact: true }).click()
     await page.locator('input.list-search').waitFor({ state: 'visible', timeout: 15000 })
     ok('ui', 'po.import.filter.save')
 
