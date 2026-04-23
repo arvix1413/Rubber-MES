@@ -139,7 +139,12 @@ async function loginUi(page) {
     await itemExpandBtn.click()
     const lv3 = page.locator('div.layer-panel-l3').first()
     await lv3.waitFor({ state: 'visible', timeout: 10000 })
-    const lv3Text = await lv3.innerText()
+    const waitStart = Date.now()
+    let lv3Text = await lv3.innerText()
+    while (Date.now() - waitStart < 10000 && (!lv3Text.includes(`${tag}-M1`) || !lv3Text.includes(`${tag}-M2`))) {
+      await page.waitForTimeout(250)
+      lv3Text = await lv3.innerText()
+    }
     if (!lv3Text.includes(`${tag}-M1`) || !lv3Text.includes(`${tag}-M2`)) throw new Error('Customer order level-3 detail missing BOM materials')
     ok('ui', 'customer-orders.level3.expand')
 

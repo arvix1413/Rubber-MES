@@ -82,6 +82,7 @@ export default function CustomerOrdersPage() {
   const [loadedItems, setLoadedItems] = useState<Record<number, OrderItem[]>>({})
   const [expandedItemRows, setExpandedItemRows] = useState<Set<string>>(new Set())
   const [bomItemsByBomId, setBomItemsByBomId] = useState<Record<number, BomMaterialItem[]>>({})
+  const [loadingBomDetailIds, setLoadingBomDetailIds] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState({
@@ -145,8 +146,17 @@ export default function CustomerOrdersPage() {
     next.add(rowKey)
     setExpandedItemRows(next)
     if (bomId && bomItemsByBomId[bomId] === undefined) {
-      const detail = await apiFetch<any>(`/api/bom/${bomId}`)
-      setBomItemsByBomId((p) => ({ ...p, [bomId]: detail?.items || [] }))
+      setLoadingBomDetailIds((prev) => new Set(prev).add(bomId))
+      try {
+        const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+        setBomItemsByBomId((p) => ({ ...p, [bomId]: detail?.items || [] }))
+      } finally {
+        setLoadingBomDetailIds((prev) => {
+          const next = new Set(prev)
+          next.delete(bomId)
+          return next
+        })
+      }
     }
   }
 
@@ -585,6 +595,7 @@ export default function CustomerOrdersPage() {
                                       const rowKey = `${o.id}-${item.id || item.bom_id || item.product_sku || i}`
                                       const rowOpen = expandedItemRows.has(rowKey)
                                       const bomItems = item.bom_id ? (bomItemsByBomId[item.bom_id] || []) : []
+                                      const bomLoading = !!(item.bom_id && loadingBomDetailIds.has(item.bom_id))
                                       return (
                                         <Fragment key={rowKey}>
                                           <tr className={`border-b border-[#e1cfb8] last:border-0 transition-colors ${rowOpen ? 'layer-row-l2-open' : 'layer-row-l2-hover'}`}>
@@ -620,7 +631,7 @@ export default function CustomerOrdersPage() {
                                               <td colSpan={12} className="px-0 py-0">
                                                 <div className="layer-panel-l3">
                                                   {bomItems.length === 0 ? (
-                                                    <div className="px-4 py-2 text-[11px] text-slate-500">此 BOM 尚無輔料明細</div>
+                                                    <div className="px-4 py-2 text-[11px] text-slate-500">{bomLoading ? 'BOM 輔料明細載入中...' : '此 BOM 尚無輔料明細'}</div>
                                                   ) : (
                                                     <table className="w-full text-[11px]">
                                                       <thead>
