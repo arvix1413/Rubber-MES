@@ -65,6 +65,8 @@ export default function MaterialsPage() {
   const [loading, setLoading] = useState(true)
   const [uploading, setUploading] = useState(false)
   const [search, setSearch] = useState('')
+  const [supplierPriceInput, setSupplierPriceInput] = useState('')
+  const [companyPriceInput, setCompanyPriceInput] = useState('')
   const canWrite = can('bom.create')
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
@@ -77,6 +79,48 @@ export default function MaterialsPage() {
     load()
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(() => {})
   }, [])
+
+  useEffect(() => {
+    if (!editing) {
+      setSupplierPriceInput('')
+      setCompanyPriceInput('')
+      return
+    }
+    setSupplierPriceInput(editing.supplier_price == null ? '' : formatDecimal(editing.supplier_price))
+    setCompanyPriceInput(editing.company_price == null ? '' : formatDecimal(editing.company_price))
+  }, [editing?.id, editing?.material_code])
+
+  const normalizeMoneyInput = (raw: string) => {
+    const cleaned = raw.replace(/[^0-9.]/g, '')
+    const firstDot = cleaned.indexOf('.')
+    if (firstDot === -1) return cleaned
+    const intPart = cleaned.slice(0, firstDot)
+    const decPart = cleaned.slice(firstDot + 1).replace(/\./g, '').slice(0, 3)
+    return `${intPart}.${decPart}`
+  }
+
+  const bindMoney = (field: 'supplier_price' | 'company_price', raw: string) => {
+    const next = normalizeMoneyInput(raw)
+    if (field === 'supplier_price') setSupplierPriceInput(next)
+    else setCompanyPriceInput(next)
+    setEditing((p) => {
+      if (!p) return p
+      if (!next) return { ...p, [field]: undefined }
+      const n = Number(next)
+      if (!Number.isFinite(n)) return p
+      return { ...p, [field]: n }
+    })
+  }
+
+  const blurMoney = (field: 'supplier_price' | 'company_price') => {
+    const current = field === 'supplier_price' ? supplierPriceInput : companyPriceInput
+    if (!current) return
+    const n = Number(current)
+    if (!Number.isFinite(n)) return
+    const normalized = formatDecimal(n)
+    if (field === 'supplier_price') setSupplierPriceInput(normalized)
+    else setCompanyPriceInput(normalized)
+  }
 
   const uploadImage = async (file: File) => {
     setUploading(true)
@@ -213,13 +257,25 @@ export default function MaterialsPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
-                <input type="number" min={0} step="0.001" className="rubber-input" value={editing.supplier_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, supplier_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
-                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.supplier_price == null ? '—' : formatDecimal(editing.supplier_price)}</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="rubber-input"
+                  value={supplierPriceInput}
+                  onChange={(e) => bindMoney('supplier_price', e.target.value)}
+                  onBlur={() => blurMoney('supplier_price')}
+                />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">銷售單價</label>
-                <input type="number" min={0} step="0.001" className="rubber-input" value={editing.company_price ?? ''} onChange={(e) => setEditing((p) => ({ ...p, company_price: e.target.value === '' ? undefined : Number(e.target.value) }))} />
-                <div className="mt-1 text-[10px] text-slate-400">顯示值：{editing.company_price == null ? '—' : formatDecimal(editing.company_price)}</div>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  className="rubber-input"
+                  value={companyPriceInput}
+                  onChange={(e) => bindMoney('company_price', e.target.value)}
+                  onBlur={() => blurMoney('company_price')}
+                />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime（天）</label>
