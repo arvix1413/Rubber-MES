@@ -14,6 +14,7 @@ type IntakeItem = {
   order_id: number | null
   order_item_id: number | null
   po_number: string
+  delivery_location?: string
   po_date?: string
   order_status?: string
   material_code: string
@@ -46,6 +47,27 @@ type OrderDetailItem = {
   unit?: string
 }
 type OrderDetail = { id: number; po_number: string; customer_id: number; customer_name?: string; items: OrderDetailItem[] }
+type OrderDetailExt = OrderDetail & { delivery_address?: string; address?: string }
+type ImportedLine = {
+  key: string
+  orderItemId: string
+  materialCode: string
+  materialName: string
+  spec: string
+  unit: string
+  plannedQty: string
+}
+type ImportedPoSource = {
+  order: { id: number; po_number: string; customer_name: string }
+  items: Array<{
+    source_order_item_id?: number
+    material_code?: string
+    material_name?: string
+    spec?: string
+    unit?: string
+    quantity?: number
+  }>
+}
 
 type ProgressForm = {
   customerId: string
@@ -53,6 +75,7 @@ type ProgressForm = {
   orderId: string
   orderPo: string
   orderItemId: string
+  deliveryLocation: string
   materialCode: string
   materialName: string
   spec: string
@@ -80,6 +103,7 @@ const emptyForm: ProgressForm = {
   orderId: '',
   orderPo: '',
   orderItemId: '',
+  deliveryLocation: '',
   materialCode: '',
   materialName: '',
   spec: '',
@@ -103,6 +127,7 @@ export default function OrderIntakePage() {
   const [editing, setEditing] = useState<IntakeItem | null>(null)
   const [form, setForm] = useState<ProgressForm>(emptyForm)
   const [orderSearch, setOrderSearch] = useState('')
+  const [importedLines, setImportedLines] = useState<ImportedLine[]>([])
 
   const load = async (nextStatus = status) => {
     setLoading(true)
@@ -171,6 +196,7 @@ export default function OrderIntakePage() {
     setForm(emptyForm)
     setOrderDetail(null)
     setOrderSearch('')
+    setImportedLines([])
   }
 
   const openCreate = () => {
@@ -183,13 +209,14 @@ export default function OrderIntakePage() {
     setOrderDetail(null)
     if (!orderId) return
     try {
-      const detail = await apiFetch<OrderDetail>(`/api/customer-orders/${orderId}`)
+      const detail = await apiFetch<OrderDetailExt>(`/api/customer-orders/${orderId}`)
       setOrderDetail(detail)
       setForm((prev) => ({
         ...prev,
         customerId: String(detail.customer_id || prev.customerId || ''),
         customerName: detail.customer_name || prev.customerName,
         orderPo: detail.po_number || prev.orderPo,
+        deliveryLocation: detail.delivery_address || detail.address || prev.deliveryLocation,
       }))
     } catch (e: any) {
       toast(String(e?.message || '訂單明細載入失敗'), 'error')
@@ -213,38 +240,103 @@ export default function OrderIntakePage() {
     }))
   }
 
+  const importByPo = async () => {
+    const poNo = form.orderPo.trim()
+    if (!poNo) {
+      toast('請先輸入客戶訂單號（PO）', 'error')
+      return
+    }
+    try {
+      const payload = await apiFetch<ImportedPoSource>(`/api/po/materials-from-order-po/${encodeURIComponent(poNo)}`)
+      const detail = await apiFetch<OrderDetailExt>(`/api/customer-orders/${payload.order.id}`)
+      const lines: ImportedLine[] = (payload.items || []).map((it, idx) => ({
+        key: `${it.source_order_item_id || 'x'}-${it.material_code || 'm'}-${idx}`,
+        orderItemId: it.source_order_item_id ? String(it.source_order_item_id) : '',
+        materialCode: String(it.material_code || ''),
+        materialName: String(it.material_name || ''),
+        spec: String(it.spec || ''),
+        unit: String(it.unit || 'PCS'),
+        plannedQty: String(Number(it.quantity || 0)),
+      }))
+      setImportedLines(lines)
+      setOrderDetail(detail)
+      setForm((prev) => ({
+        ...prev,
+        orderId: String(payload.order.id),
+        customerId: String(detail.customer_id || prev.customerId || ''),
+        customerName: detail.customer_name || payload.order.customer_name || prev.customerName,
+        orderPo: payload.order.po_number || poNo,
+        deliveryLocation: detail.delivery_address || detail.address || prev.deliveryLocation,
+      }))
+      toast(`已帶入 ${lines.length} 筆輔料明細`)
+    } catch (e: any) {
+      toast(String(e?.message || 'PO 帶入失敗'), 'error')
+    }
+  }
+
+  const updateImportedLine = (key: string, plannedQty: string) => {
+    setImportedLines((prev) => prev.map((it) => (it.key === key ? { ...it, plannedQty } : it)))
+  }
+
   const createProgress = async () => {
-    const plannedQty = Number(form.plannedQty)
     if (!form.customerName.trim()) {
       toast('客戶名稱必填', 'error')
       return
     }
-    if (!form.materialCode.trim()) {
-      toast('料號必填', 'error')
-      return
-    }
-    if (!Number.isFinite(plannedQty) || plannedQty <= 0) {
-      toast('計畫數量需大於 0', 'error')
-      return
-    }
     try {
-      await apiFetch('/api/order-intake', {
-        method: 'POST',
-        body: JSON.stringify({
-          customer_id: form.customerId ? Number(form.customerId) : undefined,
-          customer_name: form.customerName.trim(),
-          customer_order_id: form.orderId ? Number(form.orderId) : undefined,
-          order_item_id: form.orderItemId ? Number(form.orderItemId) : undefined,
-          order_po_number: form.orderPo.trim() || undefined,
-          material_code: form.materialCode.trim(),
-          material_name: form.materialName.trim(),
-          spec: form.spec.trim(),
-          unit: form.unit.trim() || 'PCS',
-          planned_qty: plannedQty,
-          due_date: form.dueDate || undefined,
-          remark: form.remark.trim(),
-        }),
-      })
+      if (importedLines.length > 0) {
+        for (const row of importedLines) {
+          const plannedQty = Number(row.plannedQty)
+          if (!row.materialCode.trim()) throw new Error('帶入資料含空白料號，請重新帶入')
+          if (!Number.isFinite(plannedQty) || plannedQty <= 0) throw new Error(`料號 ${row.materialCode} 數量需大於 0`)
+          await apiFetch('/api/order-intake', {
+            method: 'POST',
+            body: JSON.stringify({
+              customer_id: form.customerId ? Number(form.customerId) : undefined,
+              customer_name: form.customerName.trim(),
+              customer_order_id: form.orderId ? Number(form.orderId) : undefined,
+              order_item_id: row.orderItemId ? Number(row.orderItemId) : undefined,
+              order_po_number: form.orderPo.trim() || undefined,
+              delivery_location: form.deliveryLocation.trim() || undefined,
+              material_code: row.materialCode.trim(),
+              material_name: row.materialName.trim(),
+              spec: row.spec.trim(),
+              unit: row.unit.trim() || 'PCS',
+              planned_qty: plannedQty,
+              due_date: form.dueDate || undefined,
+              remark: form.remark.trim(),
+            }),
+          })
+        }
+      } else {
+        const plannedQty = Number(form.plannedQty)
+        if (!form.materialCode.trim()) {
+          toast('料號必填', 'error')
+          return
+        }
+        if (!Number.isFinite(plannedQty) || plannedQty <= 0) {
+          toast('計畫數量需大於 0', 'error')
+          return
+        }
+        await apiFetch('/api/order-intake', {
+          method: 'POST',
+          body: JSON.stringify({
+            customer_id: form.customerId ? Number(form.customerId) : undefined,
+            customer_name: form.customerName.trim(),
+            customer_order_id: form.orderId ? Number(form.orderId) : undefined,
+            order_item_id: form.orderItemId ? Number(form.orderItemId) : undefined,
+            order_po_number: form.orderPo.trim() || undefined,
+            delivery_location: form.deliveryLocation.trim() || undefined,
+            material_code: form.materialCode.trim(),
+            material_name: form.materialName.trim(),
+            spec: form.spec.trim(),
+            unit: form.unit.trim() || 'PCS',
+            planned_qty: plannedQty,
+            due_date: form.dueDate || undefined,
+            remark: form.remark.trim(),
+          }),
+        })
+      }
       toast('交貨進度已建立')
       setShowCreate(false)
       resetCreate()
@@ -272,6 +364,7 @@ export default function OrderIntakePage() {
           material_name: form.materialName.trim(),
           spec: form.spec.trim(),
           unit: form.unit.trim() || 'PCS',
+          delivery_location: form.deliveryLocation.trim(),
         }),
       })
       toast('交貨進度已更新')
@@ -301,6 +394,7 @@ export default function OrderIntakePage() {
       orderId: row.order_id ? String(row.order_id) : '',
       orderPo: row.po_number || '',
       orderItemId: row.order_item_id ? String(row.order_item_id) : '',
+      deliveryLocation: row.delivery_location || '',
       materialCode: row.material_code || '',
       materialName: row.material_name || '',
       spec: row.spec || '',
@@ -339,7 +433,7 @@ export default function OrderIntakePage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">交貨進度</h1>
-          <p className="text-xs text-slate-500 mt-1">手動建立交貨進度，按進度生成採購單。</p>
+          <p className="text-xs text-slate-500 mt-1">可由客戶訂單 PO 自動帶入 BOM 輔料，確認數量與出貨日後建檔。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
@@ -505,17 +599,28 @@ export default function OrderIntakePage() {
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">訂單號</label>
-                <input className="rubber-input" value={form.orderPo} onChange={(e) => setForm((prev) => ({ ...prev, orderPo: e.target.value }))} />
+                <div className="flex gap-2">
+                  <input className="rubber-input" value={form.orderPo} onChange={(e) => setForm((prev) => ({ ...prev, orderPo: e.target.value }))} />
+                  <button type="button" className="btn-ghost whitespace-nowrap" onClick={importByPo}>帶入 BOM 輔料</button>
+                </div>
+              </div>
+              <div className="md:col-span-2">
+                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
+                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} placeholder="可由客戶資料自動帶入" />
               </div>
 
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">料號 *</label>
-                <input className="rubber-input" value={form.materialCode} onChange={(e) => setForm((prev) => ({ ...prev, materialCode: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">品名</label>
-                <input className="rubber-input" value={form.materialName} onChange={(e) => setForm((prev) => ({ ...prev, materialName: e.target.value }))} />
-              </div>
+              {importedLines.length === 0 && (
+                <>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">料號 *</label>
+                    <input className="rubber-input" value={form.materialCode} onChange={(e) => setForm((prev) => ({ ...prev, materialCode: e.target.value }))} />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">品名</label>
+                    <input className="rubber-input" value={form.materialName} onChange={(e) => setForm((prev) => ({ ...prev, materialName: e.target.value }))} />
+                  </div>
+                </>
+              )}
 
               <div>
                 <label className="block text-xs text-slate-500 mb-1">規格</label>
@@ -527,14 +632,60 @@ export default function OrderIntakePage() {
               </div>
 
               <div>
-                <label className="block text-xs text-slate-500 mb-1">計畫數量 *</label>
-                <input type="number" className="rubber-input" min={0} value={form.plannedQty} onChange={(e) => setForm((prev) => ({ ...prev, plannedQty: e.target.value }))} />
+                <label className="block text-xs text-slate-500 mb-1">{importedLines.length > 0 ? '出貨日期 *' : '計畫數量 *'}</label>
+                {importedLines.length > 0 ? (
+                  <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
+                ) : (
+                  <input type="number" className="rubber-input" min={0} value={form.plannedQty} onChange={(e) => setForm((prev) => ({ ...prev, plannedQty: e.target.value }))} />
+                )}
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">到期日</label>
-                <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
+                <label className="block text-xs text-slate-500 mb-1">{importedLines.length > 0 ? '帶入筆數' : '到期日'}</label>
+                {importedLines.length > 0 ? (
+                  <input className="rubber-input" value={`${importedLines.length} 筆`} disabled />
+                ) : (
+                  <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
+                )}
               </div>
             </div>
+
+            {importedLines.length > 0 && (
+              <div className="mt-4">
+                <label className="block text-xs text-slate-500 mb-1.5">BOM 輔料明細（可調整數量）</label>
+                <div className="table-scroll-x border border-slate-200 rounded-lg">
+                  <table className="w-full text-xs" style={{ minWidth: 920 }}>
+                    <thead>
+                      <tr className="bg-slate-50 border-b border-slate-200">
+                        <th className="px-2 py-2 text-left">料號</th>
+                        <th className="px-2 py-2 text-left">品名</th>
+                        <th className="px-2 py-2 text-left">規格</th>
+                        <th className="px-2 py-2 text-left">單位</th>
+                        <th className="px-2 py-2 text-right">數量</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {importedLines.map((line) => (
+                        <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                          <td className="px-2 py-2 font-mono text-[11px] text-blue-700">{line.materialCode || '-'}</td>
+                          <td className="px-2 py-2">{line.materialName || '-'}</td>
+                          <td className="px-2 py-2 text-slate-500">{line.spec || '-'}</td>
+                          <td className="px-2 py-2 text-slate-500">{line.unit || 'PCS'}</td>
+                          <td className="px-2 py-2 text-right">
+                            <input
+                              type="number"
+                              min={0}
+                              className="rubber-input h-8 text-right"
+                              value={line.plannedQty}
+                              onChange={(e) => updateImportedLine(line.key, e.target.value)}
+                            />
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
 
             <div className="mt-3">
               <label className="block text-xs text-slate-500 mb-1">備註</label>
@@ -562,6 +713,10 @@ export default function OrderIntakePage() {
               <div>
                 <label className="block text-xs text-slate-500 mb-1">料號</label>
                 <input className="rubber-input" value={form.materialCode} disabled />
+              </div>
+              <div>
+                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
+                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} />
               </div>
               <div>
                 <label className="block text-xs text-slate-500 mb-1">品名</label>

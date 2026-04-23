@@ -493,6 +493,14 @@ let ensureDeliveryProgressTablePromise: Promise<void> | null = null
 const ensureDeliveryProgressTable = async () => {
   if (!ensureDeliveryProgressTablePromise) {
     ensureDeliveryProgressTablePromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column') && !msg.includes('duplicate key name') && !msg.includes('duplicate index')) throw e
+        }
+      }
       await execute(`
         CREATE TABLE IF NOT EXISTS delivery_progress (
           id INT AUTO_INCREMENT PRIMARY KEY,
@@ -502,6 +510,7 @@ const ensureDeliveryProgressTable = async () => {
           customer_order_id INT NULL,
           order_item_id INT NULL,
           order_po_number VARCHAR(100) DEFAULT '',
+          delivery_location VARCHAR(255) DEFAULT '',
           material_code VARCHAR(255) DEFAULT '',
           material_name VARCHAR(255) DEFAULT '',
           spec VARCHAR(255) DEFAULT '',
@@ -516,6 +525,7 @@ const ensureDeliveryProgressTable = async () => {
           deleted_by INT NULL
         )
       `)
+      await alterSafe('ALTER TABLE delivery_progress ADD COLUMN delivery_location VARCHAR(255) DEFAULT \'\' AFTER order_po_number')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_order_item ON delivery_progress (customer_order_id, order_item_id)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_status_created ON delivery_progress (status, created_at)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_material ON delivery_progress (material_code)')
@@ -2351,6 +2361,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
         dp.customer_order_id as order_id,
         dp.order_item_id,
         dp.order_po_number as po_number,
+        dp.delivery_location,
         co.po_date,
         COALESCE(co.status, '') as order_status,
         dp.material_code,
@@ -2472,6 +2483,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
     let customerId: number | null = b?.customer_id ? Number(b.customer_id) : null
     let customerName = String(b?.customer_name || '').trim()
     let orderPo = String(b?.order_po_number || '').trim()
+    let deliveryLocation = String(b?.delivery_location || '').trim()
     let materialCode = String(b?.material_code || '').trim()
     let materialName = String(b?.material_name || '').trim()
     let spec = String(b?.spec || '').trim()
@@ -2482,6 +2494,10 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       if (!order) return c.json({ error: '客戶訂單不存在' }, 404)
       customerId = Number(order.customer_id || customerId || 0) || null
       orderPo = String(order.po_number || orderPo || '')
+      if (!deliveryLocation) {
+        const orderExt = await queryOne<any>('SELECT delivery_address FROM customer_orders WHERE id=? AND deleted_at IS NULL', [orderId])
+        deliveryLocation = String(orderExt?.delivery_address || '')
+      }
       if (customerId && !customerName) {
         const cust = await queryOne<any>('SELECT customer_name FROM customers WHERE id=? AND deleted_at IS NULL', [customerId])
         customerName = String(cust?.customer_name || '')
@@ -2510,16 +2526,20 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       const cust = await queryOne<any>('SELECT customer_name FROM customers WHERE id=? AND deleted_at IS NULL', [customerId])
       customerName = String(cust?.customer_name || '')
     }
+    if (!deliveryLocation && customerId) {
+      const cust = await queryOne<any>('SELECT address FROM customers WHERE id=? AND deleted_at IS NULL', [customerId])
+      deliveryLocation = String(cust?.address || '')
+    }
     if (!customerName) return c.json({ error: 'customer_name 必填' }, 400)
     if (!materialCode) return c.json({ error: 'material_code 必填' }, 400)
 
     const progressNo = `DP${Date.now()}`
     const r = await execute(`
       INSERT INTO delivery_progress
-        (progress_no, customer_id, customer_name, customer_order_id, order_item_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_by, created_at)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+        (progress_no, customer_id, customer_name, customer_order_id, order_item_id, order_po_number, delivery_location, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_by, created_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
     `, [
-      progressNo, customerId, customerName, orderId, orderItemId, orderPo, materialCode, materialName, spec, unit,
+      progressNo, customerId, customerName, orderId, orderItemId, orderPo, deliveryLocation, materialCode, materialName, spec, unit,
       plannedQty, b?.due_date ? toDateStr(b.due_date) : null, 'pending', b?.remark || '', u?.userId || null, now8(),
     ])
     await audit(u, 'CREATE', '交貨進度', r.insertId, `${progressNo} / ${customerName}`)
@@ -2539,7 +2559,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     if (plannedQty <= 0) return c.json({ error: 'planned_qty 必須大於 0' }, 400)
     await execute(`
       UPDATE delivery_progress
-      SET due_date=?, planned_qty=?, remark=?, status=?, material_name=?, spec=?, unit=?
+      SET due_date=?, planned_qty=?, remark=?, status=?, material_name=?, spec=?, unit=?, delivery_location=?
       WHERE id=? AND deleted_at IS NULL
     `, [
       b?.due_date ? toDateStr(b.due_date) : null,
@@ -2549,6 +2569,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
       String(b?.material_name || ''),
       String(b?.spec || ''),
       String(b?.unit || 'PCS') || 'PCS',
+      String(b?.delivery_location || ''),
       id,
     ])
     await audit(c.get('user'), 'UPDATE', '交貨進度', id, `id=${id}`)
