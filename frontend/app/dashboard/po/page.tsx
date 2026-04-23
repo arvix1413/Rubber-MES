@@ -15,6 +15,13 @@ type PoItem = { material_code:string; material_name:string; spec:string; unit:st
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
 type Supplier = { id: number; name: string; currency: string; supplier_code: string }
 type Material = { id: number; material_code: string; material_name: string; spec: string; unit: string; supplier_price: number; currency: string; image_url?: string; supplier_id?: number; moq_tiers?: MoqTier[] }
+type ImportedPoSource = { order: { id: number; po_number: string; customer_name: string }; items: any[]; suppliers: Array<{ supplier_id: number; supplier_name: string; count: number }> }
+
+type PoItemExt = PoItem & {
+  keep?: boolean
+  supplier_id?: number | null
+  supplier_name?: string
+}
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:     { label:'草稿',   badge:'badge-gray'   },
@@ -24,7 +31,7 @@ const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   cancelled: { label:'已取消', badge:'badge-red'    },
 }
 
-const emptyItem = (): PoItem => ({ material_code:'', material_name:'', spec:'', unit:'', quantity:1, unit_price:0, total_price:0, currency:'VND', remark:'', po_ref:'' })
+const emptyItem = (): PoItemExt => ({ material_code:'', material_name:'', spec:'', unit:'', quantity:1, unit_price:0, total_price:0, currency:'VND', remark:'', po_ref:'', keep: true, supplier_id: null, supplier_name: '' })
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -45,7 +52,10 @@ export default function PoPage() {
   const [loadedItems, setLoadedItems] = useState<Record<number, PoItem[]>>({})
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
+  const [form, setForm] = useState({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] as PoItemExt[] })
+  const [sourceOrderPoNo, setSourceOrderPoNo] = useState('')
+  const [sourceLoading, setSourceLoading] = useState(false)
+  const [sourceMeta, setSourceMeta] = useState<ImportedPoSource | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -62,7 +72,7 @@ export default function PoPage() {
 
   const onSelectSupplier = async (supplierId: string) => {
     const sup = suppliers.find(s => String(s.id) === supplierId)
-    setForm(p => ({ ...p, supplier_id: supplierId, supplier_name: sup?.name || '', currency: sup?.currency || 'VND', items: [emptyItem()] }))
+    setForm(p => ({ ...p, supplier_id: supplierId, supplier_name: sup?.name || '', currency: sup?.currency || p.currency || 'VND' }))
   }
 
   const getFilteredMaterials = () => {
@@ -85,6 +95,8 @@ export default function PoPage() {
           unit_price: 0,
           image_url: '',
           total_price: 0,
+          supplier_id: null,
+          supplier_name: '',
         })
       }))
       return
@@ -104,6 +116,8 @@ export default function PoPage() {
         currency: material.currency || form.currency,
         image_url: material.image_url || '',
         total_price: (item.quantity || 0) * resolveTierPrice(material.moq_tiers, item.quantity || 0, material.supplier_price || 0),
+        supplier_id: material.supplier_id ?? null,
+        supplier_name: suppliers.find((s) => s.id === material.supplier_id)?.name || '',
       })
     }))
   }
@@ -171,7 +185,7 @@ export default function PoPage() {
 
   const addItem = () => setForm(p => ({ ...p, items: [...p.items, emptyItem()] }))
   const removeItem = (i: number) => setForm(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }))
-  const updateItem = (i: number, field: keyof PoItem, val: any) => {
+  const updateItem = (i: number, field: keyof PoItemExt, val: any) => {
     setForm(p => ({
       ...p,
       items: p.items.map((item, idx) => {
@@ -186,10 +200,92 @@ export default function PoPage() {
       })
     }))
   }
+  const importFromCustomerOrder = async () => {
+    const poNo = sourceOrderPoNo.trim()
+    if (!poNo) {
+      toast('請先輸入客戶訂單號', 'error')
+      return
+    }
+    setSourceLoading(true)
+    try {
+      const payload = await apiFetch<ImportedPoSource>(`/api/po/materials-from-order-po/${encodeURIComponent(poNo)}`)
+      const importedItems: PoItemExt[] = (payload.items || []).map((row) => ({
+        material_id: row.material_id ? Number(row.material_id) : undefined,
+        material_code: row.material_code || '',
+        material_name: row.material_name || '',
+        spec: row.spec || '',
+        unit: row.unit || 'PCS',
+        quantity: Number(row.quantity || 0),
+        unit_price: Number(row.unit_price || 0),
+        total_price: Number(row.total_price || 0),
+        currency: row.currency || 'VND',
+        remark: row.remark || '',
+        po_ref: row.po_ref || payload.order?.po_number || poNo,
+        image_url: row.image_url || '',
+        supplier_id: row.supplier_id ? Number(row.supplier_id) : null,
+        supplier_name: row.supplier_name || '',
+        keep: true,
+      }))
+      if (!importedItems.length) {
+        toast('此訂單無可帶入的輔料明細', 'error')
+        return
+      }
+      const onlyOneSupplier = (payload.suppliers || []).length === 1 ? payload.suppliers[0] : null
+      const matchedSup = onlyOneSupplier ? suppliers.find((s) => s.id === onlyOneSupplier.supplier_id) : null
+      setForm((p) => ({
+        ...p,
+        supplier_id: matchedSup ? String(matchedSup.id) : p.supplier_id,
+        supplier_name: matchedSup?.name || p.supplier_name,
+        currency: matchedSup?.currency || p.currency || 'VND',
+        items: importedItems,
+      }))
+      setSourceMeta(payload)
+      toast(`已帶入 ${importedItems.length} 筆輔料明細`)
+      if (!onlyOneSupplier) {
+        toast('此客戶訂單含多供應商，請先選供應商再用「只保留當前供應商」', 'error')
+      }
+    } catch (e: any) {
+      toast(`帶入失敗：${e.message}`, 'error')
+    } finally {
+      setSourceLoading(false)
+    }
+  }
+  const keepOnlyCurrentSupplier = () => {
+    if (!form.supplier_id) {
+      toast('請先選擇供應商', 'error')
+      return
+    }
+    const sid = Number(form.supplier_id)
+    setForm((p) => ({
+      ...p,
+      items: p.items.map((item) => ({ ...item, keep: item.supplier_id === sid })),
+    }))
+  }
+  const removeUncheckedItems = () => {
+    setForm((p) => ({
+      ...p,
+      items: p.items.filter((item) => item.keep !== false),
+    }))
+  }
 
   const save = async () => {
     if (!form.supplier_id) { toast('請選擇供應商', 'error'); return }
-    const validItems = form.items.filter(i => i.material_id)
+    const validItems = form.items
+      .filter(i => i.keep !== false && i.material_id)
+      .map((i) => ({
+        material_id: i.material_id,
+        material_code: i.material_code,
+        material_name: i.material_name,
+        spec: i.spec,
+        unit: i.unit,
+        quantity: i.quantity,
+        unit_price: i.unit_price,
+        total_price: i.total_price,
+        currency: i.currency,
+        remark: i.remark,
+        po_ref: i.po_ref,
+        thickness: i.thickness,
+      }))
     if (!validItems.length) { toast('請至少選擇一個材料品項', 'error'); return }
     try {
       if (editingId) {
@@ -202,6 +298,8 @@ export default function PoPage() {
         setCreating(false)
       }
       setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
+      setSourceOrderPoNo('')
+      setSourceMeta(null)
       await load()
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
@@ -235,6 +333,9 @@ export default function PoPage() {
           po_ref: i.po_ref,
           image_url: i.image_url || matchedMaterial?.image_url || '',
           material_id: matchedMaterial ? matchedMaterial.id : undefined,
+          supplier_id: matchedMaterial?.supplier_id ?? null,
+          supplier_name: po.supplier_name || '',
+          keep: true,
         }
       })
     })
@@ -253,7 +354,7 @@ export default function PoPage() {
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
   }
 
-  const formTotal = form.items.reduce((s, i) => s + (i.total_price || 0), 0)
+  const formTotal = form.items.filter(i => i.keep !== false).reduce((s, i) => s + (i.total_price || 0), 0)
   const filteredPos = pos.filter(p => {
     const matchSearch = !search || p.po_number.toLowerCase().includes(search.toLowerCase()) || p.supplier_name.toLowerCase().includes(search.toLowerCase())
     const matchStatus = !statusFilter || p.status === statusFilter
@@ -270,7 +371,7 @@ export default function PoPage() {
           <h1 className="text-xl font-bold text-slate-800">採購單管理</h1>
           <p className="section-hint">點選採購單列展開檢視料號明細</p>
         </div>
-        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-primary">+ 建立採購單</button>}
+        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-primary">+ 建立採購單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
@@ -307,6 +408,26 @@ export default function PoPage() {
               <textarea className={inp} rows={3} value={form.remark} onChange={e=>setForm(p=>({...p,remark:e.target.value}))} placeholder="可輸入交易條件、付款方式、交貨要求等資訊..." />
             </div>
           </div>
+          <div className="rounded-xl border border-slate-200 bg-slate-50/70 p-3 mb-4">
+            <div className="flex items-end gap-2 flex-wrap">
+              <div className="min-w-[240px]">
+                <label className="block text-[11px] text-slate-500 mb-1.5">客戶訂單號（PO NO）</label>
+                <input className={inp} value={sourceOrderPoNo} onChange={e=>setSourceOrderPoNo(e.target.value)} placeholder="輸入客戶訂單號後帶入輔料" />
+              </div>
+              <button onClick={importFromCustomerOrder} className="btn-primary" disabled={sourceLoading}>
+                {sourceLoading ? '帶入中...' : '帶入客戶訂單輔料'}
+              </button>
+              <button onClick={keepOnlyCurrentSupplier} className="btn-ghost border border-slate-200">只保留當前供應商</button>
+              <button onClick={removeUncheckedItems} className="btn-ghost border border-slate-200">刪除未勾選</button>
+            </div>
+            {sourceMeta && (
+              <div className="mt-2 text-[11px] text-slate-500">
+                來源訂單：<span className="font-semibold text-slate-700">{sourceMeta.order.po_number}</span>
+                {' · '}客戶：<span className="font-semibold text-slate-700">{sourceMeta.order.customer_name}</span>
+                {' · '}帶入明細：<span className="font-semibold text-slate-700">{sourceMeta.items.length}</span>
+              </div>
+            )}
+          </div>
           <div className="flex items-center justify-between mb-2">
             <span className="text-xs font-semibold text-slate-600">採購明細</span>
             <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增料號</button>
@@ -314,13 +435,20 @@ export default function PoPage() {
           <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200">
             <table className="w-full text-xs" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
-                {['Item','PO NO','MTL NO（Materials）','Products','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
+                {['保留','Item','PO NO','MTL NO（Materials）','Products','Supplier','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
                   <th key={h} className="px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {form.items.map((item, i) => (
                   <tr key={i} className="border-b border-slate-100">
+                    <td className="p-1 text-center">
+                      <input
+                        type="checkbox"
+                        checked={item.keep !== false}
+                        onChange={e=>updateItem(i,'keep',e.target.checked)}
+                      />
+                    </td>
                     <td className="p-1.5">
                       {item.image_url ? (
                         <img src={item.image_url} alt="" className="w-10 h-10 object-cover rounded border border-slate-200" onError={e=>{(e.target as HTMLImageElement).style.display='none'}} />
@@ -345,6 +473,7 @@ export default function PoPage() {
                       />
                     </td>
                     <td className="p-1"><input className={lockedInp} value={item.material_name} onChange={e=>updateItem(i,'material_name',e.target.value)} readOnly /></td>
+                    <td className="p-1"><input className={lockedInp} style={{width:150}} value={item.supplier_name || ''} onChange={e=>updateItem(i,'supplier_name',e.target.value)} readOnly /></td>
                     <td className="p-1"><input className={lockedInp} value={item.spec} onChange={e=>updateItem(i,'spec',e.target.value)} readOnly style={{width:120}} /></td>
                     <td className="p-1"><input className={lockedInp} value={item.unit} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly style={{width:70}} /></td>
                     <td className="p-1"><input type="number" className={inp} style={{width:90}} value={item.quantity || ""} onChange={e=>updateItem(i,'quantity',Number(e.target.value))} /></td>
@@ -370,7 +499,7 @@ export default function PoPage() {
               </tbody>
               <tfoot>
                 <tr className="border-t border-slate-200">
-                  <td colSpan={8} className="px-3 py-2 text-right text-[11px] text-slate-400 font-semibold uppercase">未稅合計</td>
+                  <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-slate-400 font-semibold uppercase">未稅合計</td>
                   <td className="px-2 py-2 text-right text-slate-600 font-bold">{formTotal.toLocaleString()}</td>
                   <td className="px-2 py-2 text-slate-400 text-xs">{form.tax_rate}%</td>
                   <td className="px-2 py-2 text-slate-400 text-xs">{form.currency}</td>
@@ -383,7 +512,7 @@ export default function PoPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
-            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }) }} className="btn-ghost border border-slate-200">取消</button>
+            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
           </div>
         </div>
       )}

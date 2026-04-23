@@ -1437,6 +1437,138 @@ app.get('/api/po/:id', authMiddleware, async c => {
     WHERE pi.po_id=?`, [c.req.param('id')])
   return c.json({ ...po, items })
 })
+app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm('po.create'), async c => {
+  try {
+    const poNumber = String(c.req.param('poNumber') || '').trim()
+    if (!poNumber) return c.json({ error: '客戶訂單號不可為空' }, 400)
+
+    const order = await queryOne<any>(`
+      SELECT id, po_number, customer_name
+      FROM customer_orders
+      WHERE po_number=? AND deleted_at IS NULL
+      ORDER BY id DESC
+      LIMIT 1
+    `, [poNumber])
+    if (!order) return c.json({ error: `找不到客戶訂單：${poNumber}` }, 404)
+
+    const orderItems = await query<any>(`
+      SELECT ci.id as order_item_id, ci.bom_id, ci.qty, ci.po_no, ci.remark,
+             b.product_sku, b.product_name, b.spec as bom_spec, b.unit as bom_unit,
+             b.supplier_id as bom_supplier_id, b.supplier_name as bom_supplier_name,
+             b.supplier_price as bom_supplier_price, b.currency as bom_currency
+      FROM customer_order_items ci
+      LEFT JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+      WHERE ci.order_id=?
+      ORDER BY ci.id ASC
+    `, [order.id])
+
+    const items: any[] = []
+    for (const oi of orderItems) {
+      const orderQty = toQty(oi.qty)
+      if (orderQty <= 0) continue
+
+      const bomItems = oi.bom_id ? await query<any>(`
+        SELECT
+          bi.material_id,
+          bi.material_code,
+          bi.material_name,
+          bi.spec,
+          bi.unit,
+          bi.quantity as bom_qty,
+          bi.supplier_name as bom_supplier_name,
+          bi.supplier_price as bom_supplier_price,
+          bi.currency as bom_currency,
+          bi.remark,
+          m.supplier_id,
+          s.name as supplier_name,
+          m.supplier_price as material_supplier_price,
+          m.currency as material_currency,
+          m.moq_tiers,
+          m.image_url
+        FROM bom_items bi
+        LEFT JOIN materials m ON bi.material_id = m.id AND m.deleted_at IS NULL
+        LEFT JOIN suppliers s ON m.supplier_id = s.id AND s.deleted_at IS NULL
+        WHERE bi.bom_id=?
+        ORDER BY bi.id ASC
+      `, [oi.bom_id]) : []
+
+      if (bomItems.length > 0) {
+        for (const bi of bomItems) {
+          const lineQty = toQty(orderQty * toQty(bi.bom_qty || 1))
+          if (lineQty <= 0) continue
+          const unitPrice = toMoney(
+            bi.material_supplier_price ?? bi.bom_supplier_price ?? oi.bom_supplier_price ?? 0
+          )
+          const supplierName = String(bi.supplier_name || bi.bom_supplier_name || oi.bom_supplier_name || '')
+          const supplierId = bi.supplier_id ? Number(bi.supplier_id) : null
+          items.push({
+            source_order_id: Number(order.id),
+            source_order_item_id: Number(oi.order_item_id),
+            source_order_po_number: String(order.po_number || ''),
+            po_ref: String(oi.po_no || order.po_number || ''),
+            bom_id: oi.bom_id ? Number(oi.bom_id) : null,
+            bom_sku: String(oi.product_sku || ''),
+            bom_name: String(oi.product_name || ''),
+            material_id: bi.material_id ? Number(bi.material_id) : null,
+            material_code: String(bi.material_code || ''),
+            material_name: String(bi.material_name || ''),
+            spec: String(bi.spec || ''),
+            unit: String(bi.unit || 'PCS'),
+            quantity: lineQty,
+            unit_price: unitPrice,
+            total_price: toMoney(lineQty * unitPrice),
+            currency: String(bi.material_currency || bi.bom_currency || oi.bom_currency || 'VND'),
+            remark: String(bi.remark || oi.remark || ''),
+            supplier_id: supplierId,
+            supplier_name: supplierName,
+            moq_tiers: parseMoqTiersFromDb(bi.moq_tiers),
+            image_url: String(bi.image_url || ''),
+          })
+        }
+      } else {
+        const unitPrice = toMoney(oi.bom_supplier_price || 0)
+        items.push({
+          source_order_id: Number(order.id),
+          source_order_item_id: Number(oi.order_item_id),
+          source_order_po_number: String(order.po_number || ''),
+          po_ref: String(oi.po_no || order.po_number || ''),
+          bom_id: oi.bom_id ? Number(oi.bom_id) : null,
+          bom_sku: String(oi.product_sku || ''),
+          bom_name: String(oi.product_name || ''),
+          material_id: null,
+          material_code: String(oi.product_sku || ''),
+          material_name: String(oi.product_name || ''),
+          spec: String(oi.bom_spec || ''),
+          unit: String(oi.bom_unit || 'PCS'),
+          quantity: orderQty,
+          unit_price: unitPrice,
+          total_price: toMoney(orderQty * unitPrice),
+          currency: String(oi.bom_currency || 'VND'),
+          remark: String(oi.remark || ''),
+          supplier_id: oi.bom_supplier_id ? Number(oi.bom_supplier_id) : null,
+          supplier_name: String(oi.bom_supplier_name || ''),
+          moq_tiers: [],
+          image_url: '',
+        })
+      }
+    }
+
+    const supplierMap = new Map<number, { supplier_id: number; supplier_name: string; count: number }>()
+    for (const row of items) {
+      if (!row.supplier_id) continue
+      if (!supplierMap.has(row.supplier_id)) supplierMap.set(row.supplier_id, { supplier_id: row.supplier_id, supplier_name: row.supplier_name || '', count: 0 })
+      supplierMap.get(row.supplier_id)!.count += 1
+    }
+
+    return c.json({
+      order: { id: Number(order.id), po_number: String(order.po_number || ''), customer_name: String(order.customer_name || '') },
+      items,
+      suppliers: Array.from(supplierMap.values()),
+    })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
 app.post('/api/po', authMiddleware, requirePerm('po.create'), async c => {
   try {
     const b = await c.req.json()

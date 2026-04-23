@@ -1,6 +1,6 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { apiFetch, getSignatureUrl } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, CO_STEPS } from '@/components/StatusFlow'
@@ -30,6 +30,19 @@ type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number
 type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Customer = { id:number; customer_code:string; customer_name:string }
+type BomMaterialItem = {
+  material_code?: string
+  material_name?: string
+  spec?: string
+  color?: string
+  unit?: string
+  supplier_name?: string
+  lt?: string
+  moq?: number | null
+  supplier_price?: number
+  company_price?: number
+  remark?: string
+}
 type ProfitOrderSummary = {
   id: number
   revenue: number
@@ -67,6 +80,8 @@ export default function CustomerOrdersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, OrderItem[]>>({})
+  const [expandedItemRows, setExpandedItemRows] = useState<Set<string>>(new Set())
+  const [bomItemsByBomId, setBomItemsByBomId] = useState<Record<number, BomMaterialItem[]>>({})
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState({
@@ -118,6 +133,20 @@ export default function CustomerOrdersPage() {
         const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
         setLoadedItems(p => ({ ...p, [id]: data.items || [] }))
       }
+    }
+  }
+  const toggleItemExpand = async (rowKey: string, bomId?: number | null) => {
+    const next = new Set(expandedItemRows)
+    if (next.has(rowKey)) {
+      next.delete(rowKey)
+      setExpandedItemRows(next)
+      return
+    }
+    next.add(rowKey)
+    setExpandedItemRows(next)
+    if (bomId && bomItemsByBomId[bomId] === undefined) {
+      const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+      setBomItemsByBomId((p) => ({ ...p, [bomId]: detail?.items || [] }))
     }
   }
 
@@ -466,7 +495,7 @@ export default function CustomerOrdersPage() {
                   const items = loadedItems[o.id]
                   const profit = profitByOrderId[o.id]
                   return (
-                    <>
+                    <Fragment key={o.id}>
                       <tr key={o.id}
                         className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(o.id)}>
@@ -538,6 +567,7 @@ export default function CustomerOrdersPage() {
                               ) : (
                                 <table className="w-full text-xs">
                                   <thead><tr className="layer-head-l2">
+                                    <th className="w-8" />
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">PO No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Mtl No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Description</th>
@@ -551,25 +581,81 @@ export default function CustomerOrdersPage() {
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">狀態</th>
                                   </tr></thead>
                                   <tbody>
-                                    {items.map((item,i)=>(
-                                      <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
-                                        <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
-                                        <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
-                                        <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
-                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
-                                        <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
-                                        <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right whitespace-nowrap">
-                                          {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
-                                        </td>
-                                        <td className="px-4 py-2 whitespace-nowrap">
-                                          <span className={STATUS_BADGE[item.status||'pending']||'badge-gray'}>{STATUS_LABEL[item.status||'pending']||item.status}</span>
-                                        </td>
-                                      </tr>
-                                    ))}
+                                    {items.map((item,i)=>{
+                                      const rowKey = `${o.id}-${item.id || item.bom_id || item.product_sku || i}`
+                                      const rowOpen = expandedItemRows.has(rowKey)
+                                      const bomItems = item.bom_id ? (bomItemsByBomId[item.bom_id] || []) : []
+                                      return (
+                                        <Fragment key={rowKey}>
+                                          <tr className={`border-b border-[#e1cfb8] last:border-0 transition-colors ${rowOpen ? 'layer-row-l2-open' : 'layer-row-l2-hover'}`}>
+                                            <td className="px-2 py-2">
+                                              <button
+                                                type="button"
+                                                className={`text-slate-500 ${item.bom_id ? 'hover:text-slate-700' : 'opacity-30 cursor-not-allowed'}`}
+                                                disabled={!item.bom_id}
+                                                onClick={() => { if (item.bom_id) toggleItemExpand(rowKey, item.bom_id) }}
+                                                title={item.bom_id ? '展開 BOM 輔料明細' : '無 BOM 可展開'}
+                                              >
+                                                <ChevronIcon open={rowOpen} />
+                                              </button>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
+                                            <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
+                                            <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
+                                            <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                                              {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
+                                            </td>
+                                            <td className="px-4 py-2 whitespace-nowrap">
+                                              <span className={STATUS_BADGE[item.status||'pending']||'badge-gray'}>{STATUS_LABEL[item.status||'pending']||item.status}</span>
+                                            </td>
+                                          </tr>
+                                          {rowOpen && (
+                                            <tr>
+                                              <td colSpan={12} className="px-0 py-0">
+                                                <div className="layer-panel-l3">
+                                                  {bomItems.length === 0 ? (
+                                                    <div className="px-4 py-2 text-[11px] text-slate-500">此 BOM 尚無輔料明細</div>
+                                                  ) : (
+                                                    <table className="w-full text-[11px]">
+                                                      <thead>
+                                                        <tr className="bg-[#e7d4bc] border-b border-[#ccb08f]">
+                                                          {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
+                                                            <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase whitespace-nowrap">{h}</th>
+                                                          ))}
+                                                        </tr>
+                                                      </thead>
+                                                      <tbody>
+                                                        {bomItems.map((bomItem, bomIdx) => (
+                                                          <tr key={bomIdx} className="border-b border-[#d6b995] last:border-0 hover:bg-[#ecdac3]">
+                                                            <td className="px-3 py-1.5 font-mono text-blue-700 whitespace-nowrap">{bomItem.material_code || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap">{bomItem.material_name || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.spec || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.color || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.unit || 'PCS'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.supplier_name || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.lt || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.moq != null ? Number(bomItem.moq).toLocaleString() : '—'}</td>
+                                                            <td className="px-3 py-1.5 text-right text-slate-700 whitespace-nowrap">{Number(bomItem.supplier_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{Number(bomItem.company_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap max-w-[220px] truncate" title={bomItem.remark || ''}>{bomItem.remark || '—'}</td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          )}
+                                        </Fragment>
+                                      )
+                                    })}
                                   </tbody>
                                 </table>
                               )}
@@ -577,7 +663,7 @@ export default function CustomerOrdersPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
                 {paged.length===0 && <tr><td colSpan={canViewProfit ? 12 : 11} className="px-4 py-12 text-center text-slate-400">尚無訂單</td></tr>}

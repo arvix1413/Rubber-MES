@@ -1,7 +1,7 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import FieldLockHint from '@/components/FieldLockHint'
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { apiFetch, API, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getUser } from '@/lib/permissions'
@@ -9,6 +9,7 @@ import { can } from '@/lib/usePermissions'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
+import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 
 type Bom = {
   id:number; product_sku:string; product_name:string; material_name:string; spec:string; unit:string
@@ -73,6 +74,8 @@ export default function BomPage() {
   const [boms, setBoms] = useState<Bom[]>([])
   const [suppliers, setSuppliers] = useState<Supplier[]>([])
   const [materials, setMaterials] = useState<Material[]>([])
+  const [expanded, setExpanded] = useState<Set<number>>(new Set())
+  const [loadedItems, setLoadedItems] = useState<Record<number, BomItem[]>>({})
   const [headerMaterialCode, setHeaderMaterialCode] = useState('')
   const [editing, setEditing] = useState<Partial<Bom>|null>(null)
   const [uploading, setUploading] = useState(false)
@@ -89,6 +92,20 @@ export default function BomPage() {
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(()=>{})
     apiFetch<Material[]>('/api/materials').then(setMaterials).catch(()=>{})
   },[])
+  const toggleExpand = async (id: number) => {
+    const next = new Set(expanded)
+    if (next.has(id)) {
+      next.delete(id)
+      setExpanded(next)
+      return
+    }
+    next.add(id)
+    setExpanded(next)
+    if (loadedItems[id] === undefined) {
+      const detail = await apiFetch<Bom>(`/api/bom/${id}`)
+      setLoadedItems((p) => ({ ...p, [id]: detail.items || [] }))
+    }
+  }
 
   const uploadImage = async (file: File) => {
     setUploading(true)
@@ -243,8 +260,8 @@ export default function BomPage() {
   })
   const moqTierSummary = (b: Bom) => {
     const tiers = normalizeMoqTiers((b as any).moq_tiers)
-    if (!tiers.length) return b.moq ? `MOQ ${Number(b.moq).toLocaleString()}` : '—'
-    return tiers.map((t) => `${t.moq.toLocaleString()}/${t.price.toLocaleString()}`).join(' | ')
+    if (!tiers.length) return b.moq ? `MOQ ${formatInteger(b.moq)}` : '—'
+    return tiers.map((t) => `${formatInteger(t.moq)}/${formatDecimal(t.price)}`).join(' | ')
   }
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
   const inp = 'rubber-input'
@@ -486,6 +503,7 @@ export default function BomPage() {
               <table className="w-full text-sm" style={{minWidth:1000}}>
                 <thead>
                   <tr className="border-b border-slate-200">
+                    <th className="w-8" />
                     {['圖片','分類','物料編號','產品名稱','材料名稱','規格','顏色','單位','Leadtime','MOQ階梯','品牌','認證代碼','供應商'].map(h=>(
                       <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
@@ -496,50 +514,97 @@ export default function BomPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map(b=>(
-                    <tr key={b.id} className="border-b border-slate-100 hover:bg-slate-50">
-                      <td className="px-3 py-2.5">
-                        {b.image_url ? <img src={b.image_url} alt="" className="w-9 h-9 object-cover rounded-lg border border-slate-200" onError={e=>{(e.target as HTMLImageElement).style.display='none'}} /> : <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 text-xs">無</div>}
-                      </td>
-                      <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">{b.category||'—'}</td>
-                      <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap">{b.product_sku}</td>
-                      <td className="px-3 py-2.5 text-slate-800 font-medium max-w-[200px] truncate" title={b.product_name}>{b.product_name}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.material_name||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[120px] truncate" title={b.spec}>{b.spec||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.color||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.unit}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.lt||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={moqTierSummary(b)}>{moqTierSummary(b)}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.brand||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.cert_code||'—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={b.supplier_name}>{b.supplier_name||'—'}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-600 whitespace-nowrap">{Number(b.supplier_price).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">{Number(b.company_price).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{b.currency}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
-                        <div className="flex gap-1">
-                          {canEdit && <button onClick={async ()=>{
-                            const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
-                            const matchedMaterial =
-                              materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
-                              materials.find((m) => m.material_name === detail.material_name)
-                            setHeaderMaterialCode(matchedMaterial ? String(matchedMaterial.id) : '')
-                            setEditing({
-                              ...detail,
-                              unit: normalizeUnit(detail.unit),
-                              moq_tiers: (() => {
-                                const parsed = normalizeMoqTiers((detail as any).moq_tiers)
-                                return [...parsed, ...emptyTiers()].slice(0, 5)
-                              })(),
-                              items: detail.items || [],
-                            })
-                          }} className="btn-ghost text-blue-600">編輯</button>}
-                          {canDel && <button onClick={e=>del(b.id,e)} className="btn-danger">刪除</button>}
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                  {paged.length===0 && <tr><td colSpan={17} className="text-center py-12 text-slate-400">尚無 BOM 資料</td></tr>}
+                  {paged.map(b => {
+                    const isOpen = expanded.has(b.id)
+                    const detailItems = loadedItems[b.id] || []
+                    return (
+                      <Fragment key={b.id}>
+                        <tr key={b.id} className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`} onClick={() => toggleExpand(b.id)}>
+                          <td className="pl-3 py-2.5"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
+                          <td className="px-3 py-2.5">
+                            {b.image_url ? <img src={b.image_url} alt="" className="w-9 h-9 object-cover rounded-lg border border-slate-200" onError={e=>{(e.target as HTMLImageElement).style.display='none'}} /> : <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 text-xs">無</div>}
+                          </td>
+                          <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">{b.category||'—'}</td>
+                          <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap">{b.product_sku}</td>
+                          <td className="px-3 py-2.5 text-slate-800 font-medium max-w-[200px] truncate" title={b.product_name}>{b.product_name}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.material_name||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[120px] truncate" title={b.spec}>{b.spec||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.color||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.unit}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.lt||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={moqTierSummary(b)}>{moqTierSummary(b)}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.brand||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.cert_code||'—'}</td>
+                          <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={b.supplier_name}>{b.supplier_name||'—'}</td>
+                          <td className="px-3 py-2.5 text-right text-slate-600 whitespace-nowrap">{formatDecimal(b.supplier_price)}</td>
+                          <td className="px-3 py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(b.company_price)}</td>
+                          <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{b.currency}</td>
+                          <td className="px-3 py-2.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
+                            <div className="flex gap-1">
+                              {canEdit && <button onClick={async ()=>{
+                                const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
+                                const matchedMaterial =
+                                  materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
+                                  materials.find((m) => m.material_name === detail.material_name)
+                                setHeaderMaterialCode(matchedMaterial ? String(matchedMaterial.id) : '')
+                                setEditing({
+                                  ...detail,
+                                  unit: normalizeUnit(detail.unit),
+                                  moq_tiers: (() => {
+                                    const parsed = normalizeMoqTiers((detail as any).moq_tiers)
+                                    return [...parsed, ...emptyTiers()].slice(0, 5)
+                                  })(),
+                                  items: detail.items || [],
+                                })
+                              }} className="btn-ghost text-blue-600">編輯</button>}
+                              {canDel && <button onClick={e=>del(b.id,e)} className="btn-danger">刪除</button>}
+                            </div>
+                          </td>
+                        </tr>
+                        {isOpen && (
+                          <tr key={`${b.id}-items`} className="border-b border-slate-100">
+                            <td colSpan={18} className="px-0 py-0">
+                              <div className="expand-row-wrap layer-panel-l2">
+                                {detailItems.length === 0 ? (
+                                  <div className="expand-row-empty">此 BOM 尚無輔料明細</div>
+                                ) : (
+                                  <div className="table-scroll-x">
+                                    <table className="w-full text-xs" style={{ minWidth: 1160 }}>
+                                      <thead>
+                                        <tr className="layer-head-l2">
+                                          {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
+                                            <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                                          ))}
+                                        </tr>
+                                      </thead>
+                                      <tbody>
+                                        {detailItems.map((item, idx) => (
+                                          <tr key={idx} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
+                                            <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{item.material_name || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.spec || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.color || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit || 'PCS'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.supplier_name || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.lt || '—'}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.moq != null ? formatInteger(item.moq) : '—'}</td>
+                                            <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.supplier_price || 0)}</td>
+                                            <td className="px-3 py-2 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(item.company_price || 0)}</td>
+                                            <td className="px-3 py-2 text-slate-500 whitespace-nowrap max-w-[220px] truncate" title={item.remark || ''}>{item.remark || '—'}</td>
+                                          </tr>
+                                        ))}
+                                      </tbody>
+                                    </table>
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )}
+                      </Fragment>
+                    )
+                  })}
+                  {paged.length===0 && <tr><td colSpan={18} className="text-center py-12 text-slate-400">尚無 BOM 資料</td></tr>}
                 </tbody>
               </table>
             </div>

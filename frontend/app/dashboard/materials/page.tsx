@@ -7,6 +7,7 @@ import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
+import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 
 type Material = {
   id: number
@@ -157,8 +158,8 @@ export default function MaterialsPage() {
   }
   const tierSummary = (r: Material) => {
     const tiers = normalizeMoqTiers(r.moq_tiers)
-    if (!tiers.length) return r.moq ? `MOQ ${Number(r.moq).toLocaleString()}` : '—'
-    return tiers.map((t) => `${t.moq.toLocaleString()}/${t.price.toLocaleString()}`).join(' | ')
+    if (!tiers.length) return r.moq ? `MOQ ${formatInteger(r.moq)}` : '—'
+    return tiers.map((t) => `${formatInteger(t.moq)}/${formatDecimal(t.price)}`).join(' | ')
   }
 
   return (
@@ -311,8 +312,8 @@ export default function MaterialsPage() {
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.supplier_name || '—'}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.supplier_price || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{Number(r.company_price || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.supplier_price || 0)}</td>
+                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.company_price || 0)}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.leadtime || (r.leadtime_days ?? '—')}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={tierSummary(r)}>{tierSummary(r)}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.currency || 'VND'}</td>
