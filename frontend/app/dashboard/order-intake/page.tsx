@@ -35,7 +35,7 @@ type IntakeItem = {
   remark?: string
 }
 
-type Customer = { id: number; customer_name: string }
+type Customer = { id: number; customer_name: string; address?: string }
 type OrderSummary = { id: number; po_number: string; customer_id: number; customer_name?: string; status: string }
 type OrderDetailItem = {
   id: number
@@ -279,22 +279,24 @@ export default function OrderIntakePage() {
   }
 
   const createProgress = async () => {
-    if (!form.customerName.trim()) {
-      toast('客戶名稱必填', 'error')
+    const selectedCustomer = customers.find((c) => String(c.id) === form.customerId)
+    const customerNameForSubmit = (selectedCustomer?.customer_name || form.customerName || '').trim()
+    if (!customerNameForSubmit) {
+      toast('請先選擇客戶', 'error')
       return
     }
     try {
       if (importedLines.length > 0) {
         for (const row of importedLines) {
           const plannedQty = Number(row.plannedQty)
-          if (!row.materialCode.trim()) throw new Error('帶入資料含空白料號，請重新帶入')
-          if (!Number.isFinite(plannedQty) || plannedQty <= 0) throw new Error(`料號 ${row.materialCode} 數量需大於 0`)
-          await apiFetch('/api/order-intake', {
-            method: 'POST',
-            body: JSON.stringify({
-              customer_id: form.customerId ? Number(form.customerId) : undefined,
-              customer_name: form.customerName.trim(),
-              customer_order_id: form.orderId ? Number(form.orderId) : undefined,
+              if (!row.materialCode.trim()) throw new Error('帶入資料含空白料號，請重新帶入')
+              if (!Number.isFinite(plannedQty) || plannedQty <= 0) throw new Error(`料號 ${row.materialCode} 數量需大於 0`)
+              await apiFetch('/api/order-intake', {
+                method: 'POST',
+                body: JSON.stringify({
+                  customer_id: form.customerId ? Number(form.customerId) : undefined,
+                  customer_name: customerNameForSubmit,
+                  customer_order_id: form.orderId ? Number(form.orderId) : undefined,
               order_item_id: row.orderItemId ? Number(row.orderItemId) : undefined,
               order_po_number: form.orderPo.trim() || undefined,
               delivery_location: form.deliveryLocation.trim() || undefined,
@@ -322,7 +324,7 @@ export default function OrderIntakePage() {
           method: 'POST',
           body: JSON.stringify({
             customer_id: form.customerId ? Number(form.customerId) : undefined,
-            customer_name: form.customerName.trim(),
+            customer_name: customerNameForSubmit,
             customer_order_id: form.orderId ? Number(form.orderId) : undefined,
             order_item_id: form.orderItemId ? Number(form.orderItemId) : undefined,
             order_po_number: form.orderPo.trim() || undefined,
@@ -560,16 +562,22 @@ export default function OrderIntakePage() {
                 <label className="block text-xs text-slate-500 mb-1">客戶</label>
                 <select className="rubber-input" value={form.customerId} onChange={(e) => {
                   const customerId = e.target.value
-                  const name = customers.find((c) => String(c.id) === customerId)?.customer_name || form.customerName
-                  setForm((prev) => ({ ...prev, customerId, customerName: name }))
+                  const hit = customers.find((c) => String(c.id) === customerId)
+                  const name = hit?.customer_name || form.customerName
+                  setForm((prev) => ({
+                    ...prev,
+                    customerId,
+                    customerName: name,
+                    deliveryLocation: prev.deliveryLocation || hit?.address || '',
+                  }))
                 }}>
                   <option value="">-- 選填 --</option>
                   {customers.map((c) => (<option key={c.id} value={String(c.id)}>{c.customer_name}</option>))}
                 </select>
               </div>
               <div>
-                <label className="block text-xs text-slate-500 mb-1">客戶名稱</label>
-                <input className="rubber-input" value={form.customerName} onChange={(e) => setForm((prev) => ({ ...prev, customerName: e.target.value }))} />
+                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
+                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} placeholder="由客戶資料自動帶入，可手動調整" />
               </div>
 
               <div>
@@ -604,11 +612,6 @@ export default function OrderIntakePage() {
                   <button type="button" className="btn-ghost whitespace-nowrap" onClick={importByPo}>帶入 BOM 輔料</button>
                 </div>
               </div>
-              <div className="md:col-span-2">
-                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
-                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} placeholder="可由客戶資料自動帶入" />
-              </div>
-
               {importedLines.length === 0 && (
                 <>
                   <div>
