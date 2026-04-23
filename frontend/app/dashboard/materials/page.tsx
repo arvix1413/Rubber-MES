@@ -68,6 +68,8 @@ export default function MaterialsPage() {
   const canWrite = can('bom.create')
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
+  const codeColWidth = 152
+  const nameColWidth = 360
 
   const load = () => apiFetch<Material[]>('/api/materials').then(setRows).finally(() => setLoading(false))
 
@@ -296,7 +298,14 @@ export default function MaterialsPage() {
                     {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ階梯', '幣別', '備註', '操作'].map((h, idx) => (
                       <th
                         key={h}
-                        className={`px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap sticky top-0 bg-slate-50 z-[3] ${idx === 0 ? 'left-0 z-[5]' : ''} ${idx === 1 ? 'left-[124px] z-[5]' : ''}`}
+                        className={`px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap sticky top-0 bg-slate-50 z-[3] ${idx === 0 ? 'left-0 z-[7] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.32)]' : ''} ${idx === 1 ? 'z-[7] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.32)]' : ''}`}
+                        style={
+                          idx === 0
+                            ? { left: 0, minWidth: codeColWidth, width: codeColWidth, maxWidth: codeColWidth }
+                            : idx === 1
+                              ? { left: codeColWidth, minWidth: nameColWidth, width: nameColWidth, maxWidth: nameColWidth }
+                              : undefined
+                        }
                       >
                         {h}
                       </th>
@@ -304,10 +313,22 @@ export default function MaterialsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map((r) => (
+                  {paged.map((r, idx) => {
+                    const stickyBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
+                    return (
                     <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 odd:bg-white even:bg-slate-50/40">
-                      <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap sticky left-0 bg-inherit z-[2]">{r.material_code}</td>
-                      <td className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap sticky left-[124px] bg-inherit z-[2]">{r.material_name}</td>
+                      <td
+                        className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap sticky z-[6] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.28)]"
+                        style={{ left: 0, minWidth: codeColWidth, width: codeColWidth, maxWidth: codeColWidth, backgroundColor: stickyBg }}
+                      >
+                        {r.material_code}
+                      </td>
+                      <td
+                        className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap sticky z-[6] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.28)]"
+                        style={{ left: codeColWidth, minWidth: nameColWidth, width: nameColWidth, maxWidth: nameColWidth, backgroundColor: stickyBg }}
+                      >
+                        {r.material_name}
+                      </td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.spec || '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
                       <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
@@ -328,7 +349,7 @@ export default function MaterialsPage() {
                         </div>
                       </td>
                     </tr>
-                  ))}
+                  )})}
                   {paged.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-slate-400">尚無材料資料</td></tr>}
                 </tbody>
               </table>
