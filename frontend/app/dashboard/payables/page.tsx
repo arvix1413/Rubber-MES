@@ -6,8 +6,8 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 
 type AP = {
-  id: number; po_number: string; supplier_name: string; total_amount: number
-  currency: string; status: string; paid_amount: number; payment_status: string | null
+  id: number; po_number: string; supplier_name: string; total_amount: number | string
+  currency: string; status: string; paid_amount: number | string; payment_status: string | null
   payment_date: string | null; payment_note: string; approved_at: string; created_at: string
 }
 
@@ -20,6 +20,11 @@ const PAY_STATUS = {
   pending: { label: '待付款', badge: 'badge-gray' },
   partial: { label: '部分付款', badge: 'badge-blue' },
   paid: { label: '已付款', badge: 'badge-green' },
+}
+
+const toAmount = (value: number | string | null | undefined) => {
+  const num = Number(value || 0)
+  return Number.isFinite(num) ? num : 0
 }
 
 export default function PayablesPage() {
@@ -39,7 +44,7 @@ export default function PayablesPage() {
     setEditing(item)
     setForm({
       payment_status: item.payment_status || 'paid',
-      paid_amount: item.total_amount,
+      paid_amount: toAmount(item.total_amount),
       payment_date: todayYMD(),
       payment_note: item.payment_note || '',
     })
@@ -64,8 +69,10 @@ export default function PayablesPage() {
   })
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
 
-  const totalPayable = items.reduce((s, i) => s + (i.total_amount || 0), 0)
-  const totalPaid = items.filter(i => i.payment_status === 'paid').reduce((s, i) => s + (i.paid_amount || 0), 0)
+  const totalPayable = items.reduce((s, i) => s + toAmount(i.total_amount), 0)
+  const totalPaid = items
+    .filter(i => i.payment_status === 'paid' || i.payment_status === 'partial')
+    .reduce((s, i) => s + toAmount(i.paid_amount), 0)
   const totalPending = totalPayable - totalPaid
 
   const exportCsv = async () => {
@@ -178,9 +185,9 @@ export default function PayablesPage() {
                       <td className="font-mono text-xs text-blue-600">{item.po_number}</td>
                       <td className="font-medium">{item.supplier_name}</td>
                       <td><span className="badge-blue">{PO_STATUS[item.status] || item.status}</span></td>
-                      <td className="text-right font-medium">{(item.total_amount || 0).toLocaleString()}</td>
+                      <td className="text-right font-medium">{toAmount(item.total_amount).toLocaleString()}</td>
                       <td className="text-slate-400 text-xs">{item.currency}</td>
-                      <td className="text-right text-emerald-600">{(item.paid_amount || 0).toLocaleString()}</td>
+                      <td className="text-right text-emerald-600">{toAmount(item.paid_amount).toLocaleString()}</td>
                       <td className="text-slate-400 text-xs">{formatDateYMD(item.payment_date) || '—'}</td>
                       <td><span className={st.badge}>{st.label}</span></td>
                       <td>

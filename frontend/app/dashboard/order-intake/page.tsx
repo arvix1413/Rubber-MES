@@ -11,78 +11,64 @@ type IntakeItem = {
   progress_no: string
   customer_id: number | null
   customer_name: string
-  order_id: number | null
-  order_item_id: number | null
   po_number: string
-  delivery_location?: string
-  po_date?: string
-  order_status?: string
-  material_code: string
   material_name: string
-  spec: string
-  unit: string
   planned_qty: number
   purchased_qty: number
   purchase_gap_qty: number
-  shipped_qty: number
-  reconciled_qty: number
-  pending_reconcile_qty: number
-  fulfillment_rate: number
-  reconcile_rate: number
   linked_po_count: number
+  item_count: number
   due_date?: string | null
   status: 'pending' | 'partial' | 'completed'
   remark?: string
 }
 
-type Customer = { id: number; customer_name: string; address?: string }
-type OrderSummary = { id: number; po_number: string; customer_id: number; customer_name?: string; status: string }
-type OrderDetailItem = {
-  id: number
-  qty: number
-  balance?: number
-  product_sku?: string
-  product_name?: string
+type ProgressItem = {
+  id?: number
+  material_code?: string
+  material_name: string
   spec?: string
   unit?: string
-}
-type OrderDetail = { id: number; po_number: string; customer_id: number; customer_name?: string; items: OrderDetailItem[] }
-type OrderDetailExt = OrderDetail & { delivery_address?: string; address?: string }
-type ImportedLine = {
-  key: string
-  orderItemId: string
-  materialCode: string
-  materialName: string
-  spec: string
-  unit: string
-  plannedQty: string
-}
-type ImportedPoSource = {
-  order: { id: number; po_number: string; customer_name: string }
-  items: Array<{
-    source_order_item_id?: number
-    material_code?: string
-    material_name?: string
-    spec?: string
-    unit?: string
-    quantity?: number
-  }>
+  planned_qty: number
+  purchased_qty?: number
+  purchase_gap_qty?: number
+  due_date?: string | null
+  status?: 'pending' | 'partial' | 'completed'
+  remark?: string
 }
 
-type ProgressForm = {
+type ProgressDetail = IntakeItem & {
+  po_numbers?: string[]
+  customer_order_ids?: number[]
+  items: ProgressItem[]
+}
+
+type Customer = { id: number; customer_name: string; address?: string }
+type OrderSummary = { id: number; po_number: string; customer_id: number; customer_name?: string; status: string }
+
+type LineForm = {
+  key: string
+  material_name: string
+  planned_qty: string
+  due_date: string
+  remark: string
+}
+
+type CreateForm = {
   customerId: string
   customerName: string
-  orderId: string
-  orderPo: string
-  orderItemId: string
-  deliveryLocation: string
-  materialCode: string
-  materialName: string
-  spec: string
-  unit: string
-  plannedQty: string
-  dueDate: string
+  poInput: string
+  linkedOrderIds: number[]
   remark: string
+  lines: LineForm[]
+}
+
+type EditForm = {
+  poInput: string
+  linkedOrderIds: number[]
+  remark: string
+  status: 'pending' | 'partial' | 'completed'
+  lines: LineForm[]
 }
 
 const STATUS_LABEL: Record<string, string> = {
@@ -91,26 +77,34 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '已完成',
 }
 
-const PROCUREMENT_LABEL: Record<string, string> = {
-  pending: '待採購',
-  partial: '部分已採購',
-  procured: '已採購完成',
-}
+const createEmptyLine = (seed: number): LineForm => ({
+  key: `line-${seed}`,
+  material_name: '',
+  planned_qty: '',
+  due_date: '',
+  remark: '',
+})
 
-const emptyForm: ProgressForm = {
+const createEmptyForm = (): CreateForm => ({
   customerId: '',
   customerName: '',
-  orderId: '',
-  orderPo: '',
-  orderItemId: '',
-  deliveryLocation: '',
-  materialCode: '',
-  materialName: '',
-  spec: '',
-  unit: 'PCS',
-  plannedQty: '',
-  dueDate: '',
+  poInput: '',
+  linkedOrderIds: [],
   remark: '',
+  lines: [createEmptyLine(1)],
+})
+
+const splitPoValues = (input: string): string[] => Array.from(new Set(
+  String(input || '')
+    .split(/[\n,，;；]+/)
+    .map((it) => it.trim())
+    .filter(Boolean),
+))
+
+const statusBadgeClass = (status: string) => {
+  if (status === 'completed') return 'bg-emerald-100 text-emerald-700'
+  if (status === 'partial') return 'bg-amber-100 text-amber-700'
+  return 'bg-slate-100 text-slate-700'
 }
 
 export default function OrderIntakePage() {
@@ -118,16 +112,19 @@ export default function OrderIntakePage() {
   const [rows, setRows] = useState<IntakeItem[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [orders, setOrders] = useState<OrderSummary[]>([])
-  const [orderDetail, setOrderDetail] = useState<OrderDetail | null>(null)
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
   const [creatingId, setCreatingId] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
-  const [editing, setEditing] = useState<IntakeItem | null>(null)
-  const [form, setForm] = useState<ProgressForm>(emptyForm)
-  const [orderSearch, setOrderSearch] = useState('')
-  const [importedLines, setImportedLines] = useState<ImportedLine[]>([])
+  const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
+  const [createLineSeed, setCreateLineSeed] = useState(2)
+  const [createOrderToAdd, setCreateOrderToAdd] = useState('')
+  const [editing, setEditing] = useState<ProgressDetail | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [editLineSeed, setEditLineSeed] = useState(1000)
+  const [editOrderToAdd, setEditOrderToAdd] = useState('')
+  const [editLoading, setEditLoading] = useState(false)
 
   const load = async (nextStatus = status) => {
     setLoading(true)
@@ -172,6 +169,34 @@ export default function OrderIntakePage() {
 
   const { page, setPage, totalPages, paged, total } = usePagination(rows, 20)
 
+  const createLinkedOrders = useMemo(
+    () => orders.filter((order) => createForm.linkedOrderIds.includes(order.id)),
+    [orders, createForm.linkedOrderIds],
+  )
+
+  const createOrderOptions = useMemo(() => {
+    const selectedId = createForm.customerId ? Number(createForm.customerId) : 0
+    return orders.filter((order) => {
+      if (createForm.linkedOrderIds.includes(order.id)) return false
+      if (!selectedId) return true
+      return Number(order.customer_id || 0) === selectedId
+    })
+  }, [orders, createForm.customerId, createForm.linkedOrderIds])
+
+  const editLinkedOrders = useMemo(() => {
+    if (!editForm) return []
+    return orders.filter((order) => editForm.linkedOrderIds.includes(order.id))
+  }, [orders, editForm])
+
+  const editOrderOptions = useMemo(() => {
+    if (!editForm || !editing) return []
+    return orders.filter((order) => {
+      if (editForm.linkedOrderIds.includes(order.id)) return false
+      if (!editing.customer_id) return true
+      return Number(order.customer_id || 0) === Number(editing.customer_id)
+    })
+  }, [orders, editForm, editing])
+
   const exportCsv = async () => {
     try {
       const token = getToken()
@@ -193,10 +218,9 @@ export default function OrderIntakePage() {
   }
 
   const resetCreate = () => {
-    setForm(emptyForm)
-    setOrderDetail(null)
-    setOrderSearch('')
-    setImportedLines([])
+    setCreateForm(createEmptyForm())
+    setCreateLineSeed(2)
+    setCreateOrderToAdd('')
   }
 
   const openCreate = () => {
@@ -204,176 +228,111 @@ export default function OrderIntakePage() {
     setShowCreate(true)
   }
 
-  const onChangeOrder = async (orderId: string) => {
-    setForm((prev) => ({ ...prev, orderId, orderItemId: '' }))
-    setOrderDetail(null)
-    if (!orderId) return
-    try {
-      const detail = await apiFetch<OrderDetailExt>(`/api/customer-orders/${orderId}`)
-      setOrderDetail(detail)
-      setForm((prev) => ({
-        ...prev,
-        customerId: String(detail.customer_id || prev.customerId || ''),
-        customerName: detail.customer_name || prev.customerName,
-        orderPo: detail.po_number || prev.orderPo,
-        deliveryLocation: detail.delivery_address || detail.address || prev.deliveryLocation,
-      }))
-    } catch (e: any) {
-      toast(String(e?.message || '訂單明細載入失敗'), 'error')
-    }
+  const closeCreate = () => {
+    setShowCreate(false)
+    resetCreate()
   }
 
-  const onChangeOrderItem = (orderItemId: string) => {
-    setForm((prev) => ({ ...prev, orderItemId }))
-    if (!orderDetail || !orderItemId) return
-    const item = (orderDetail.items || []).find((it) => String(it.id) === orderItemId)
-    if (!item) return
-    const defaultQty = Number(item.balance ?? item.qty ?? 0)
-    setForm((prev) => ({
+  const updateCreateForm = (patch: Partial<CreateForm>) => {
+    setCreateForm((prev) => ({ ...prev, ...patch }))
+  }
+
+  const updateCreateLine = (key: string, patch: Partial<LineForm>) => {
+    setCreateForm((prev) => ({
       ...prev,
-      orderItemId,
-      materialCode: item.product_sku || prev.materialCode,
-      materialName: item.product_name || prev.materialName,
-      spec: item.spec || prev.spec,
-      unit: item.unit || prev.unit || 'PCS',
-      plannedQty: defaultQty > 0 ? String(defaultQty) : prev.plannedQty,
+      lines: prev.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     }))
   }
 
-  const importByPo = async () => {
-    const poNo = form.orderPo.trim()
-    if (!poNo) {
-      toast('請先輸入客戶訂單號（PO）', 'error')
-      return
-    }
-    try {
-      const payload = await apiFetch<ImportedPoSource>(`/api/po/materials-from-order-po/${encodeURIComponent(poNo)}`)
-      const detail = await apiFetch<OrderDetailExt>(`/api/customer-orders/${payload.order.id}`)
-      const lines: ImportedLine[] = (payload.items || []).map((it, idx) => ({
-        key: `${it.source_order_item_id || 'x'}-${it.material_code || 'm'}-${idx}`,
-        orderItemId: it.source_order_item_id ? String(it.source_order_item_id) : '',
-        materialCode: String(it.material_code || ''),
-        materialName: String(it.material_name || ''),
-        spec: String(it.spec || ''),
-        unit: String(it.unit || 'PCS'),
-        plannedQty: String(Number(it.quantity || 0)),
-      }))
-      setImportedLines(lines)
-      setOrderDetail(detail)
-      setForm((prev) => ({
-        ...prev,
-        orderId: String(payload.order.id),
-        customerId: String(detail.customer_id || prev.customerId || ''),
-        customerName: detail.customer_name || payload.order.customer_name || prev.customerName,
-        orderPo: payload.order.po_number || poNo,
-        deliveryLocation: detail.delivery_address || detail.address || prev.deliveryLocation,
-      }))
-      toast(`已帶入 ${lines.length} 筆輔料明細`)
-    } catch (e: any) {
-      toast(String(e?.message || 'PO 帶入失敗'), 'error')
-    }
+  const addCreateLine = () => {
+    setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
+    setCreateLineSeed((prev) => prev + 1)
   }
 
-  const updateImportedLine = (key: string, plannedQty: string) => {
-    setImportedLines((prev) => prev.map((it) => (it.key === key ? { ...it, plannedQty } : it)))
+  const removeCreateLine = (key: string) => {
+    setCreateForm((prev) => {
+      if (prev.lines.length <= 1) return { ...prev, lines: [createEmptyLine(createLineSeed)] }
+      return { ...prev, lines: prev.lines.filter((line) => line.key !== key) }
+    })
+    setCreateLineSeed((prev) => prev + 1)
+  }
+
+  const addCreateLinkedOrder = () => {
+    const orderId = Number(createOrderToAdd || 0)
+    if (!orderId) return
+    const order = orders.find((it) => it.id === orderId)
+    if (!order) return
+    setCreateForm((prev) => ({
+      ...prev,
+      customerId: prev.customerId || String(order.customer_id || ''),
+      customerName: prev.customerName || order.customer_name || '',
+      linkedOrderIds: prev.linkedOrderIds.includes(orderId) ? prev.linkedOrderIds : [...prev.linkedOrderIds, orderId],
+      poInput: splitPoValues(`${prev.poInput}\n${order.po_number || ''}`).join('\n'),
+    }))
+    setCreateOrderToAdd('')
+  }
+
+  const removeCreateLinkedOrder = (orderId: number) => {
+    setCreateForm((prev) => ({
+      ...prev,
+      linkedOrderIds: prev.linkedOrderIds.filter((id) => id !== orderId),
+    }))
   }
 
   const createProgress = async () => {
-    const selectedCustomer = customers.find((c) => String(c.id) === form.customerId)
-    const customerNameForSubmit = (selectedCustomer?.customer_name || form.customerName || '').trim()
-    if (!customerNameForSubmit) {
+    const poNumbers = splitPoValues(createForm.poInput)
+    const selectedCustomer = customers.find((c) => String(c.id) === createForm.customerId)
+    const customerName = (selectedCustomer?.customer_name || createForm.customerName || '').trim()
+    if (!customerName) {
       toast('請先選擇客戶', 'error')
       return
     }
-    try {
-      if (importedLines.length > 0) {
-        for (const row of importedLines) {
-          const plannedQty = Number(row.plannedQty)
-              if (!row.materialCode.trim()) throw new Error('帶入資料含空白料號，請重新帶入')
-              if (!Number.isFinite(plannedQty) || plannedQty <= 0) throw new Error(`料號 ${row.materialCode} 數量需大於 0`)
-              await apiFetch('/api/order-intake', {
-                method: 'POST',
-                body: JSON.stringify({
-                  customer_id: form.customerId ? Number(form.customerId) : undefined,
-                  customer_name: customerNameForSubmit,
-                  customer_order_id: form.orderId ? Number(form.orderId) : undefined,
-              order_item_id: row.orderItemId ? Number(row.orderItemId) : undefined,
-              order_po_number: form.orderPo.trim() || undefined,
-              delivery_location: form.deliveryLocation.trim() || undefined,
-              material_code: row.materialCode.trim(),
-              material_name: row.materialName.trim(),
-              spec: row.spec.trim(),
-              unit: row.unit.trim() || 'PCS',
-              planned_qty: plannedQty,
-              due_date: form.dueDate || undefined,
-              remark: form.remark.trim(),
-            }),
-          })
-        }
-      } else {
-        const plannedQty = Number(form.plannedQty)
-        if (!form.materialCode.trim()) {
-          toast('料號必填', 'error')
-          return
-        }
-        if (!Number.isFinite(plannedQty) || plannedQty <= 0) {
-          toast('計畫數量需大於 0', 'error')
-          return
-        }
-        await apiFetch('/api/order-intake', {
-          method: 'POST',
-          body: JSON.stringify({
-            customer_id: form.customerId ? Number(form.customerId) : undefined,
-            customer_name: customerNameForSubmit,
-            customer_order_id: form.orderId ? Number(form.orderId) : undefined,
-            order_item_id: form.orderItemId ? Number(form.orderItemId) : undefined,
-            order_po_number: form.orderPo.trim() || undefined,
-            delivery_location: form.deliveryLocation.trim() || undefined,
-            material_code: form.materialCode.trim(),
-            material_name: form.materialName.trim(),
-            spec: form.spec.trim(),
-            unit: form.unit.trim() || 'PCS',
-            planned_qty: plannedQty,
-            due_date: form.dueDate || undefined,
-            remark: form.remark.trim(),
-          }),
-        })
+    if (poNumbers.length <= 0 && createForm.linkedOrderIds.length <= 0) {
+      toast('請至少輸入一個 PO 編號或關聯一張客戶訂單', 'error')
+      return
+    }
+
+    const lines = createForm.lines
+      .map((line) => ({
+        material_name: line.material_name.trim(),
+        planned_qty: Number(line.planned_qty),
+        due_date: line.due_date || undefined,
+        remark: line.remark.trim(),
+      }))
+      .filter((line) => line.material_name || line.planned_qty || line.due_date || line.remark)
+
+    if (!lines.length) {
+      toast('請至少新增一筆交貨明細', 'error')
+      return
+    }
+    for (const line of lines) {
+      if (!line.material_name) {
+        toast('材料名稱不可空白', 'error')
+        return
       }
-      toast('交貨進度已建立')
-      setShowCreate(false)
-      resetCreate()
+      if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
+        toast(`材料 ${line.material_name} 的數量需大於 0`, 'error')
+        return
+      }
+    }
+
+    try {
+      await apiFetch('/api/order-intake', {
+        method: 'POST',
+        body: JSON.stringify({
+          customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
+          customer_name: customerName,
+          po_numbers: poNumbers,
+          customer_order_ids: createForm.linkedOrderIds,
+          remark: createForm.remark.trim(),
+          items: lines,
+        }),
+      })
+      toast(`交貨進度已建立，共 ${lines.length} 筆明細`)
+      closeCreate()
       await load(status)
     } catch (e: any) {
       toast(String(e?.message || '建立失敗'), 'error')
-    }
-  }
-
-  const saveEdit = async () => {
-    if (!editing) return
-    const plannedQty = Number(form.plannedQty)
-    if (!Number.isFinite(plannedQty) || plannedQty <= 0) {
-      toast('計畫數量需大於 0', 'error')
-      return
-    }
-    try {
-      await apiFetch(`/api/order-intake/${editing.id}`, {
-        method: 'PUT',
-        body: JSON.stringify({
-          planned_qty: plannedQty,
-          due_date: form.dueDate || undefined,
-          remark: form.remark.trim(),
-          status: editing.status,
-          material_name: form.materialName.trim(),
-          spec: form.spec.trim(),
-          unit: form.unit.trim() || 'PCS',
-          delivery_location: form.deliveryLocation.trim(),
-        }),
-      })
-      toast('交貨進度已更新')
-      setEditing(null)
-      await load(status)
-    } catch (e: any) {
-      toast(String(e?.message || '更新失敗'), 'error')
     }
   }
 
@@ -388,23 +347,127 @@ export default function OrderIntakePage() {
     }
   }
 
-  const startEdit = (row: IntakeItem) => {
-    setEditing(row)
-    setForm({
-      customerId: row.customer_id ? String(row.customer_id) : '',
-      customerName: row.customer_name || '',
-      orderId: row.order_id ? String(row.order_id) : '',
-      orderPo: row.po_number || '',
-      orderItemId: row.order_item_id ? String(row.order_item_id) : '',
-      deliveryLocation: row.delivery_location || '',
-      materialCode: row.material_code || '',
-      materialName: row.material_name || '',
-      spec: row.spec || '',
-      unit: row.unit || 'PCS',
-      plannedQty: String(row.planned_qty || ''),
-      dueDate: formatDateYMD(row.due_date) || '',
-      remark: row.remark || '',
+  const startEdit = async (row: IntakeItem) => {
+    setEditLoading(true)
+    try {
+      const detail = await apiFetch<ProgressDetail>(`/api/order-intake/${row.id}`)
+      setEditing(detail)
+      setEditForm({
+        poInput: (detail.po_numbers || []).join('\n'),
+        linkedOrderIds: detail.customer_order_ids || [],
+        remark: detail.remark || '',
+        status: detail.status || 'pending',
+        lines: (detail.items || []).map((item, index) => ({
+          key: `edit-${item.id || index}`,
+          material_name: item.material_name || '',
+          planned_qty: String(item.planned_qty || ''),
+          due_date: formatDateYMD(item.due_date) || '',
+          remark: item.remark || '',
+        })),
+      })
+      setEditLineSeed(2000)
+      setEditOrderToAdd('')
+    } catch (e: any) {
+      toast(String(e?.message || '交貨進度詳情載入失敗'), 'error')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  const closeEdit = () => {
+    setEditing(null)
+    setEditForm(null)
+    setEditOrderToAdd('')
+  }
+
+  const updateEditLine = (key: string, patch: Partial<LineForm>) => {
+    if (!editForm) return
+    setEditForm({
+      ...editForm,
+      lines: editForm.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
     })
+  }
+
+  const addEditLine = () => {
+    if (!editForm) return
+    setEditForm({ ...editForm, lines: [...editForm.lines, createEmptyLine(editLineSeed)] })
+    setEditLineSeed((prev) => prev + 1)
+  }
+
+  const removeEditLine = (key: string) => {
+    if (!editForm) return
+    setEditForm({
+      ...editForm,
+      lines: editForm.lines.length <= 1 ? [createEmptyLine(editLineSeed)] : editForm.lines.filter((line) => line.key !== key),
+    })
+    setEditLineSeed((prev) => prev + 1)
+  }
+
+  const addEditLinkedOrder = () => {
+    if (!editForm) return
+    const orderId = Number(editOrderToAdd || 0)
+    if (!orderId) return
+    const order = orders.find((it) => it.id === orderId)
+    if (!order) return
+    setEditForm({
+      ...editForm,
+      linkedOrderIds: editForm.linkedOrderIds.includes(orderId) ? editForm.linkedOrderIds : [...editForm.linkedOrderIds, orderId],
+      poInput: splitPoValues(`${editForm.poInput}\n${order.po_number || ''}`).join('\n'),
+    })
+    setEditOrderToAdd('')
+  }
+
+  const removeEditLinkedOrder = (orderId: number) => {
+    if (!editForm) return
+    setEditForm({
+      ...editForm,
+      linkedOrderIds: editForm.linkedOrderIds.filter((id) => id !== orderId),
+    })
+  }
+
+  const saveEdit = async () => {
+    if (!editing || !editForm) return
+    const items = editForm.lines
+      .map((line) => ({
+        material_name: line.material_name.trim(),
+        planned_qty: Number(line.planned_qty),
+        due_date: line.due_date || undefined,
+        remark: line.remark.trim(),
+      }))
+      .filter((line) => line.material_name || line.planned_qty || line.due_date || line.remark)
+
+    if (!items.length) {
+      toast('請至少保留一筆交貨明細', 'error')
+      return
+    }
+    for (const item of items) {
+      if (!item.material_name) {
+        toast('材料名稱不可空白', 'error')
+        return
+      }
+      if (!Number.isFinite(item.planned_qty) || item.planned_qty <= 0) {
+        toast(`材料 ${item.material_name} 的數量需大於 0`, 'error')
+        return
+      }
+    }
+
+    try {
+      await apiFetch(`/api/order-intake/${editing.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          po_numbers: splitPoValues(editForm.poInput),
+          customer_order_ids: editForm.linkedOrderIds,
+          remark: editForm.remark.trim(),
+          status: editForm.status,
+          items,
+        }),
+      })
+      toast('交貨進度已更新')
+      closeEdit()
+      await load(status)
+    } catch (e: any) {
+      toast(String(e?.message || '更新失敗'), 'error')
+    }
   }
 
   const generatePo = async (id: number) => {
@@ -424,33 +487,27 @@ export default function OrderIntakePage() {
     }
   }
 
-  const filteredOrders = useMemo(() => {
-    const q = orderSearch.trim().toLowerCase()
-    if (!q) return orders
-    return orders.filter((o) => (o.po_number || '').toLowerCase().includes(q))
-  }, [orders, orderSearch])
-
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-slate-800">交貨進度</h1>
-          <p className="text-xs text-slate-500 mt-1">可由客戶訂單 PO 自動帶入 BOM 輔料，確認數量與出貨日後建檔。</p>
+          <p className="mt-1 text-xs text-slate-500">一個交貨進度可包含多筆訂單、多個 PO No，以及多筆交貨明細。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
-          <button className="btn-primary" onClick={openCreate}>+ 建立新進度</button>
-          <span className="badge-gray">總項目 {summary.total}</span>
-          <span className="badge-yellow">待處理 {summary.open}</span>
+          <button className="btn-primary" onClick={openCreate}>+ 建立交貨進度</button>
+          <span className="badge-gray">總進度 {summary.total}</span>
+          <span className="badge-yellow">進行中 {summary.open}</span>
           <span className="badge-green">已完成 {summary.completed}</span>
         </div>
       </div>
 
-      <div className="rubber-card p-4 mb-4">
-        <div className="grid md:grid-cols-5 gap-3">
+      <div className="rubber-card mb-4 p-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <input
             className="rubber-input md:col-span-3"
-            placeholder="搜尋進度號、客戶、訂單號、料號、品名"
+            placeholder="搜尋進度號、客戶、PO 編號、材料摘要"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -465,17 +522,15 @@ export default function OrderIntakePage() {
 
       <div className="rubber-card overflow-hidden">
         <div className="table-scroll-x">
-          <table className="rubber-table" style={{ minWidth: 1320 }}>
+          <table className="rubber-table" style={{ minWidth: 1260 }}>
             <thead>
               <tr>
-                <th className="px-3 py-2 text-left">進度號</th>
-                <th className="px-3 py-2 text-left">訂單 / 客戶</th>
-                <th className="px-3 py-2 text-left">料件</th>
-                <th className="px-3 py-2 text-right">計畫量</th>
-                <th className="px-3 py-2 text-right">已採購</th>
-                <th className="px-3 py-2 text-right">缺口</th>
-                <th className="px-3 py-2 text-right">出貨 / 核對</th>
-                <th className="px-3 py-2 text-left">到期日</th>
+                <th className="px-3 py-2 text-left">進度單</th>
+                <th className="px-3 py-2 text-left">客戶</th>
+                <th className="px-3 py-2 text-left">PO 編號</th>
+                <th className="px-3 py-2 text-left">明細摘要</th>
+                <th className="px-3 py-2 text-right">總數量</th>
+                <th className="px-3 py-2 text-left">交期</th>
                 <th className="px-3 py-2 text-left">狀態</th>
                 <th className="px-3 py-2 text-left">操作</th>
               </tr>
@@ -484,40 +539,25 @@ export default function OrderIntakePage() {
               {paged.map((r) => (
                 <tr key={r.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 align-top">
-                    <div className="font-semibold text-slate-800">{r.progress_no}</div>
-                    <div className="text-xs text-slate-500 mt-1">建立 {formatDateYMD(r.due_date || r.po_date) || '-'}</div>
+                    <div className="font-medium text-slate-800">{r.progress_no}</div>
+                    <div className="mt-1 text-xs text-slate-500">{r.item_count} 筆明細</div>
+                  </td>
+                  <td className="px-3 py-2 align-top">{r.customer_name || '-'}</td>
+                  <td className="px-3 py-2 align-top">
+                    <div className="whitespace-pre-wrap break-words">{r.po_number || '-'}</div>
+                    <div className="mt-1 text-xs text-slate-500">共 {r.linked_po_count} 個 PO</div>
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <div className="font-medium text-slate-800">{r.po_number || '-'}</div>
-                    <div className="text-xs text-slate-500">{r.customer_name || '-'}</div>
-                  </td>
-                  <td className="px-3 py-2 align-top">
-                    <div className="text-slate-800">{r.material_code || '-'} {r.material_name || ''}</div>
-                    <div className="text-xs text-slate-500">{r.spec || '-'} / {r.unit || 'PCS'}</div>
+                    <div className="max-w-[280px] whitespace-pre-wrap break-words">{r.material_name || '-'}</div>
                   </td>
                   <td className="px-3 py-2 text-right">{r.planned_qty}</td>
-                  <td className="px-3 py-2 text-right">{r.purchased_qty}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-orange-700">{r.purchase_gap_qty}</td>
-                  <td className="px-3 py-2 text-right">
-                    <div>{r.shipped_qty} / {r.reconciled_qty}</div>
-                    <div className="text-[11px] text-slate-500">{r.fulfillment_rate}% / {r.reconcile_rate}%</div>
-                  </td>
                   <td className="px-3 py-2">{formatDateYMD(r.due_date) || '-'}</td>
                   <td className="px-3 py-2">
-                    <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                      r.status === 'completed'
-                        ? 'bg-emerald-100 text-emerald-700'
-                        : r.status === 'partial'
-                          ? 'bg-amber-100 text-amber-700'
-                          : 'bg-slate-100 text-slate-700'
-                    }`}>
+                    <span className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${statusBadgeClass(r.status)}`}>
                       {STATUS_LABEL[r.status] || r.status}
                     </span>
-                    <div className="text-[11px] text-slate-500 mt-1">
-                      {PROCUREMENT_LABEL[r.purchase_gap_qty <= 0 ? 'procured' : r.purchased_qty > 0 ? 'partial' : 'pending']}
-                    </div>
                   </td>
-                  <td className="px-3 py-2 align-top min-w-[220px]">
+                  <td className="min-w-[220px] px-3 py-2 align-top">
                     <div className="flex flex-wrap gap-2">
                       <button className="btn-ghost text-xs" onClick={() => startEdit(r)}>編輯</button>
                       <button className="btn-ghost text-xs" onClick={() => removeProgress(r)}>刪除</button>
@@ -534,7 +574,7 @@ export default function OrderIntakePage() {
               ))}
               {!loading && paged.length === 0 && (
                 <tr>
-                  <td className="px-3 py-8 text-center text-slate-500" colSpan={10}>目前無資料</td>
+                  <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>目前無資料</td>
                 </tr>
               )}
             </tbody>
@@ -542,7 +582,7 @@ export default function OrderIntakePage() {
         </div>
       </div>
 
-      {loading && <div className="text-xs text-slate-500 mt-3">載入中...</div>}
+      {loading && <div className="mt-3 text-xs text-slate-500">載入中...</div>}
       {!loading && total > 0 && (
         <div className="mt-4">
           <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={20} />
@@ -551,207 +591,243 @@ export default function OrderIntakePage() {
 
       {showCreate && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/35" onClick={() => setShowCreate(false)} />
-          <div className="relative w-full max-w-4xl max-h-[90vh] overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
+          <div className="absolute inset-0 bg-black/35" onClick={closeCreate} />
+          <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
               <h2 className="text-base font-bold text-slate-800">建立交貨進度</h2>
-              <button className="btn-ghost" onClick={() => setShowCreate(false)}>關閉</button>
+              <button className="btn-ghost" onClick={closeCreate}>關閉</button>
             </div>
-            <div className="grid md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">客戶</label>
-                <select className="rubber-input" value={form.customerId} onChange={(e) => {
-                  const customerId = e.target.value
-                  const hit = customers.find((c) => String(c.id) === customerId)
-                  const name = hit?.customer_name || form.customerName
-                  setForm((prev) => ({
-                    ...prev,
-                    customerId,
-                    customerName: name,
-                    deliveryLocation: prev.deliveryLocation || hit?.address || '',
-                  }))
-                }}>
-                  <option value="">-- 選填 --</option>
-                  {customers.map((c) => (<option key={c.id} value={String(c.id)}>{c.customer_name}</option>))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
-                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} placeholder="由客戶資料自動帶入，可手動調整" />
-              </div>
 
+            <div className="grid gap-4 md:grid-cols-2">
               <div>
-                <label className="block text-xs text-slate-500 mb-1">訂單搜尋</label>
-                <input className="rubber-input" placeholder="輸入 PO 編號" value={orderSearch} onChange={(e) => setOrderSearch(e.target.value)} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">關聯客戶訂單（選填）</label>
-                <select className="rubber-input" value={form.orderId} onChange={(e) => onChangeOrder(e.target.value)}>
-                  <option value="">-- 無關聯 --</option>
-                  {filteredOrders.slice(0, 200).map((o) => (
-                    <option key={o.id} value={String(o.id)}>{o.po_number}</option>
+                <label className="mb-1 block text-xs text-slate-500">客戶</label>
+                <select
+                  className="rubber-input"
+                  value={createForm.customerId}
+                  onChange={(e) => {
+                    const customerId = e.target.value
+                    const customer = customers.find((c) => String(c.id) === customerId)
+                    updateCreateForm({
+                      customerId,
+                      customerName: customer?.customer_name || '',
+                      linkedOrderIds: customerId
+                        ? createForm.linkedOrderIds.filter((id) => Number(orders.find((o) => o.id === id)?.customer_id || 0) === Number(customerId))
+                        : createForm.linkedOrderIds,
+                    })
+                    setCreateOrderToAdd('')
+                  }}
+                >
+                  <option value="">-- 請選擇客戶 --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
                   ))}
                 </select>
               </div>
 
               <div>
-                <label className="block text-xs text-slate-500 mb-1">訂單明細（選填）</label>
-                <select className="rubber-input" value={form.orderItemId} onChange={(e) => onChangeOrderItem(e.target.value)} disabled={!orderDetail}>
-                  <option value="">-- 無關聯 --</option>
-                  {(orderDetail?.items || []).map((it) => (
-                    <option key={it.id} value={String(it.id)}>
-                      {it.product_sku || '-'} / {it.product_name || '-'} / 餘量 {Number(it.balance ?? it.qty ?? 0)}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">訂單號</label>
+                <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（選填，可多張）</label>
                 <div className="flex gap-2">
-                  <input className="rubber-input" value={form.orderPo} onChange={(e) => setForm((prev) => ({ ...prev, orderPo: e.target.value }))} />
-                  <button type="button" className="btn-ghost whitespace-nowrap" onClick={importByPo}>帶入 BOM 輔料</button>
+                  <select className="rubber-input" value={createOrderToAdd} onChange={(e) => setCreateOrderToAdd(e.target.value)}>
+                    <option value="">-- 選擇訂單 --</option>
+                    {createOrderOptions.map((o) => (
+                      <option key={o.id} value={String(o.id)}>{o.po_number} {o.customer_name ? `/${o.customer_name}` : ''}</option>
+                    ))}
+                  </select>
+                  <button type="button" className="btn-ghost whitespace-nowrap" onClick={addCreateLinkedOrder}>加入</button>
                 </div>
-              </div>
-              {importedLines.length === 0 && (
-                <>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">料號 *</label>
-                    <input className="rubber-input" value={form.materialCode} onChange={(e) => setForm((prev) => ({ ...prev, materialCode: e.target.value }))} />
+                {createLinkedOrders.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {createLinkedOrders.map((order) => (
+                      <span key={order.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                        {order.po_number}
+                        <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => removeCreateLinkedOrder(order.id)}>×</button>
+                      </span>
+                    ))}
                   </div>
-                  <div>
-                    <label className="block text-xs text-slate-500 mb-1">品名</label>
-                    <input className="rubber-input" value={form.materialName} onChange={(e) => setForm((prev) => ({ ...prev, materialName: e.target.value }))} />
-                  </div>
-                </>
-              )}
-
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">規格</label>
-                <input className="rubber-input" value={form.spec} onChange={(e) => setForm((prev) => ({ ...prev, spec: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">單位</label>
-                <input className="rubber-input" value={form.unit} onChange={(e) => setForm((prev) => ({ ...prev, unit: e.target.value }))} />
-              </div>
-
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">{importedLines.length > 0 ? '出貨日期 *' : '計畫數量 *'}</label>
-                {importedLines.length > 0 ? (
-                  <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
-                ) : (
-                  <input type="number" className="rubber-input" min={0} value={form.plannedQty} onChange={(e) => setForm((prev) => ({ ...prev, plannedQty: e.target.value }))} />
                 )}
               </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">{importedLines.length > 0 ? '帶入筆數' : '到期日'}</label>
-                {importedLines.length > 0 ? (
-                  <input className="rubber-input" value={`${importedLines.length} 筆`} disabled />
-                ) : (
-                  <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
-                )}
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs text-slate-500">PO 編號（可多個，逗號或換行分隔）</label>
+                <textarea
+                  className="rubber-input"
+                  rows={3}
+                  value={createForm.poInput}
+                  onChange={(e) => updateCreateForm({ poInput: e.target.value })}
+                  placeholder={'例如：\nPO-001\nPO-002\nPO-003'}
+                />
+                <p className="mt-1 text-xs text-slate-400">已解析 {splitPoValues(createForm.poInput).length} 個 PO</p>
               </div>
             </div>
 
-            {importedLines.length > 0 && (
-              <div className="mt-4">
-                <label className="block text-xs text-slate-500 mb-1.5">BOM 輔料明細（可調整數量）</label>
-                <div className="table-scroll-x border border-slate-200 rounded-lg">
-                  <table className="w-full text-xs" style={{ minWidth: 920 }}>
-                    <thead>
-                      <tr className="bg-slate-50 border-b border-slate-200">
-                        <th className="px-2 py-2 text-left">料號</th>
-                        <th className="px-2 py-2 text-left">品名</th>
-                        <th className="px-2 py-2 text-left">規格</th>
-                        <th className="px-2 py-2 text-left">單位</th>
-                        <th className="px-2 py-2 text-right">數量</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {importedLines.map((line) => (
-                        <tr key={line.key} className="border-b border-slate-100 last:border-0">
-                          <td className="px-2 py-2 font-mono text-[11px] text-blue-700">{line.materialCode || '-'}</td>
-                          <td className="px-2 py-2">{line.materialName || '-'}</td>
-                          <td className="px-2 py-2 text-slate-500">{line.spec || '-'}</td>
-                          <td className="px-2 py-2 text-slate-500">{line.unit || 'PCS'}</td>
-                          <td className="px-2 py-2 text-right">
-                            <input
-                              type="number"
-                              min={0}
-                              className="rubber-input h-8 text-right"
-                              value={line.plannedQty}
-                              onChange={(e) => updateImportedLine(line.key, e.target.value)}
-                            />
-                          </td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
+            <div className="mt-5">
+              <div className="mb-2 flex items-center justify-between">
+                <label className="block text-xs text-slate-500">交貨明細</label>
+                <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
               </div>
-            )}
+              <div className="overflow-hidden rounded-lg border border-slate-200">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="border-b border-slate-200 bg-slate-50">
+                      <th className="px-3 py-2 text-left">材料名稱</th>
+                      <th className="px-3 py-2 text-right">數量</th>
+                      <th className="px-3 py-2 text-left">交期</th>
+                      <th className="px-3 py-2 text-left">備註</th>
+                      <th className="px-3 py-2 text-left">操作</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {createForm.lines.map((line) => (
+                      <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                        <td className="px-3 py-2">
+                          <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input type="date" className="rubber-input h-9" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: e.target.value })} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
 
-            <div className="mt-3">
-              <label className="block text-xs text-slate-500 mb-1">備註</label>
-              <textarea className="rubber-input" rows={3} value={form.remark} onChange={(e) => setForm((prev) => ({ ...prev, remark: e.target.value }))} />
+            <div className="mt-4">
+              <label className="mb-1 block text-xs text-slate-500">主單備註</label>
+              <textarea className="rubber-input" rows={3} value={createForm.remark} onChange={(e) => updateCreateForm({ remark: e.target.value })} />
             </div>
 
             <div className="mt-5 flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setShowCreate(false)}>取消</button>
+              <button className="btn-ghost" onClick={closeCreate}>取消</button>
               <button className="btn-primary" onClick={createProgress}>建立</button>
             </div>
           </div>
         </div>
       )}
 
-      {editing && (
+      {(editing || editLoading) && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
-          <div className="absolute inset-0 bg-black/35" onClick={() => setEditing(null)} />
-          <div className="relative w-full max-w-2xl rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
-            <div className="flex items-center justify-between mb-4">
-              <h2 className="text-base font-bold text-slate-800">編輯交貨進度 {editing.progress_no}</h2>
-              <button className="btn-ghost" onClick={() => setEditing(null)}>關閉</button>
-            </div>
+          <div className="absolute inset-0 bg-black/35" onClick={closeEdit} />
+          <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            {editLoading || !editing || !editForm ? (
+              <div className="py-10 text-center text-sm text-slate-500">載入中...</div>
+            ) : (
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">編輯交貨進度 {editing.progress_no}</h2>
+                    <p className="mt-1 text-xs text-slate-500">{editing.customer_name || '-'} / {editing.item_count} 筆明細 / {editing.linked_po_count} 個 PO</p>
+                  </div>
+                  <button className="btn-ghost" onClick={closeEdit}>關閉</button>
+                </div>
 
-            <div className="grid md:grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">料號</label>
-                <input className="rubber-input" value={form.materialCode} disabled />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">交貨地點</label>
-                <input className="rubber-input" value={form.deliveryLocation} onChange={(e) => setForm((prev) => ({ ...prev, deliveryLocation: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">品名</label>
-                <input className="rubber-input" value={form.materialName} onChange={(e) => setForm((prev) => ({ ...prev, materialName: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">規格</label>
-                <input className="rubber-input" value={form.spec} onChange={(e) => setForm((prev) => ({ ...prev, spec: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">單位</label>
-                <input className="rubber-input" value={form.unit} onChange={(e) => setForm((prev) => ({ ...prev, unit: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">計畫數量</label>
-                <input type="number" className="rubber-input" min={0} value={form.plannedQty} onChange={(e) => setForm((prev) => ({ ...prev, plannedQty: e.target.value }))} />
-              </div>
-              <div>
-                <label className="block text-xs text-slate-500 mb-1">到期日</label>
-                <input type="date" className="rubber-input" value={form.dueDate} onChange={(e) => setForm((prev) => ({ ...prev, dueDate: e.target.value }))} />
-              </div>
-            </div>
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-500">PO 編號（可多個）</label>
+                    <textarea className="rubber-input" rows={3} value={editForm.poInput} onChange={(e) => setEditForm({ ...editForm, poInput: e.target.value })} />
+                  </div>
 
-            <div className="mt-3">
-              <label className="block text-xs text-slate-500 mb-1">備註</label>
-              <textarea className="rubber-input" rows={3} value={form.remark} onChange={(e) => setForm((prev) => ({ ...prev, remark: e.target.value }))} />
-            </div>
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（選填）</label>
+                    <div className="flex gap-2">
+                      <select className="rubber-input" value={editOrderToAdd} onChange={(e) => setEditOrderToAdd(e.target.value)}>
+                        <option value="">-- 選擇訂單 --</option>
+                        {editOrderOptions.map((o) => (
+                          <option key={o.id} value={String(o.id)}>{o.po_number}</option>
+                        ))}
+                      </select>
+                      <button type="button" className="btn-ghost whitespace-nowrap" onClick={addEditLinkedOrder}>加入</button>
+                    </div>
+                    {editLinkedOrders.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {editLinkedOrders.map((order) => (
+                          <span key={order.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                            {order.po_number}
+                            <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => removeEditLinkedOrder(order.id)}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
-            <div className="mt-5 flex justify-end gap-2">
-              <button className="btn-ghost" onClick={() => setEditing(null)}>取消</button>
-              <button className="btn-primary" onClick={saveEdit}>儲存</button>
-            </div>
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">狀態</label>
+                    <select className="rubber-input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value as EditForm['status'] })}>
+                      <option value="pending">待處理</option>
+                      <option value="partial">部分完成</option>
+                      <option value="completed">已完成</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-xs text-slate-500">交貨明細</label>
+                    <button type="button" className="btn-ghost text-xs" onClick={addEditLine}>+ 新增明細</button>
+                  </div>
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="px-3 py-2 text-left">材料名稱</th>
+                          <th className="px-3 py-2 text-right">數量</th>
+                          <th className="px-3 py-2 text-right">已採購</th>
+                          <th className="px-3 py-2 text-right">缺口</th>
+                          <th className="px-3 py-2 text-left">交期</th>
+                          <th className="px-3 py-2 text-left">備註</th>
+                          <th className="px-3 py-2 text-left">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editForm.lines.map((line, idx) => {
+                          const source = editing.items[idx]
+                          return (
+                            <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                              <td className="px-3 py-2">
+                                <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
+                              </td>
+                              <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
+                              <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
+                              <td className="px-3 py-2">
+                                <input type="date" className="rubber-input h-9" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: e.target.value })} />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />
+                              </td>
+                              <td className="px-3 py-2">
+                                <button type="button" className="btn-ghost text-xs" onClick={() => removeEditLine(line.key)}>刪除</button>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs text-slate-500">主單備註</label>
+                  <textarea className="rubber-input" rows={3} value={editForm.remark} onChange={(e) => setEditForm({ ...editForm, remark: e.target.value })} />
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button className="btn-ghost" onClick={closeEdit}>取消</button>
+                  <button className="btn-primary" onClick={saveEdit}>儲存</button>
+                </div>
+              </>
+            )}
           </div>
         </div>
       )}
