@@ -5,6 +5,7 @@ import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { useDialog } from '@/components/Dialog'
+import { SearchableSelect } from '@/components/SearchableSelect'
 
 type IntakeItem = {
   id: number
@@ -49,10 +50,30 @@ type OrderSummary = { id: number; po_number: string; customer_id: number; custom
 
 type LineForm = {
   key: string
+  materialOptionId: string
+  material_code: string
   material_name: string
+  spec: string
+  unit: string
   planned_qty: string
   due_date: string
   remark: string
+}
+
+type OrderMaterialOption = {
+  id: string
+  material_id?: number | null
+  material_code: string
+  material_name: string
+  spec: string
+  unit: string
+  suggested_qty: number
+  due_date?: string | null
+  order_po_numbers: string[]
+  customer_po_numbers: string[]
+  bom_skus: string[]
+  bom_names: string[]
+  order_item_count: number
 }
 
 type CreateForm = {
@@ -80,7 +101,11 @@ const STATUS_LABEL: Record<string, string> = {
 
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
+  materialOptionId: '',
+  material_code: '',
   material_name: '',
+  spec: '',
+  unit: 'PCS',
   planned_qty: '',
   due_date: '',
   remark: '',
@@ -154,10 +179,14 @@ export default function OrderIntakePage() {
   const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
   const [createLineSeed, setCreateLineSeed] = useState(2)
   const [createOrderToAdd, setCreateOrderToAdd] = useState('')
+  const [createMaterialOptions, setCreateMaterialOptions] = useState<OrderMaterialOption[]>([])
+  const [createMaterialLoading, setCreateMaterialLoading] = useState(false)
   const [editing, setEditing] = useState<ProgressDetail | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editLineSeed, setEditLineSeed] = useState(1000)
   const [editOrderToAdd, setEditOrderToAdd] = useState('')
+  const [editMaterialOptions, setEditMaterialOptions] = useState<OrderMaterialOption[]>([])
+  const [editMaterialLoading, setEditMaterialLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
 
   const load = async (nextStatus = status) => {
@@ -194,6 +223,67 @@ export default function OrderIntakePage() {
     loadBaseOptions()
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  const fetchOrderMaterialOptions = async (orderIds: number[]) => {
+    if (!orderIds.length) return []
+    return apiFetch<OrderMaterialOption[]>(`/api/customer-orders/material-options?order_ids=${orderIds.join(',')}`)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    if (!createForm.linkedOrderIds.length) {
+      setCreateMaterialOptions([])
+      return
+    }
+    setCreateMaterialLoading(true)
+    fetchOrderMaterialOptions(createForm.linkedOrderIds)
+      .then((rows) => {
+        if (!cancelled) setCreateMaterialOptions(rows || [])
+      })
+      .catch(() => {
+        if (!cancelled) setCreateMaterialOptions([])
+      })
+      .finally(() => {
+        if (!cancelled) setCreateMaterialLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [createForm.linkedOrderIds])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!editForm?.linkedOrderIds.length) {
+      setEditMaterialOptions([])
+      return
+    }
+    setEditMaterialLoading(true)
+    fetchOrderMaterialOptions(editForm.linkedOrderIds)
+      .then((rows) => {
+        if (!cancelled) setEditMaterialOptions(rows || [])
+      })
+      .catch(() => {
+        if (!cancelled) setEditMaterialOptions([])
+      })
+      .finally(() => {
+        if (!cancelled) setEditMaterialLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [editForm?.linkedOrderIds])
+
+  useEffect(() => {
+    if (!editForm || !editMaterialOptions.length) return
+    const nextLines = editForm.lines.map((line) => {
+      if (line.materialOptionId) return line
+      const matched = editMaterialOptions.find((option) =>
+        option.material_code === line.material_code &&
+        option.material_name === line.material_name &&
+        option.spec === line.spec &&
+        option.unit === line.unit,
+      )
+      return matched ? { ...line, materialOptionId: matched.id } : line
+    })
+    const changed = nextLines.some((line, idx) => line.materialOptionId !== editForm.lines[idx].materialOptionId)
+    if (changed) setEditForm({ ...editForm, lines: nextLines })
+  }, [editForm, editMaterialOptions])
 
   const summary = useMemo(() => {
     const total = rows.length
@@ -287,6 +377,38 @@ export default function OrderIntakePage() {
     }))
   }
 
+  const formatMaterialOption = (option: OrderMaterialOption) => {
+    const code = option.material_code ? `${option.material_code} ` : ''
+    const spec = option.spec ? ` / ${option.spec}` : ''
+    const bom = option.bom_skus.length ? ` / BOM ${option.bom_skus.join(', ')}` : ''
+    const po = option.order_po_numbers.length ? ` / 訂單 ${option.order_po_numbers.join(', ')}` : ''
+    return `${code}${option.material_name}${spec}${bom}${po}`
+  }
+
+  const filterMaterialOption = (option: OrderMaterialOption, search: string) => {
+    const text = [
+      option.material_code,
+      option.material_name,
+      option.spec,
+      option.unit,
+      ...option.order_po_numbers,
+      ...option.customer_po_numbers,
+      ...option.bom_skus,
+      ...option.bom_names,
+    ].join(' ').toLowerCase()
+    return text.includes(search)
+  }
+
+  const applyMaterialOption = (option: OrderMaterialOption, line: LineForm): Partial<LineForm> => ({
+    materialOptionId: option.id,
+    material_code: option.material_code,
+    material_name: option.material_name,
+    spec: option.spec,
+    unit: option.unit || 'PCS',
+    planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
+    due_date: normalizeYmdInput(formatDateYMD(option.due_date) || line.due_date || ''),
+  })
+
   const addCreateLine = () => {
     setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
     setCreateLineSeed((prev) => prev + 1)
@@ -348,12 +470,15 @@ export default function OrderIntakePage() {
 
     const lines = createForm.lines
       .map((line) => ({
+        material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
+        spec: line.spec.trim(),
+        unit: line.unit.trim() || 'PCS',
         planned_qty: Number(line.planned_qty),
         due_date: line.due_date || undefined,
         remark: line.remark.trim(),
       }))
-      .filter((line) => line.material_name || line.planned_qty || line.due_date || line.remark)
+      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.due_date || line.remark)
 
     if (!lines.length) {
       toast('請至少新增一筆交貨明細', 'error')
@@ -413,7 +538,11 @@ export default function OrderIntakePage() {
         status: detail.status || 'pending',
         lines: (detail.items || []).map((item, index) => ({
           key: `edit-${item.id || index}`,
+          materialOptionId: '',
+          material_code: item.material_code || '',
           material_name: item.material_name || '',
+          spec: item.spec || '',
+          unit: item.unit || 'PCS',
           planned_qty: String(item.planned_qty || ''),
           due_date: normalizeYmdInput(formatDateYMD(item.due_date) || ''),
           remark: item.remark || '',
@@ -483,12 +612,15 @@ export default function OrderIntakePage() {
     if (!editing || !editForm) return
     const items = editForm.lines
       .map((line) => ({
+        material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
+        spec: line.spec.trim(),
+        unit: line.unit.trim() || 'PCS',
         planned_qty: Number(line.planned_qty),
         due_date: line.due_date || undefined,
         remark: line.remark.trim(),
       }))
-      .filter((line) => line.material_name || line.planned_qty || line.due_date || line.remark)
+      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.due_date || line.remark)
 
     if (!items.length) {
       toast('請至少保留一筆交貨明細', 'error')
@@ -739,13 +871,19 @@ export default function OrderIntakePage() {
               </div>
             </div>
 
-            <div className="mt-5">
-              <div className="mb-2 flex items-center justify-between">
-                <label className="block text-xs text-slate-500">交貨明細</label>
-                <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
-              </div>
-              <div className="overflow-hidden rounded-lg border border-slate-200">
-                <table className="w-full text-xs">
+              <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs text-slate-500">交貨明細</label>
+                  <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
+                </div>
+                {createForm.linkedOrderIds.length > 0 && (
+                  <p className="mb-2 text-xs text-slate-500">
+                    已按所選客戶訂單，將對應 BOM 的全部材料明細整合為單一材料下拉框。
+                    {createMaterialLoading ? ' 載入中...' : ` 共 ${createMaterialOptions.length} 個材料候選`}
+                  </p>
+                )}
+                <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <table className="w-full text-xs">
                   <thead>
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="px-3 py-2 text-left">材料名稱</th>
@@ -759,7 +897,31 @@ export default function OrderIntakePage() {
                     {createForm.lines.map((line) => (
                       <tr key={line.key} className="border-b border-slate-100 last:border-0">
                         <td className="px-3 py-2">
-                          <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
+                          {createForm.linkedOrderIds.length > 0 ? (
+                            <div className="space-y-1">
+                              <SearchableSelect
+                                options={createMaterialOptions}
+                                value={line.materialOptionId}
+                                onChange={(value) => {
+                                  const option = createMaterialOptions.find((it) => it.id === value)
+                                  if (!option) return
+                                  updateCreateLine(line.key, applyMaterialOption(option, line))
+                                }}
+                                placeholder={createMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
+                                renderOption={formatMaterialOption}
+                                filterFn={filterMaterialOption}
+                                disabled={createMaterialLoading}
+                                className="h-9"
+                              />
+                              {(line.material_name || line.material_code) && (
+                                <div className="text-[11px] text-slate-500">
+                                  {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
+                                </div>
+                              )}
+                            </div>
+                          ) : (
+                            <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
+                          )}
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
@@ -857,6 +1019,12 @@ export default function OrderIntakePage() {
                     <label className="block text-xs text-slate-500">交貨明細</label>
                     <button type="button" className="btn-ghost text-xs" onClick={addEditLine}>+ 新增明細</button>
                   </div>
+                  {editForm.linkedOrderIds.length > 0 && (
+                    <p className="mb-2 text-xs text-slate-500">
+                      已按所選客戶訂單，將對應 BOM 的全部材料明細整合為單一材料下拉框。
+                      {editMaterialLoading ? ' 載入中...' : ` 共 ${editMaterialOptions.length} 個材料候選`}
+                    </p>
+                  )}
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full text-xs">
                       <thead>
@@ -876,7 +1044,31 @@ export default function OrderIntakePage() {
                           return (
                             <tr key={line.key} className="border-b border-slate-100 last:border-0">
                               <td className="px-3 py-2">
-                                <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
+                                {editForm.linkedOrderIds.length > 0 ? (
+                                  <div className="space-y-1">
+                                    <SearchableSelect
+                                      options={editMaterialOptions}
+                                      value={line.materialOptionId}
+                                      onChange={(value) => {
+                                        const option = editMaterialOptions.find((it) => it.id === value)
+                                        if (!option) return
+                                        updateEditLine(line.key, applyMaterialOption(option, line))
+                                      }}
+                                      placeholder={editMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
+                                      renderOption={formatMaterialOption}
+                                      filterFn={filterMaterialOption}
+                                      disabled={editMaterialLoading}
+                                      className="h-9"
+                                    />
+                                    {(line.material_name || line.material_code) && (
+                                      <div className="text-[11px] text-slate-500">
+                                        {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
+                                      </div>
+                                    )}
+                                  </div>
+                                ) : (
+                                  <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
+                                )}
                               </td>
                               <td className="px-3 py-2">
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />

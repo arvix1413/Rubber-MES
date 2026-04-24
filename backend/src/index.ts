@@ -1965,6 +1965,54 @@ app.get('/api/customer-orders/pending', authMiddleware, async c => {
 
   return c.json(await query(sql, params))
 })
+app.get('/api/customer-orders/material-options', authMiddleware, async c => {
+  const orderIds = uniqueNumberList(String(c.req.query('order_ids') || '').split(','))
+  if (!orderIds.length) return c.json([])
+
+  const rows = await query<any>(`
+    SELECT
+      COALESCE(bi.material_id, 0) as material_id,
+      TRIM(COALESCE(bi.material_code, '')) as material_code,
+      TRIM(COALESCE(bi.material_name, '')) as material_name,
+      TRIM(COALESCE(bi.spec, '')) as spec,
+      TRIM(COALESCE(NULLIF(bi.unit, ''), 'PCS')) as unit,
+      COALESCE(SUM(COALESCE(ci.qty, 0) * COALESCE(bi.quantity, 0)), 0) as suggested_qty,
+      MIN(ci.rta_date) as due_date,
+      GROUP_CONCAT(DISTINCT co.po_number ORDER BY co.po_number SEPARATOR ', ') as order_po_numbers,
+      GROUP_CONCAT(DISTINCT NULLIF(ci.po_no, '') ORDER BY ci.po_no SEPARATOR ', ') as customer_po_numbers,
+      GROUP_CONCAT(DISTINCT b.product_sku ORDER BY b.product_sku SEPARATOR ', ') as bom_skus,
+      GROUP_CONCAT(DISTINCT b.product_name ORDER BY b.product_name SEPARATOR ', ') as bom_names,
+      COUNT(DISTINCT ci.id) as order_item_count
+    FROM customer_order_items ci
+    JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    JOIN bom_items bi ON bi.bom_id = b.id
+    WHERE ci.order_id IN (${orderIds.map(() => '?').join(',')})
+    GROUP BY
+      COALESCE(bi.material_id, 0),
+      TRIM(COALESCE(bi.material_code, '')),
+      TRIM(COALESCE(bi.material_name, '')),
+      TRIM(COALESCE(bi.spec, '')),
+      TRIM(COALESCE(NULLIF(bi.unit, ''), 'PCS'))
+    ORDER BY material_name ASC, material_code ASC, spec ASC
+  `, orderIds)
+
+  return c.json(rows.map((row: any, index: number) => ({
+    id: `${Number(row.material_id || 0)}::${String(row.material_code || '').trim()}::${String(row.spec || '').trim()}::${String(row.unit || '').trim()}::${index}`,
+    material_id: Number(row.material_id || 0) || null,
+    material_code: String(row.material_code || '').trim(),
+    material_name: String(row.material_name || '').trim(),
+    spec: String(row.spec || '').trim(),
+    unit: String(row.unit || 'PCS').trim() || 'PCS',
+    suggested_qty: toQty(row.suggested_qty),
+    due_date: row.due_date || null,
+    order_po_numbers: uniquePoNumbers(String(row.order_po_numbers || '').split(',')),
+    customer_po_numbers: uniquePoNumbers(String(row.customer_po_numbers || '').split(',')),
+    bom_skus: uniquePoNumbers(String(row.bom_skus || '').split(',')),
+    bom_names: String(row.bom_names || '').split(',').map((it: string) => it.trim()).filter(Boolean),
+    order_item_count: Number(row.order_item_count || 0),
+  })))
+})
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
   const order = await queryOne<any>(`
     SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
