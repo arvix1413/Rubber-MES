@@ -12,7 +12,7 @@ import { formatDateYMD } from '@/lib/datetime'
 type DNItem = { bom_id?:number|null; item_name:string; material_code:string; qty:number; shipped_qty:number; remark:string; po_ref?: string; spec?: string; unit?: string }
 type DN = { id:number; dn_number:string; customer_name:string; delivery_date:string; status:string; remark:string; created_at:string; items?:DNItem[]; order_po_number?:string }
 type Customer = { id:number; customer_name:string; customer_code:string }
-type PendingOrder = { id:number; po_number:string; po_date:string; items_summary:string }
+type PendingOrder = { id:number; po_number:string; po_date:string; items_summary:string; customer_id:number; customer_name?:string }
 type OrderItem = { id:number; bom_id:number|null; qty:number; unit_price:number; product_name:string; product_sku:string }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
@@ -53,6 +53,12 @@ export default function DeliveryNotesPage() {
     apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(() => {})
   }, [])
 
+  const lockedCustomerId = (() => {
+    const selectedOrder = pendingOrders.find((order) => String(order.id) === selectedOrderId)
+    const customerId = Number(selectedOrder?.customer_id || 0)
+    return customerId > 0 ? String(customerId) : ''
+  })()
+
   const onSelectCustomer = async (customerId: string) => {
     setSelectedCustomerId(customerId)
     setSelectedOrderId('')
@@ -81,6 +87,10 @@ export default function DeliveryNotesPage() {
     setOrderItems([])
     setShippedQtys({})
     if (!orderId) return
+    const selectedOrder = pendingOrders.find((order) => String(order.id) === orderId)
+    if (selectedOrder?.customer_id) {
+      setSelectedCustomerId(String(selectedOrder.customer_id))
+    }
     const data = await apiFetch<any>(`/api/customer-orders/${orderId}`)
     const items: OrderItem[] = (data.items || []).map((i: any) => ({
       id: i.id, bom_id: i.bom_id, qty: Number(i.qty),
@@ -229,12 +239,15 @@ export default function DeliveryNotesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">客戶</label>
-              <select className="rubber-input" value={selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)}>
+              <select className="rubber-input" value={lockedCustomerId || selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)} disabled={!!lockedCustomerId}>
                 <option value="">-- 選擇客戶 --</option>
                 {customers.map(c => (
                   <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
                 ))}
               </select>
+              {lockedCustomerId && (
+                <p className="mt-1 text-xs text-slate-500">已依所選訂單自動鎖定客戶，清空訂單後可重新選擇。</p>
+              )}
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">Số đơn đặt hàng（Order No）</label>
