@@ -60,6 +60,7 @@ export default function PoPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [unitPriceInputs, setUnitPriceInputs] = useState<Record<number, string>>({})
   const canWrite = can('po.create')
   const canApprove = can('po.approve')
   const canDel = can('po.delete')
@@ -70,6 +71,18 @@ export default function PoPage() {
     apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(() => {})
     apiFetch<Material[]>('/api/materials').then(setMaterials).catch(() => {})
   }, [])
+
+  const buildUnitPriceInputs = (items: PoItemExt[]) =>
+    Object.fromEntries(items.map((item, idx) => [idx, Number(item.unit_price || 0) ? formatDecimal(item.unit_price) : '']))
+
+  const parseMoney = (raw: string) => {
+    const text = raw.trim().replace(/,/g, '')
+    if (!text) return 0
+    if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null
+    const value = Number(text)
+    if (!Number.isFinite(value) || value < 0) return null
+    return value
+  }
 
   const onSelectSupplier = async (supplierId: string) => {
     const sup = suppliers.find(s => String(s.id) === supplierId)
@@ -84,9 +97,8 @@ export default function PoPage() {
   const selectMaterial = (i: number, materialId: string) => {
     const material = getFilteredMaterials().find(m => String(m.id) === materialId)
     if (!material) {
-      setForm(p => ({
-        ...p,
-        items: p.items.map((item, idx) => idx !== i ? item : {
+      setForm(p => {
+        const items = p.items.map((item, idx) => idx !== i ? item : {
           ...item,
           material_id: undefined,
           material_code: '',
@@ -99,13 +111,14 @@ export default function PoPage() {
           supplier_id: null,
           supplier_name: '',
         })
-      }))
+        setUnitPriceInputs(buildUnitPriceInputs(items))
+        return { ...p, items }
+      })
       return
     }
     
-    setForm(p => ({
-      ...p,
-      items: p.items.map((item, idx) => idx !== i ? item : {
+    setForm(p => {
+      const items = p.items.map((item, idx) => idx !== i ? item : {
         ...(item || {}),
         ...item,
         material_id: Number(materialId),
@@ -120,7 +133,9 @@ export default function PoPage() {
         supplier_id: material.supplier_id ?? null,
         supplier_name: suppliers.find((s) => s.id === material.supplier_id)?.name || '',
       })
-    }))
+      setUnitPriceInputs(buildUnitPriceInputs(items))
+      return { ...p, items }
+    })
   }
 
   const toggleExpand = async (id: number) => {
@@ -184,12 +199,19 @@ export default function PoPage() {
     } catch (e: any) { toast('刪除失敗：' + e.message, 'error') }
   }
 
-  const addItem = () => setForm(p => ({ ...p, items: [...p.items, emptyItem()] }))
-  const removeItem = (i: number) => setForm(p => ({ ...p, items: p.items.filter((_, idx) => idx !== i) }))
+  const addItem = () => setForm(p => {
+    const items = [...p.items, emptyItem()]
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const removeItem = (i: number) => setForm(p => {
+    const items = p.items.filter((_, idx) => idx !== i)
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
   const updateItem = (i: number, field: keyof PoItemExt, val: any) => {
-    setForm(p => ({
-      ...p,
-      items: p.items.map((item, idx) => {
+    setForm(p => {
+      const items = p.items.map((item, idx) => {
         if (idx !== i) return item
         const u = { ...item, [field]: val }
         if (field === 'quantity' && u.material_id) {
@@ -199,7 +221,24 @@ export default function PoPage() {
         if (field === 'quantity' || field === 'unit_price') u.total_price = (Number(u.quantity) || 0) * (Number(u.unit_price) || 0)
         return u
       })
-    }))
+      if (field === 'quantity') setUnitPriceInputs(buildUnitPriceInputs(items))
+      return { ...p, items }
+    })
+  }
+  const onUnitPriceChange = (i: number, raw: string) => {
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: raw }))
+    const parsed = parseMoney(raw)
+    if (parsed === null) return
+    updateItem(i, 'unit_price', parsed)
+  }
+  const onUnitPriceBlur = (i: number) => {
+    const current = unitPriceInputs[i] ?? ''
+    const parsed = parseMoney(current)
+    if (parsed === null) {
+      setUnitPriceInputs((prev) => ({ ...prev, [i]: Number(form.items[i]?.unit_price || 0) ? formatDecimal(form.items[i]?.unit_price) : '' }))
+      return
+    }
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: parsed ? formatDecimal(parsed) : '' }))
   }
   const importFromCustomerOrder = async () => {
     const poNo = sourceOrderPoNo.trim()
@@ -240,6 +279,7 @@ export default function PoPage() {
         currency: matchedSup?.currency || p.currency || 'VND',
         items: importedItems,
       }))
+      setUnitPriceInputs(buildUnitPriceInputs(importedItems))
       setSourceMeta(payload)
       toast(`已帶入 ${importedItems.length} 筆輔料明細`)
       if (!onlyOneSupplier) {
@@ -299,6 +339,7 @@ export default function PoPage() {
         setCreating(false)
       }
       setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
+      setUnitPriceInputs({})
       setSourceOrderPoNo('')
       setSourceMeta(null)
       await load()
@@ -340,6 +381,26 @@ export default function PoPage() {
         }
       })
     })
+    setUnitPriceInputs(buildUnitPriceInputs((data.items || []).map(i => {
+      const matchedMaterial = materials.find(m => m.material_code === i.material_code)
+      return {
+        material_code: i.material_code,
+        material_name: i.material_name,
+        spec: i.spec,
+        unit: i.unit,
+        quantity: Number(i.quantity),
+        unit_price: Number(i.unit_price),
+        total_price: Number(i.total_price),
+        currency: i.currency,
+        remark: i.remark,
+        po_ref: i.po_ref,
+        image_url: i.image_url || matchedMaterial?.image_url || '',
+        material_id: matchedMaterial ? matchedMaterial.id : undefined,
+        supplier_id: matchedMaterial?.supplier_id ?? null,
+        supplier_name: po.supplier_name || '',
+        keep: true,
+      }
+    })))
     setEditingId(po.id)
     setCreating(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -372,7 +433,7 @@ export default function PoPage() {
           <h1 className="text-xl font-bold text-slate-800">採購單管理</h1>
           <p className="section-hint">點選採購單列展開檢視料號明細</p>
         </div>
-        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-primary">+ 建立採購單</button>}
+        {canWrite && <button onClick={() => { setCreating(true); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-primary">+ 建立採購單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
@@ -478,7 +539,7 @@ export default function PoPage() {
                     <td className="p-1"><input className={lockedInp} value={item.spec} onChange={e=>updateItem(i,'spec',e.target.value)} readOnly style={{width:120}} /></td>
                     <td className="p-1"><input className={lockedInp} value={item.unit} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly style={{width:70}} /></td>
                     <td className="p-1"><input type="number" className={inp} style={{width:90}} value={item.quantity || ""} onChange={e=>updateItem(i,'quantity',Number(e.target.value))} /></td>
-                    <td className="p-1"><input type="number" className={inp} style={{width:110}} value={item.unit_price || ""} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} /></td>
+                    <td className="p-1"><input type="text" inputMode="decimal" className={inp} style={{width:110}} value={unitPriceInputs[i] ?? ''} onChange={e=>onUnitPriceChange(i, e.target.value)} onBlur={()=>onUnitPriceBlur(i)} /></td>
                     <td className="p-1 px-2 text-right text-slate-600 font-medium whitespace-nowrap">{formatDecimal(item.total_price)}</td>
                     <td className="p-1">
                       <select className={inp} style={{width:80}} value={String(form.tax_rate)}
@@ -513,7 +574,7 @@ export default function PoPage() {
           </div>
           <div className="flex gap-2 mt-4">
             <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
-            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
+            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
           </div>
         </div>
       )}

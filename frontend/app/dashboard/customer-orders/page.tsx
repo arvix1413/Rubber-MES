@@ -95,6 +95,7 @@ export default function CustomerOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [unitPriceInputs, setUnitPriceInputs] = useState<Record<number, string>>({})
   const canWrite = can('customer_order.create')
   const canDel = can('customer_order.delete')
 
@@ -125,6 +126,18 @@ export default function CustomerOrdersPage() {
     apiFetch<BOM[]>('/api/bom').then(setBoms).catch(()=>{})
     apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(()=>{})
   },[])
+
+  const buildUnitPriceInputs = (items: OrderItem[]) =>
+    Object.fromEntries(items.map((item, idx) => [idx, Number(item.unit_price || 0) ? formatDecimal(item.unit_price) : '']))
+
+  const parseMoney = (raw: string) => {
+    const text = raw.trim().replace(/,/g, '')
+    if (!text) return 0
+    if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null
+    const value = Number(text)
+    if (!Number.isFinite(value) || value < 0) return null
+    return value
+  }
 
   const toggleExpand = async (id: number) => {
     const next = new Set(expanded)
@@ -176,6 +189,7 @@ export default function CustomerOrdersPage() {
         toast('建立成功'); setCreating(false)
       }
       setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] })
+      setUnitPriceInputs({})
       await load()
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
   }
@@ -214,6 +228,27 @@ export default function CustomerOrdersPage() {
         }
       })
     })
+    setUnitPriceInputs(buildUnitPriceInputs((data.items || []).map(i => {
+      const matchedBom =
+        (i.bom_id ? boms.find(b => b.id === i.bom_id) : undefined) ||
+        (i.product_sku ? boms.find(b => b.product_sku === i.product_sku) : undefined)
+      return {
+        bom_id: i.bom_id ?? matchedBom?.id ?? null,
+        qty: Number(i.qty),
+        unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
+        po_no: (i as any).po_no || '',
+        rta_date: formatDateYMD((i as any).rta_date),
+        remark: (i as any).remark || '',
+        spec: i.spec || matchedBom?.spec || '',
+        unit: i.unit || matchedBom?.unit || '',
+        product_sku: i.product_sku || matchedBom?.product_sku,
+        product_name: i.product_name || matchedBom?.product_name,
+        image_url: i.image_url || matchedBom?.image_url,
+        supplier_name: (i as any).supplier_name || matchedBom?.supplier_name || '',
+        lt: (i as any).lt || matchedBom?.lt || '',
+        moq: (i as any).moq ?? matchedBom?.moq ?? null,
+      }
+    })))
     setEditingId(order.id)
     setCreating(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -256,9 +291,36 @@ export default function CustomerOrdersPage() {
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 
-  const addItem = () => setForm(p=>({...p, items:[...p.items, emptyItem()]}))
-  const removeItem = (i:number) => setForm(p=>({...p, items:p.items.filter((_,idx)=>idx!==i)}))
-  const updateItem = (i:number, f:keyof OrderItem, v:any) => setForm(p=>({...p, items:p.items.map((item,idx)=>idx===i?{...item,[f]:v}:item)}))
+  const addItem = () => setForm(p => {
+    const items = [...p.items, emptyItem()]
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const removeItem = (i:number) => setForm(p => {
+    const items = p.items.filter((_,idx)=>idx!==i)
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const updateItem = (i:number, f:keyof OrderItem, v:any) => setForm(p => {
+    const items = p.items.map((item,idx)=>idx===i?{...item,[f]:v}:item)
+    if (f === 'qty') setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const onUnitPriceChange = (i: number, raw: string) => {
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: raw }))
+    const parsed = parseMoney(raw)
+    if (parsed === null) return
+    updateItem(i, 'unit_price', parsed)
+  }
+  const onUnitPriceBlur = (i: number) => {
+    const current = unitPriceInputs[i] ?? ''
+    const parsed = parseMoney(current)
+    if (parsed === null) {
+      setUnitPriceInputs((prev) => ({ ...prev, [i]: Number(form.items[i]?.unit_price || 0) ? formatDecimal(form.items[i]?.unit_price) : '' }))
+      return
+    }
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: parsed ? formatDecimal(parsed) : '' }))
+  }
 
   // When BOM selected, auto-fill unit_price, spec, unit, image_url from BOM
   const onSelectBom = (i:number, bomId:string) => {
@@ -287,10 +349,11 @@ export default function CustomerOrdersPage() {
       updates.moq = null
     }
     
-    setForm(p => ({
-      ...p,
-      items: p.items.map((item, idx) => idx === i ? { ...item, ...updates } : item)
-    }))
+    setForm(p => {
+      const items = p.items.map((item, idx) => idx === i ? { ...item, ...updates } : item)
+      setUnitPriceInputs(buildUnitPriceInputs(items))
+      return { ...p, items }
+    })
   }
 
   const filtered = orders.filter(o => {
@@ -315,7 +378,7 @@ export default function CustomerOrdersPage() {
           <h1 className="text-xl font-bold text-slate-800">客戶訂單（對齊單據）</h1>
           <p className="section-hint">點選訂單列展開檢視品項明細</p>
         </div>
-        {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-primary">+ 新增訂單</button>}
+        {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }); setUnitPriceInputs({}) }} className="btn-primary">+ 新增訂單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
@@ -429,7 +492,7 @@ export default function CustomerOrdersPage() {
                       <input className={lockedInp} value={item.unit||''} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly />
                     </td>
                     <td className="p-1.5 w-28">
-                      <input type="number" className={inp} value={item.unit_price||''} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} />
+                      <input type="text" inputMode="decimal" className={inp} value={unitPriceInputs[i] ?? ''} onChange={e=>onUnitPriceChange(i, e.target.value)} onBlur={()=>onUnitPriceBlur(i)} />
                     </td>
                     <td className="p-1.5 w-28 text-right">
                       <span className="font-semibold text-slate-700">{formatDecimal((item.qty||0) * (item.unit_price||0))}</span>
@@ -460,7 +523,7 @@ export default function CustomerOrdersPage() {
           })()}
           <div className="flex gap-2 mt-4">
             <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立訂單'}</button>
-            <button onClick={()=>{ setCreating(false); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-ghost border border-slate-200">取消</button>
+            <button onClick={()=>{ setCreating(false); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }); setUnitPriceInputs({}) }} className="btn-ghost border border-slate-200">取消</button>
           </div>
         </div>
       )}
