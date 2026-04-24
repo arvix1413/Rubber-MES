@@ -826,7 +826,7 @@ export default function OrderIntakePage() {
               </div>
 
               <div>
-                  <label className="mb-1 block text-xs text-slate-500">統一交期</label>
+                  <label className="mb-1 block text-xs text-slate-500">交期進度</label>
                   <input
                     type="date"
                     className="rubber-input h-9"
@@ -983,7 +983,7 @@ export default function OrderIntakePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div>
-                    <label className="mb-1 block text-xs text-slate-500">統一交期</label>
+                    <label className="mb-1 block text-xs text-slate-500">交期進度</label>
                     <input
                       type="date"
                       className="rubber-input h-9"
