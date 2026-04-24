@@ -349,33 +349,33 @@ export default function MaterialsPage() {
         {loading ? <div className="text-xs text-slate-500 p-6">載入中...</div> : (
           <>
             <div className="px-4 pt-4 text-xs text-slate-500">
-              表格區域可直接橫向與縱向捲動，左側關鍵欄位與表頭會固定，查看後方欄位不需先把整頁滑到底部。
+              表格區域可直接橫向與縱向捲動，滾動體驗與其他列表頁保持一致，查看後方欄位不需先把整頁滑到底部。
             </div>
             <div className="px-4 pb-4 pt-3">
             <div className="table-scroll-x max-h-[68vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-inner">
               <table className="rubber-table" style={{ minWidth: 1540 }}>
                 <thead>
                   <tr>
-                    <th className="sticky top-0 left-0 z-30 min-w-[152px] bg-[#f4eee5] shadow-[1px_0_0_0_#e5d8c8]">物料編號</th>
-                    <th className="sticky top-0 left-[152px] z-30 min-w-[360px] bg-[#f4eee5] shadow-[1px_0_0_0_#e5d8c8]">材料名稱</th>
-                    <th className="sticky top-0 z-20 min-w-[160px] bg-[#f4eee5]">規格</th>
-                    <th className="sticky top-0 z-20 min-w-[120px] bg-[#f4eee5]">顏色</th>
-                    <th className="sticky top-0 z-20 min-w-[90px] bg-[#f4eee5]">單位</th>
-                    <th className="sticky top-0 z-20 min-w-[180px] bg-[#f4eee5]">供應商</th>
-                    <th className="sticky top-0 z-20 min-w-[120px] bg-[#f4eee5] text-right">單價</th>
-                    <th className="sticky top-0 z-20 min-w-[120px] bg-[#f4eee5] text-right">售價</th>
-                    <th className="sticky top-0 z-20 min-w-[120px] bg-[#f4eee5]">Leadtime</th>
-                    <th className="sticky top-0 z-20 min-w-[280px] bg-[#f4eee5]">MOQ階梯</th>
-                    <th className="sticky top-0 z-20 min-w-[90px] bg-[#f4eee5]">幣別</th>
-                    <th className="sticky top-0 z-20 min-w-[240px] bg-[#f4eee5]">備註</th>
-                    <th className="sticky top-0 z-20 min-w-[140px] bg-[#f4eee5]">操作</th>
+                    <th className="min-w-[152px]">物料編號</th>
+                    <th className="min-w-[360px]">材料名稱</th>
+                    <th className="min-w-[160px]">規格</th>
+                    <th className="min-w-[120px]">顏色</th>
+                    <th className="min-w-[90px]">單位</th>
+                    <th className="min-w-[180px]">供應商</th>
+                    <th className="min-w-[120px] text-right">單價</th>
+                    <th className="min-w-[120px] text-right">售價</th>
+                    <th className="min-w-[120px]">Leadtime</th>
+                    <th className="min-w-[280px]">MOQ階梯</th>
+                    <th className="min-w-[90px]">幣別</th>
+                    <th className="min-w-[240px]">備註</th>
+                    <th className="min-w-[140px]">操作</th>
                   </tr>
                 </thead>
                 <tbody>
                   {paged.map((r) => (
                     <tr key={r.id} className="odd:bg-white even:bg-slate-50/40">
-                      <td className="sticky left-0 z-10 min-w-[152px] whitespace-nowrap bg-inherit font-mono text-xs text-blue-600 shadow-[1px_0_0_0_#eadfce]">{r.material_code}</td>
-                      <td className="sticky left-[152px] z-10 min-w-[360px] whitespace-nowrap bg-inherit font-medium text-slate-800 shadow-[1px_0_0_0_#eadfce]">{r.material_name}</td>
+                      <td className="min-w-[152px] whitespace-nowrap font-mono text-xs text-blue-600">{r.material_code}</td>
+                      <td className="min-w-[360px] whitespace-nowrap font-medium text-slate-800">{r.material_name}</td>
                       <td className="min-w-[160px] text-slate-500 whitespace-nowrap">{r.spec || '—'}</td>
                       <td className="min-w-[120px] text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
                       <td className="min-w-[90px] text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
