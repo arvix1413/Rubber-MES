@@ -70,8 +70,6 @@ export default function MaterialsPage() {
   const canWrite = can('bom.create')
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
-  const codeColWidth = 152
-  const nameColWidth = 360
 
   const load = () => apiFetch<Material[]>('/api/materials').then(setRows).finally(() => setLoading(false))
 
@@ -351,54 +349,40 @@ export default function MaterialsPage() {
         {loading ? <div className="text-xs text-slate-500 p-6">載入中...</div> : (
           <>
             <div className="table-scroll-x">
-              <table className="w-full text-sm" style={{ minWidth: 1540 }}>
+              <table className="rubber-table" style={{ minWidth: 1540 }}>
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    {['物料編號', '材料名稱', '規格', '顏色', '單位', '供應商', '單價', '售價', 'Leadtime', 'MOQ階梯', '幣別', '備註', '操作'].map((h, idx) => (
-                      <th
-                        key={h}
-                        className={`px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap sticky top-0 bg-slate-50 z-[3] ${idx === 0 ? 'left-0 z-[7] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.32)]' : ''} ${idx === 1 ? 'z-[7] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.32)]' : ''}`}
-                        style={
-                          idx === 0
-                            ? { left: 0, minWidth: codeColWidth, width: codeColWidth, maxWidth: codeColWidth }
-                            : idx === 1
-                              ? { left: codeColWidth, minWidth: nameColWidth, width: nameColWidth, maxWidth: nameColWidth }
-                              : undefined
-                        }
-                      >
-                        {h}
-                      </th>
-                    ))}
+                  <tr>
+                    <th className="min-w-[152px]">物料編號</th>
+                    <th className="min-w-[360px]">材料名稱</th>
+                    <th className="min-w-[160px]">規格</th>
+                    <th className="min-w-[120px]">顏色</th>
+                    <th className="min-w-[90px]">單位</th>
+                    <th className="min-w-[180px]">供應商</th>
+                    <th className="min-w-[120px] text-right">單價</th>
+                    <th className="min-w-[120px] text-right">售價</th>
+                    <th className="min-w-[120px]">Leadtime</th>
+                    <th className="min-w-[280px]">MOQ階梯</th>
+                    <th className="min-w-[90px]">幣別</th>
+                    <th className="min-w-[240px]">備註</th>
+                    <th className="min-w-[140px]">操作</th>
                   </tr>
                 </thead>
                 <tbody>
-                  {paged.map((r, idx) => {
-                    const stickyBg = idx % 2 === 0 ? '#ffffff' : '#f8fafc'
-                    return (
-                    <tr key={r.id} className="border-b border-slate-100 hover:bg-slate-50 odd:bg-white even:bg-slate-50/40">
-                      <td
-                        className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap sticky z-[6] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.28)]"
-                        style={{ left: 0, minWidth: codeColWidth, width: codeColWidth, maxWidth: codeColWidth, backgroundColor: stickyBg }}
-                      >
-                        {r.material_code}
-                      </td>
-                      <td
-                        className="px-3 py-2.5 font-medium text-slate-800 whitespace-nowrap sticky z-[6] shadow-[4px_0_8px_-6px_rgba(15,23,42,0.28)]"
-                        style={{ left: codeColWidth, minWidth: nameColWidth, width: nameColWidth, maxWidth: nameColWidth, backgroundColor: stickyBg }}
-                      >
-                        {r.material_name}
-                      </td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.spec || '—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.supplier_name || '—'}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.supplier_price || 0)}</td>
-                      <td className="px-3 py-2.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.company_price || 0)}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.leadtime || (r.leadtime_days ?? '—')}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={tierSummary(r)}>{tierSummary(r)}</td>
-                      <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{r.currency || 'VND'}</td>
-                      <td className="px-3 py-2.5 text-slate-500 max-w-[240px] truncate" title={r.remark || ''}>{r.remark || '—'}</td>
-                      <td className="px-3 py-2.5 whitespace-nowrap">
+                  {paged.map((r) => (
+                    <tr key={r.id} className="odd:bg-white even:bg-slate-50/40">
+                      <td className="min-w-[152px] font-mono text-xs text-blue-600 whitespace-nowrap">{r.material_code}</td>
+                      <td className="min-w-[360px] font-medium text-slate-800 whitespace-nowrap">{r.material_name}</td>
+                      <td className="min-w-[160px] text-slate-500 whitespace-nowrap">{r.spec || '—'}</td>
+                      <td className="min-w-[120px] text-slate-500 whitespace-nowrap">{r.color || '—'}</td>
+                      <td className="min-w-[90px] text-slate-500 whitespace-nowrap">{r.unit || 'PCS'}</td>
+                      <td className="min-w-[180px] text-slate-500 whitespace-nowrap">{r.supplier_name || '—'}</td>
+                      <td className="min-w-[120px] text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.supplier_price || 0)}</td>
+                      <td className="min-w-[120px] text-right text-slate-700 whitespace-nowrap">{formatDecimal(r.company_price || 0)}</td>
+                      <td className="min-w-[120px] text-slate-500 whitespace-nowrap">{r.leadtime || (r.leadtime_days ?? '—')}</td>
+                      <td className="min-w-[280px] text-slate-500 whitespace-nowrap max-w-[280px] truncate" title={tierSummary(r)}>{tierSummary(r)}</td>
+                      <td className="min-w-[90px] text-slate-500 whitespace-nowrap">{r.currency || 'VND'}</td>
+                      <td className="min-w-[240px] text-slate-500 max-w-[240px] truncate" title={r.remark || ''}>{r.remark || '—'}</td>
+                      <td className="min-w-[140px] whitespace-nowrap">
                         <div className="flex gap-1">
                           {canEdit && <button onClick={() => setEditing({ ...r, leadtime: r.leadtime || (r.leadtime_days != null ? String(r.leadtime_days) : ''), moq_tiers: (() => {
                             const parsed = normalizeMoqTiers((r as any).moq_tiers)
@@ -408,7 +392,7 @@ export default function MaterialsPage() {
                         </div>
                       </td>
                     </tr>
-                  )})}
+                  ))}
                   {paged.length === 0 && <tr><td colSpan={13} className="text-center py-12 text-slate-400">尚無材料資料</td></tr>}
                 </tbody>
               </table>
