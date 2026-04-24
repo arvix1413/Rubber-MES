@@ -58,7 +58,6 @@ type LineForm = {
   spec: string
   unit: string
   planned_qty: string
-  due_date: string
   remark: string
 }
 
@@ -81,12 +80,14 @@ type OrderMaterialOption = {
 type CreateForm = {
   customerId: string
   customerName: string
+  dueDate: string
   linkedOrderIds: number[]
   remark: string
   lines: LineForm[]
 }
 
 type EditForm = {
+  dueDate: string
   linkedOrderIds: number[]
   remark: string
   status: 'pending' | 'partial' | 'completed'
@@ -108,13 +109,13 @@ const createEmptyLine = (seed: number): LineForm => ({
   spec: '',
   unit: 'PCS',
   planned_qty: '',
-  due_date: '',
   remark: '',
 })
 
 const createEmptyForm = (): CreateForm => ({
   customerId: '',
   customerName: '',
+  dueDate: '',
   linkedOrderIds: [],
   remark: '',
   lines: [createEmptyLine(1)],
@@ -410,13 +411,12 @@ export default function OrderIntakePage() {
   const applyMaterialOption = (option: OrderMaterialOption, line: LineForm): Partial<LineForm> => ({
     materialOptionId: option.id,
     orderPoNumber: option.customer_po_numbers[0] || option.order_po_numbers[0] || line.orderPoNumber,
-    material_code: option.material_code,
-    material_name: option.material_name,
-    spec: option.spec,
-    unit: option.unit || 'PCS',
-    planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
-    due_date: normalizeYmdInput(formatDateYMD(option.due_date) || line.due_date || ''),
-  })
+  material_code: option.material_code,
+  material_name: option.material_name,
+  spec: option.spec,
+  unit: option.unit || 'PCS',
+  planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
+})
 
   const addCreateLine = () => {
     setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
@@ -469,10 +469,10 @@ export default function OrderIntakePage() {
         spec: line.spec.trim(),
         unit: line.unit.trim() || 'PCS',
         planned_qty: Number(line.planned_qty),
-        due_date: line.due_date || undefined,
+        due_date: createForm.dueDate || undefined,
         remark: line.remark.trim(),
       }))
-      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.due_date || line.remark)
+      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.remark)
 
     if (!lines.length) {
       toast('請至少新增一筆交貨明細', 'error')
@@ -525,6 +525,7 @@ export default function OrderIntakePage() {
       const detail = await apiFetch<ProgressDetail>(`/api/order-intake/${row.id}`)
       setEditing(detail)
       setEditForm({
+        dueDate: normalizeYmdInput(formatDateYMD(detail.due_date) || formatDateYMD(detail.items?.[0]?.due_date) || ''),
         linkedOrderIds: detail.customer_order_ids || [],
         remark: detail.remark || '',
         status: detail.status || 'pending',
@@ -537,7 +538,6 @@ export default function OrderIntakePage() {
           spec: item.spec || '',
           unit: item.unit || 'PCS',
           planned_qty: String(item.planned_qty || ''),
-          due_date: normalizeYmdInput(formatDateYMD(item.due_date) || ''),
           remark: item.remark || '',
         })),
       })
@@ -609,10 +609,10 @@ export default function OrderIntakePage() {
         spec: line.spec.trim(),
         unit: line.unit.trim() || 'PCS',
         planned_qty: Number(line.planned_qty),
-        due_date: line.due_date || undefined,
+        due_date: editForm.dueDate || undefined,
         remark: line.remark.trim(),
       }))
-      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.due_date || line.remark)
+      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.remark)
 
     if (!items.length) {
       toast('請至少保留一筆交貨明細', 'error')
@@ -826,6 +826,17 @@ export default function OrderIntakePage() {
               </div>
 
               <div>
+                <label className="mb-1 block text-xs text-slate-500">統一交期</label>
+                <input
+                  className="rubber-input h-9"
+                  placeholder="YYYY-MM-DD"
+                  value={createForm.dueDate}
+                  onChange={(e) => updateCreateForm({ dueDate: normalizeYmdInput(e.target.value) })}
+                />
+                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交貨明細。</p>
+              </div>
+
+              <div className="md:col-span-2">
                 <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
                 <input
                   className="rubber-input h-9"
@@ -881,7 +892,7 @@ export default function OrderIntakePage() {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="px-3 py-2 text-left">材料名稱</th>
                       <th className="px-3 py-2 text-right">數量</th>
-                      <th className="px-3 py-2 text-left">交期</th>
+                      <th className="px-3 py-2 text-left">交貨 PO No.</th>
                       <th className="px-3 py-2 text-left">備註</th>
                       <th className="px-3 py-2 text-left">操作</th>
                     </tr>
@@ -899,6 +910,9 @@ export default function OrderIntakePage() {
                                   const option = createMaterialOptions.find((it) => it.id === value)
                                   if (!option) return
                                   updateCreateLine(line.key, applyMaterialOption(option, line))
+                                  if (!createForm.dueDate) {
+                                    updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(option.due_date) || '') })
+                                  }
                                 }}
                                 placeholder={createMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
                                 renderOption={formatMaterialOption}
@@ -909,7 +923,6 @@ export default function OrderIntakePage() {
                               {(line.material_name || line.material_code) && (
                                 <div className="text-[11px] text-slate-500">
                                   {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
-                                  {line.orderPoNumber ? ` / PO ${line.orderPoNumber}` : ''}
                                 </div>
                               )}
                             </div>
@@ -921,7 +934,7 @@ export default function OrderIntakePage() {
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
                         </td>
                         <td className="px-3 py-2">
-                          <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
+                          <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                         </td>
                         <td className="px-3 py-2">
                           <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
@@ -969,6 +982,17 @@ export default function OrderIntakePage() {
                 </div>
 
                 <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">統一交期</label>
+                    <input
+                      className="rubber-input h-9"
+                      placeholder="YYYY-MM-DD"
+                      value={editForm.dueDate}
+                      onChange={(e) => setEditForm({ ...editForm, dueDate: normalizeYmdInput(e.target.value) })}
+                    />
+                    <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交貨明細。</p>
+                  </div>
+
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
                     <input
@@ -1033,7 +1057,7 @@ export default function OrderIntakePage() {
                         <tr className="border-b border-slate-200 bg-slate-50">
                           <th className="px-3 py-2 text-left">材料名稱</th>
                           <th className="px-3 py-2 text-right">數量</th>
-                          <th className="px-3 py-2 text-left">交期</th>
+                          <th className="px-3 py-2 text-left">交貨 PO No.</th>
                           <th className="px-3 py-2 text-right">已採購</th>
                           <th className="px-3 py-2 text-right">缺口</th>
                           <th className="px-3 py-2 text-left">備註</th>
@@ -1055,6 +1079,9 @@ export default function OrderIntakePage() {
                                         const option = editMaterialOptions.find((it) => it.id === value)
                                         if (!option) return
                                         updateEditLine(line.key, applyMaterialOption(option, line))
+                                        if (!editForm.dueDate) {
+                                          setEditForm({ ...editForm, dueDate: normalizeYmdInput(formatDateYMD(option.due_date) || '') })
+                                        }
                                       }}
                                       placeholder={editMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
                                       renderOption={formatMaterialOption}
@@ -1065,7 +1092,6 @@ export default function OrderIntakePage() {
                                     {(line.material_name || line.material_code) && (
                                       <div className="text-[11px] text-slate-500">
                                         {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
-                                        {line.orderPoNumber ? ` / PO ${line.orderPoNumber}` : ''}
                                       </div>
                                     )}
                                   </div>
@@ -1077,7 +1103,7 @@ export default function OrderIntakePage() {
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
                               </td>
                               <td className="px-3 py-2">
-                                <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
+                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                               </td>
                               <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
                               <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
