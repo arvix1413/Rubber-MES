@@ -500,11 +500,17 @@ export default function BomPage() {
         ) : (
           <>
             <div className="table-scroll-x">
-              <table className="w-full text-sm" style={{minWidth:1000}}>
+              <table
+                className="w-full text-sm"
+                style={{
+                  minWidth: 1180,
+                  ['--sticky-col-1-width' as any]: '180px',
+                  ['--sticky-col-2-width' as any]: '240px',
+                }}
+              >
                 <thead>
-                  <tr className="border-b border-slate-200">
-                    <th className="w-8" />
-                    {['圖片','分類','物料編號','產品名稱','材料名稱','規格','顏色','單位','Leadtime','MOQ階梯','品牌','認證代碼','供應商'].map(h=>(
+                  <tr className="border-b border-slate-100 bg-slate-50/70">
+                    {['物料編號','產品名稱','圖片','分類','材料名稱','規格','顏色','單位','Leadtime','MOQ階梯','品牌','認證代碼','供應商','展開'].map(h=>(
                       <th key={h} className="px-3 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                     ))}
                     <th className="px-3 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">供應商單價</th>
@@ -519,14 +525,15 @@ export default function BomPage() {
                     const detailItems = loadedItems[b.id] || []
                     return (
                       <Fragment key={b.id}>
-                        <tr key={b.id} className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`} onClick={() => toggleExpand(b.id)}>
-                          <td className="pl-3 py-2.5"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
+                        <tr key={b.id} className={`border-b border-slate-100/80 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`} onClick={() => toggleExpand(b.id)}>
+                          <td className="px-3 py-2.5 font-mono text-xs font-semibold text-blue-600 whitespace-nowrap">{b.product_sku}</td>
+                          <td className="px-3 py-2.5 text-slate-800 font-medium min-w-[220px] max-w-[260px]" title={b.product_name}>
+                            <div className="truncate">{b.product_name}</div>
+                          </td>
                           <td className="px-3 py-2.5">
                             {b.image_url ? <img src={b.image_url} alt="" className="w-9 h-9 object-cover rounded-lg border border-slate-200" onError={e=>{(e.target as HTMLImageElement).style.display='none'}} /> : <div className="w-9 h-9 bg-slate-100 rounded-lg flex items-center justify-center text-slate-300 text-xs">無</div>}
                           </td>
                           <td className="px-3 py-2.5 text-xs text-slate-400 whitespace-nowrap">{b.category||'—'}</td>
-                          <td className="px-3 py-2.5 font-mono text-xs text-blue-600 whitespace-nowrap">{b.product_sku}</td>
-                          <td className="px-3 py-2.5 text-slate-800 font-medium max-w-[200px] truncate" title={b.product_name}>{b.product_name}</td>
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.material_name||'—'}</td>
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[120px] truncate" title={b.spec}>{b.spec||'—'}</td>
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.color||'—'}</td>
@@ -536,6 +543,11 @@ export default function BomPage() {
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.brand||'—'}</td>
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap">{b.cert_code||'—'}</td>
                           <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={b.supplier_name}>{b.supplier_name||'—'}</td>
+                          <td className="px-3 py-2.5">
+                            <span className="inline-flex h-8 w-8 items-center justify-center rounded-full border border-slate-200/80 bg-white/80 text-slate-500">
+                              <ChevronIcon open={isOpen} />
+                            </span>
+                          </td>
                           <td className="px-3 py-2.5 text-right text-slate-600 whitespace-nowrap">{formatDecimal(b.supplier_price)}</td>
                           <td className="px-3 py-2.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(b.company_price)}</td>
                           <td className="px-3 py-2.5 text-slate-400 whitespace-nowrap">{b.currency}</td>
@@ -562,16 +574,16 @@ export default function BomPage() {
                           </td>
                         </tr>
                         {isOpen && (
-                          <tr key={`${b.id}-items`} className="border-b border-slate-100">
+                          <tr key={`${b.id}-items`} className="border-b border-slate-100/80">
                             <td colSpan={18} className="px-0 py-0">
-                              <div className="expand-row-wrap layer-panel-l2">
+                              <div className="expand-row-wrap bg-[linear-gradient(180deg,#fffdf9_0%,#faf7f1_100%)]">
                                 {detailItems.length === 0 ? (
                                   <div className="expand-row-empty">此 BOM 尚無輔料明細</div>
                                 ) : (
                                   <div className="table-scroll-x">
                                     <table className="w-full text-xs" style={{ minWidth: 1160 }}>
                                       <thead>
-                                        <tr className="layer-head-l2">
+                                        <tr className="border-b border-slate-100 bg-slate-50/75">
                                           {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
                                             <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                           ))}
@@ -579,7 +591,7 @@ export default function BomPage() {
                                       </thead>
                                       <tbody>
                                         {detailItems.map((item, idx) => (
-                                          <tr key={idx} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
+                                          <tr key={idx} className="border-b border-slate-100/70 last:border-0 hover:bg-slate-50/80">
                                             <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code || '—'}</td>
                                             <td className="px-3 py-2 text-slate-700 whitespace-nowrap">{item.material_name || '—'}</td>
                                             <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.spec || '—'}</td>
