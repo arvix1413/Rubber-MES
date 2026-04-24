@@ -16,6 +16,7 @@ type IntakeItem = {
   planned_qty: number
   purchased_qty: number
   purchase_gap_qty: number
+  order_count?: number
   linked_po_count: number
   item_count: number
   due_date?: string | null
@@ -100,6 +101,39 @@ const splitPoValues = (input: string): string[] => Array.from(new Set(
     .map((it) => it.trim())
     .filter(Boolean),
 ))
+
+const normalizeYmdInput = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  const dmy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`
+  return text
+}
+
+const summarizeTokens = (input: string, limit: number) => {
+  const values = splitPoValues(input)
+  if (!values.length) return { text: '未整理', hidden: 0 }
+  const shown = values.slice(0, limit)
+  return {
+    text: shown.join(', '),
+    hidden: Math.max(0, values.length - shown.length),
+  }
+}
+
+const summarizeItems = (input: string, limit: number) => {
+  const values = String(input || '')
+    .split(',')
+    .map((it) => it.trim())
+    .filter(Boolean)
+  if (!values.length) return { text: '-', hidden: 0 }
+  const shown = values.slice(0, limit)
+  return {
+    text: shown.join(', '),
+    hidden: Math.max(0, values.length - shown.length),
+  }
+}
 
 const statusBadgeClass = (status: string) => {
   if (status === 'completed') return 'bg-emerald-100 text-emerald-700'
@@ -196,6 +230,9 @@ export default function OrderIntakePage() {
       return Number(order.customer_id || 0) === Number(editing.customer_id)
     })
   }, [orders, editForm, editing])
+
+  const createPoSummary = useMemo(() => summarizeTokens(createForm.poInput, 3), [createForm.poInput])
+  const editPoSummary = useMemo(() => summarizeTokens(editForm?.poInput || '', 3), [editForm?.poInput])
 
   const exportCsv = async () => {
     try {
@@ -361,7 +398,7 @@ export default function OrderIntakePage() {
           key: `edit-${item.id || index}`,
           material_name: item.material_name || '',
           planned_qty: String(item.planned_qty || ''),
-          due_date: formatDateYMD(item.due_date) || '',
+          due_date: normalizeYmdInput(formatDateYMD(item.due_date) || ''),
           remark: item.remark || '',
         })),
       })
@@ -540,15 +577,35 @@ export default function OrderIntakePage() {
                 <tr key={r.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 align-top">
                     <div className="font-medium text-slate-800">{r.progress_no}</div>
-                    <div className="mt-1 text-xs text-slate-500">{r.item_count} 筆明細</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {r.order_count || 0} 筆訂單 / {r.linked_po_count} 個 PO / {r.item_count} 筆明細
+                    </div>
                   </td>
                   <td className="px-3 py-2 align-top">{r.customer_name || '-'}</td>
                   <td className="px-3 py-2 align-top">
-                    <div className="whitespace-pre-wrap break-words">{r.po_number || '-'}</div>
-                    <div className="mt-1 text-xs text-slate-500">共 {r.linked_po_count} 個 PO</div>
+                    {(() => {
+                      const poSummary = summarizeTokens(r.po_number || '', 2)
+                      return (
+                        <>
+                          <div className="break-words">{poSummary.text}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {r.linked_po_count > 0 ? `共 ${r.linked_po_count} 個 PO` : '舊資料'}
+                            {poSummary.hidden > 0 ? ` / +${poSummary.hidden}` : ''}
+                          </div>
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <div className="max-w-[280px] whitespace-pre-wrap break-words">{r.material_name || '-'}</div>
+                    {(() => {
+                      const itemSummary = summarizeItems(r.material_name || '', 2)
+                      return (
+                        <>
+                          <div className="max-w-[280px] break-words">{itemSummary.text}</div>
+                          {itemSummary.hidden > 0 && <div className="mt-1 text-xs text-slate-500">+{itemSummary.hidden} 項</div>}
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2 text-right">{r.planned_qty}</td>
                   <td className="px-3 py-2">{formatDateYMD(r.due_date) || '-'}</td>
@@ -657,6 +714,7 @@ export default function OrderIntakePage() {
                   placeholder={'例如：\nPO-001\nPO-002\nPO-003'}
                 />
                 <p className="mt-1 text-xs text-slate-400">已解析 {splitPoValues(createForm.poInput).length} 個 PO</p>
+                <p className="mt-1 text-xs text-slate-500">摘要：{createPoSummary.text}{createPoSummary.hidden > 0 ? ` +${createPoSummary.hidden}` : ''}</p>
               </div>
             </div>
 
@@ -686,7 +744,7 @@ export default function OrderIntakePage() {
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
                         </td>
                         <td className="px-3 py-2">
-                          <input type="date" className="rubber-input h-9" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: e.target.value })} />
+                          <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
                         </td>
                         <td className="px-3 py-2">
                           <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
@@ -725,7 +783,10 @@ export default function OrderIntakePage() {
                 <div className="mb-4 flex items-center justify-between">
                   <div>
                     <h2 className="text-base font-bold text-slate-800">編輯交貨進度 {editing.progress_no}</h2>
-                    <p className="mt-1 text-xs text-slate-500">{editing.customer_name || '-'} / {editing.item_count} 筆明細 / {editing.linked_po_count} 個 PO</p>
+                    <p className="mt-1 text-xs text-slate-500">{editing.customer_name || '-'}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {(editing.order_count || 0)} 筆訂單 / {editing.linked_po_count} 個 PO / {editing.item_count} 筆明細 / 總數量 {editing.planned_qty}
+                    </p>
                   </div>
                   <button className="btn-ghost" onClick={closeEdit}>關閉</button>
                 </div>
@@ -734,6 +795,7 @@ export default function OrderIntakePage() {
                   <div className="md:col-span-2">
                     <label className="mb-1 block text-xs text-slate-500">PO 編號（可多個）</label>
                     <textarea className="rubber-input" rows={3} value={editForm.poInput} onChange={(e) => setEditForm({ ...editForm, poInput: e.target.value })} />
+                    <p className="mt-1 text-xs text-slate-500">摘要：{editPoSummary.text}{editPoSummary.hidden > 0 ? ` +${editPoSummary.hidden}` : ''}</p>
                   </div>
 
                   <div className="md:col-span-2">
@@ -801,7 +863,7 @@ export default function OrderIntakePage() {
                               <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
                               <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
                               <td className="px-3 py-2">
-                                <input type="date" className="rubber-input h-9" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: e.target.value })} />
+                                <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
                               </td>
                               <td className="px-3 py-2">
                                 <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />

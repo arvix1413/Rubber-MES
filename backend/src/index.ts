@@ -2553,6 +2553,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
         dp.progress_no,
         dp.customer_id,
         dp.customer_name,
+        dp.customer_order_id,
         COALESCE(po_links.po_numbers, dp.order_po_number, '') as po_number,
         dp.status,
         dp.remark,
@@ -2563,13 +2564,15 @@ app.get('/api/order-intake', authMiddleware, async c => {
         item_stats.due_date,
         COALESCE(item_stats.purchase_gap_qty, 0) as purchase_gap_qty,
         COALESCE(item_stats.purchased_qty, 0) as purchased_qty,
-        COALESCE(po_links.linked_po_count, 0) as linked_po_count
+        COALESCE(po_links.linked_po_count, 0) as linked_po_count,
+        COALESCE(po_links.order_count, 0) as order_count
       FROM delivery_progress dp
       LEFT JOIN (
         SELECT
           progress_id,
           GROUP_CONCAT(DISTINCT order_po_number ORDER BY order_po_number SEPARATOR ', ') as po_numbers,
-          COUNT(DISTINCT order_po_number) as linked_po_count
+          COUNT(DISTINCT order_po_number) as linked_po_count,
+          COUNT(DISTINCT customer_order_id) as order_count
         FROM delivery_progress_po_links
         WHERE deleted_at IS NULL
         GROUP BY progress_id
@@ -2603,19 +2606,24 @@ app.get('/api/order-intake', authMiddleware, async c => {
       LIMIT ${pageSize} OFFSET ${offset}
     `, params)
 
-    return c.json(rows.map((row: any) => ({
-      ...row,
-      material_name: String(row.material_names || '').trim(),
-      material_code: '',
-      spec: '',
-      unit: '',
-      planned_qty: toQty(row.planned_qty),
-      purchased_qty: toQty(row.purchased_qty),
-      purchase_gap_qty: toQty(row.purchase_gap_qty),
-      linked_po_count: Number(row.linked_po_count || 0),
-      item_count: Number(row.item_count || 0),
-      due_date: row.due_date || null,
-    })))
+    return c.json(rows.map((row: any) => {
+      const fallbackPoCount = uniquePoNumbers([row.po_number]).length
+      const fallbackOrderCount = Number(row.customer_order_id || 0) > 0 ? 1 : 0
+      return {
+        ...row,
+        material_name: String(row.material_names || '').trim(),
+        material_code: '',
+        spec: '',
+        unit: '',
+        planned_qty: toQty(row.planned_qty),
+        purchased_qty: toQty(row.purchased_qty),
+        purchase_gap_qty: toQty(row.purchase_gap_qty),
+        linked_po_count: Math.max(Number(row.linked_po_count || 0), fallbackPoCount),
+        order_count: Math.max(Number(row.order_count || 0), fallbackOrderCount),
+        item_count: Number(row.item_count || 0),
+        due_date: row.due_date || null,
+      }
+    }))
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }
@@ -2676,6 +2684,7 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
     purchased_qty: toQty(totalPurchasedQty),
     purchase_gap_qty: toQty(Math.max(0, totalPlannedQty - totalPurchasedQty)),
     linked_po_count: poNumbers.length,
+    order_count: customerOrderIds.length || (Number(row.customer_order_id || 0) > 0 ? 1 : 0),
     item_count: normalizedItems.length,
   })
 })
