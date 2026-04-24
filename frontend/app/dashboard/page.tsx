@@ -29,8 +29,8 @@ export default function DashboardPage() {
     const invoicePending = (health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0)
     return [
       { step: '01', title: '客戶下單', desc: '建立客戶訂單與交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '訂單數' },
-      { step: '02', title: '交貨進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
-      { step: '03', title: '採購下單', desc: '依交貨進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
+      { step: '02', title: '交期進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
+      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
       { step: '04', title: '安排出貨', desc: '建立出貨單並回寫數量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出貨單' },
       { step: '05', title: '數量核對', desc: '核對實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核對' },
       { step: '06', title: '開立發票', desc: '客戶/供應商雙向發票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待開票' },
@@ -48,7 +48,7 @@ export default function DashboardPage() {
             </div>
             <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制臺</h1>
             <p className="mt-2 text-sm text-[#6c5440]">
-              僅保留與參考流程相關頁面：客戶訂單 → 交貨進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
+              僅保留與參考流程相關頁面：客戶訂單 → 交期進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right">

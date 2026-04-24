@@ -211,7 +211,7 @@ export default function OrderIntakePage() {
       const data = await apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`)
       setRows(data)
     } catch (e: any) {
-      toast(String(e?.message || '交貨進度載入失敗'), 'error')
+      toast(String(e?.message || '交期進度載入失敗'), 'error')
     } finally {
       setLoading(false)
     }
@@ -500,7 +500,7 @@ export default function OrderIntakePage() {
           items: lines,
         }),
       })
-      toast(`交貨進度已建立，共 ${lines.length} 筆明細`)
+      toast(`交期進度已建立，共 ${lines.length} 筆明細`)
       closeCreate()
       await load(status)
     } catch (e: any) {
@@ -509,7 +509,7 @@ export default function OrderIntakePage() {
   }
 
   const removeProgress = async (row: IntakeItem) => {
-    if (!(await confirm('確定刪除此交貨進度？', row.progress_no || '', '刪除'))) return
+    if (!(await confirm('確定刪除此交期進度？', row.progress_no || '', '刪除'))) return
     try {
       await apiFetch(`/api/order-intake/${row.id}`, { method: 'DELETE' })
       toast('已刪除')
@@ -544,7 +544,7 @@ export default function OrderIntakePage() {
       setEditLineSeed(2000)
       setEditOrderSearch('')
     } catch (e: any) {
-      toast(String(e?.message || '交貨進度詳情載入失敗'), 'error')
+      toast(String(e?.message || '交期進度詳情載入失敗'), 'error')
     } finally {
       setEditLoading(false)
     }
@@ -639,7 +639,7 @@ export default function OrderIntakePage() {
           items,
         }),
       })
-      toast('交貨進度已更新')
+      toast('交期進度已更新')
       closeEdit()
       await load(status)
     } catch (e: any) {
@@ -668,12 +668,12 @@ export default function OrderIntakePage() {
     <div>
       <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">交貨進度</h1>
-          <p className="mt-1 text-xs text-slate-500">一個交貨進度可包含多筆訂單、多個 PO No，以及多筆交貨明細。</p>
+          <h1 className="text-xl font-bold text-slate-800">交期進度</h1>
+          <p className="mt-1 text-xs text-slate-500">一個交期進度可包含多筆訂單、多個 PO No，以及多筆交期明細。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
-          <button className="btn-primary" onClick={openCreate}>+ 建立交貨進度</button>
+          <button className="btn-primary" onClick={openCreate}>+ 建立交期進度</button>
           <span className="badge-gray">總進度 {summary.total}</span>
           <span className="badge-yellow">進行中 {summary.open}</span>
           <span className="badge-green">已完成 {summary.completed}</span>
@@ -791,7 +791,7 @@ export default function OrderIntakePage() {
           <div className="absolute inset-0 bg-black/35" onClick={closeCreate} />
           <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
             <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-base font-bold text-slate-800">建立交貨進度</h2>
+              <h2 className="text-base font-bold text-slate-800">建立交期進度</h2>
               <button className="btn-ghost" onClick={closeCreate}>關閉</button>
             </div>
 
@@ -826,14 +826,14 @@ export default function OrderIntakePage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-slate-500">統一交期</label>
-                <input
-                  className="rubber-input h-9"
-                  placeholder="YYYY-MM-DD"
-                  value={createForm.dueDate}
-                  onChange={(e) => updateCreateForm({ dueDate: normalizeYmdInput(e.target.value) })}
-                />
-                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交貨明細。</p>
+                  <label className="mb-1 block text-xs text-slate-500">統一交期</label>
+                  <input
+                    type="date"
+                    className="rubber-input h-9"
+                    value={createForm.dueDate}
+                    onChange={(e) => updateCreateForm({ dueDate: e.target.value })}
+                  />
+                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交期明細。</p>
               </div>
 
               <div className="md:col-span-2">
@@ -877,7 +877,7 @@ export default function OrderIntakePage() {
 
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-xs text-slate-500">交貨明細</label>
+                  <label className="block text-xs text-slate-500">交期明細</label>
                   <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
                 </div>
                 {createForm.linkedOrderIds.length > 0 && (
@@ -972,7 +972,7 @@ export default function OrderIntakePage() {
               <>
                 <div className="mb-4 flex items-center justify-between">
                   <div>
-                    <h2 className="text-base font-bold text-slate-800">編輯交貨進度 {editing.progress_no}</h2>
+                    <h2 className="text-base font-bold text-slate-800">編輯交期進度 {editing.progress_no}</h2>
                     <p className="mt-1 text-xs text-slate-500">{editing.customer_name || '-'}</p>
                     <p className="mt-1 text-xs text-slate-500">
                       {(editing.order_count || 0)} 筆訂單 / {editing.linked_po_count} 個 PO / {editing.item_count} 筆明細 / 總數量 {editing.planned_qty}
@@ -985,12 +985,12 @@ export default function OrderIntakePage() {
                   <div>
                     <label className="mb-1 block text-xs text-slate-500">統一交期</label>
                     <input
+                      type="date"
                       className="rubber-input h-9"
-                      placeholder="YYYY-MM-DD"
                       value={editForm.dueDate}
-                      onChange={(e) => setEditForm({ ...editForm, dueDate: normalizeYmdInput(e.target.value) })}
+                      onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
                     />
-                    <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交貨明細。</p>
+                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交期明細。</p>
                   </div>
 
                   <div className="md:col-span-2">
@@ -1042,7 +1042,7 @@ export default function OrderIntakePage() {
 
                 <div className="mt-5">
                   <div className="mb-2 flex items-center justify-between">
-                    <label className="block text-xs text-slate-500">交貨明細</label>
+                    <label className="block text-xs text-slate-500">交期明細</label>
                     <button type="button" className="btn-ghost text-xs" onClick={addEditLine}>+ 新增明細</button>
                   </div>
                   {editForm.linkedOrderIds.length > 0 && (

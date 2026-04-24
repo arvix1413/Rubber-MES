@@ -2827,7 +2827,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       u?.userId || null,
     )
     await syncDeliveryProgressItems(r.insertId, items, u?.userId || null)
-    await audit(u, 'CREATE', '交貨進度', r.insertId, `${progressNo} / ${customerName}`)
+    await audit(u, 'CREATE', '交期進度', r.insertId, `${progressNo} / ${customerName}`)
     return c.json({ id: r.insertId, progress_no: progressNo }, 201)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -2878,7 +2878,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     ])
     await syncDeliveryProgressPoLinks(Number(id), customerOrderIds, poNumbers, c.get('user')?.userId || null)
     await syncDeliveryProgressItems(Number(id), items, c.get('user')?.userId || null)
-    await audit(c.get('user'), 'UPDATE', '交貨進度', id, `id=${id}`)
+    await audit(c.get('user'), 'UPDATE', '交期進度', id, `id=${id}`)
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -2893,7 +2893,7 @@ app.delete('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.
   await softDeleteById('delivery_progress', id, userId)
   await execute('UPDATE delivery_progress_po_links SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId, id])
   await execute('UPDATE delivery_progress_items SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId, id])
-  await audit(c.get('user'), 'DELETE', '交貨進度', id, `${row?.progress_no} / ${row?.customer_name}`)
+  await audit(c.get('user'), 'DELETE', '交期進度', id, `${row?.progress_no} / ${row?.customer_name}`)
   return c.json({ ok: true })
 })
 
@@ -2906,7 +2906,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       FROM delivery_progress
       WHERE id=? AND deleted_at IS NULL
     `, [id])
-    if (!progress) return c.json({ error: '交貨進度不存在' }, 404)
+    if (!progress) return c.json({ error: '交期進度不存在' }, 404)
 
     const progressItems = await query<any>(`
       SELECT
@@ -2927,7 +2927,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       WHERE dpi.progress_id=? AND dpi.deleted_at IS NULL
       ORDER BY dpi.id ASC
     `, [id])
-    if (!progressItems.length) return c.json({ error: '交貨進度明細不存在' }, 404)
+    if (!progressItems.length) return c.json({ error: '交期進度明細不存在' }, 404)
 
     let payload: any = {}
     try { payload = await c.req.json() } catch { payload = {} }
@@ -2984,7 +2984,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       const taxRate = 8
       const totalPrice = toMoney(group.items.reduce((sum, item) => sum + toMoney(item.totalPrice), 0))
       const total = toMoney(totalPrice * (1 + taxRate / 100))
-      const remark = `由交貨進度自動生成，來源 ${progress.progress_no}`
+      const remark = `由交期進度自動生成，來源 ${progress.progress_no}`
       const r = await execute(
         'INSERT INTO purchase_orders (po_number,supplier_id,supplier_name,status,total_amount,tax_rate,currency,created_by,remark,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
         [poNum, group.supplierId, group.supplierName, 'draft', total, taxRate, 'VND', u.userId, remark, now8()]

@@ -19,7 +19,7 @@ const NAV: NavEntry[] = [
     defaultOpen: true,
     children: [
       { href: '/dashboard/customer-orders', label: '客戶訂單', icon: <IconDoc /> },
-      { href: '/dashboard/order-intake', label: '交貨進度', icon: <IconList /> },
+      { href: '/dashboard/order-intake', label: '交期進度', icon: <IconList /> },
       { href: '/dashboard/po', label: '採購下單', icon: <IconCart /> },
       { href: '/dashboard/delivery-notes', label: '出貨單', icon: <IconTruck /> },
       { href: '/dashboard/shipment-reconciliation', label: '數量核對', icon: <IconCheck /> },
