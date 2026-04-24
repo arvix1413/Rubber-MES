@@ -490,7 +490,7 @@ export default function OrderIntakePage() {
     }
 
     try {
-      await apiFetch('/api/order-intake', {
+      const created = await apiFetch<{ id: number; progress_no: string }>('/api/order-intake', {
         method: 'POST',
         body: JSON.stringify({
           customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
@@ -500,7 +500,11 @@ export default function OrderIntakePage() {
           items: lines,
         }),
       })
-      toast(`交期進度已建立，共 ${lines.length} 筆明細`)
+      const { res, lines: poLines } = await generatePoForProgress(created.id)
+      toast(`交期進度已建立，並生成 ${res.count || poLines.length} 張採購單`)
+      if (poLines.length) {
+        notice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
+      }
       closeCreate()
       await load(status)
     } catch (e: any) {
@@ -599,6 +603,14 @@ export default function OrderIntakePage() {
     })
   }
 
+  const generatePoForProgress = async (id: number) => {
+    const res = await apiFetch<{ created: Array<{ id: number; po_number: string; supplier_name: string }>; count: number }>(`/api/order-intake/${id}/generate-po`, {
+      method: 'POST',
+    })
+    const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
+    return { res, lines }
+  }
+
   const saveEdit = async () => {
     if (!editing || !editForm) return
     const items = editForm.lines
@@ -651,10 +663,7 @@ export default function OrderIntakePage() {
     if (creatingId) return
     setCreatingId(id)
     try {
-      const res = await apiFetch<{ created: Array<{ id: number; po_number: string; supplier_name: string }>; count: number }>(`/api/order-intake/${id}/generate-po`, {
-        method: 'POST',
-      })
-      const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
+      const { res, lines } = await generatePoForProgress(id)
       notice(`已生成 ${res.count || lines.length} 張採購單`, '本次建立結果：', lines)
       await load(status)
     } catch (e: any) {
