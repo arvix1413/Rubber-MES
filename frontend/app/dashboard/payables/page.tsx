@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react'
 import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
 
 type AP = {
   id: number; po_number: string; supplier_name: string; total_amount: number | string
@@ -109,15 +110,15 @@ export default function PayablesPage() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">應付總額</div>
-          <div className="text-xl font-bold text-slate-800">{totalPayable.toLocaleString()}</div>
+          <div className="text-xl font-bold text-slate-800">{formatDecimal(totalPayable)}</div>
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">已付款</div>
-          <div className="text-xl font-bold text-emerald-600">{totalPaid.toLocaleString()}</div>
+          <div className="text-xl font-bold text-emerald-600">{formatDecimal(totalPaid)}</div>
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">待付款</div>
-          <div className="text-xl font-bold text-amber-500">{totalPending.toLocaleString()}</div>
+          <div className="text-xl font-bold text-amber-500">{formatDecimal(totalPending)}</div>
         </div>
       </div>
 
@@ -135,7 +136,7 @@ export default function PayablesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{Number(editing.total_amount||0).toLocaleString()} {editing.currency}）</label>
+                <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{formatDecimal(editing.total_amount||0)} {editing.currency}）</label>
                 <input type="number" className="rubber-input" value={form.paid_amount === 0 ? '' : form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: e.target.value === '' ? 0 : Number(e.target.value) }))} />
               </div>
               <div>
@@ -185,9 +186,9 @@ export default function PayablesPage() {
                       <td className="font-mono text-xs text-blue-600">{item.po_number}</td>
                       <td className="font-medium">{item.supplier_name}</td>
                       <td><span className="badge-blue">{PO_STATUS[item.status] || item.status}</span></td>
-                      <td className="text-right font-medium">{toAmount(item.total_amount).toLocaleString()}</td>
+                      <td className="text-right font-medium">{formatDecimal(toAmount(item.total_amount))}</td>
                       <td className="text-slate-400 text-xs">{item.currency}</td>
-                      <td className="text-right text-emerald-600">{toAmount(item.paid_amount).toLocaleString()}</td>
+                      <td className="text-right text-emerald-600">{formatDecimal(toAmount(item.paid_amount))}</td>
                       <td className="text-slate-400 text-xs">{formatDateYMD(item.payment_date) || '—'}</td>
                       <td><span className={st.badge}>{st.label}</span></td>
                       <td>

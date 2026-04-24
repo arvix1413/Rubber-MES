@@ -9,6 +9,7 @@ import { getCompany } from '@/lib/useCompany'
 import { generateInvoiceHTML } from '@/lib/printInvoice'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -412,7 +413,7 @@ export default function InvoicesPage() {
                           }}
                         />
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-700">{amount.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-700">{formatDecimal(amount)}</td>
                     </tr>
                   )
                 })}
@@ -424,7 +425,7 @@ export default function InvoicesPage() {
           {pendingPg.total > 0 && <Pagination page={pendingPg.page} totalPages={pendingPg.totalPages} setPage={pendingPg.setPage} total={pendingPg.total} pageSize={10} />}
 
           <div className="flex items-center justify-between text-sm">
-            <div className="text-slate-600">已選 {selectedCount} 筆，未稅小計 {selectedTotal.toLocaleString()}</div>
+            <div className="text-slate-600">已選 {selectedCount} 筆，未稅小計 {formatDecimal(selectedTotal)}</div>
             <button className="btn-primary" disabled={saving !== null} onClick={createInvoice}>建立發票草稿</button>
           </div>
         </div>
@@ -457,9 +458,9 @@ export default function InvoicesPage() {
                       <td className="px-3 py-2">{h.party_name || '-'}</td>
                       <td className="px-3 py-2">{formatDateYMD(h.invoice_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
-                      <td className="px-3 py-2 text-right">{Number(h.total_amount || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right">{Number(h.tax_amount || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-800">{Number(h.grand_total || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{formatDecimal(h.total_amount || 0)}</td>
+                      <td className="px-3 py-2 text-right">{formatDecimal(h.tax_amount || 0)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-800">{formatDecimal(h.grand_total || 0)}</td>
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => printInvoice(h.id)}>列印</button>
@@ -549,7 +550,7 @@ export default function InvoicesPage() {
                                         }}
                                       />
                                     </td>
-                                    <td className="px-3 py-2 text-right">{Number(i.amount || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right">{formatDecimal(i.amount || 0)}</td>
                                   </tr>
                                 ))}
                               </tbody>

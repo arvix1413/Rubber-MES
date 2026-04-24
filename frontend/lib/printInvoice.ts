@@ -14,7 +14,8 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const fmtQty = (v: any) => num(v).toLocaleString()
+  const fmtMoney = (v: any) => num(v).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
   const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
 
   const co = company || {
@@ -39,9 +40,9 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
       <td class="col-material">${txt(item.material_code)}</td>
       <td class="col-name">${txt(item.material_name)}</td>
       <td class="col-unit">${txt(item.unit) || 'PCS'}</td>
-      <td class="col-qty">${fmt(item.qty)}</td>
-      <td class="col-price">${fmt(item.unit_price)}</td>
-      <td class="col-amt">${fmt(item.amount)}</td>
+      <td class="col-qty">${fmtQty(item.qty)}</td>
+      <td class="col-price">${fmtMoney(item.unit_price)}</td>
+      <td class="col-amt">${fmtMoney(item.amount)}</td>
       <td class="col-remark">${txt(item.spec)}</td>
     </tr>
   `).join('')
@@ -110,9 +111,9 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
       </table>
 
       <div class="summary-right">
-        <div class="sum-row"><span>Subtotal</span><span>${fmt(data.total_amount)}</span></div>
-        <div class="sum-row"><span>Tax ${num(data.tax_rate)}%</span><span>${fmt(data.tax_amount)}</span></div>
-        <div class="sum-row"><span>Grand Total</span><span>${fmt(data.grand_total)}</span></div>
+        <div class="sum-row"><span>Subtotal</span><span>${fmtMoney(data.total_amount)}</span></div>
+        <div class="sum-row"><span>Tax ${num(data.tax_rate)}%</span><span>${fmtMoney(data.tax_amount)}</span></div>
+        <div class="sum-row"><span>Grand Total</span><span>${fmtMoney(data.grand_total)}</span></div>
       </div>
 
       <div class="note-box"><div class="note-title">備註：</div><div>${fmtText(data.remark)}</div><div style="margin-top:4px;color:#666">QR: ${txt(data.qr_payload)}</div></div>

@@ -10,6 +10,7 @@ import { getCompany } from '@/lib/useCompany'
 import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 import { formatDateYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
 
 type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; material_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
@@ -478,7 +479,7 @@ export default function PoPage() {
                     <td className="p-1"><input className={lockedInp} value={item.unit} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly style={{width:70}} /></td>
                     <td className="p-1"><input type="number" className={inp} style={{width:90}} value={item.quantity || ""} onChange={e=>updateItem(i,'quantity',Number(e.target.value))} /></td>
                     <td className="p-1"><input type="number" className={inp} style={{width:110}} value={item.unit_price || ""} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} /></td>
-                    <td className="p-1 px-2 text-right text-slate-600 font-medium whitespace-nowrap">{Number(item.total_price).toLocaleString()}</td>
+                    <td className="p-1 px-2 text-right text-slate-600 font-medium whitespace-nowrap">{formatDecimal(item.total_price)}</td>
                     <td className="p-1">
                       <select className={inp} style={{width:80}} value={String(form.tax_rate)}
                         onChange={e=>setForm(p=>({...p, tax_rate: Math.min(25, Math.max(1, Number(e.target.value) || 8))}))}>
@@ -500,11 +501,11 @@ export default function PoPage() {
               <tfoot>
                 <tr className="border-t border-slate-200">
                   <td colSpan={10} className="px-3 py-2 text-right text-[11px] text-slate-400 font-semibold uppercase">未稅合計</td>
-                  <td className="px-2 py-2 text-right text-slate-600 font-bold">{formTotal.toLocaleString()}</td>
+                  <td className="px-2 py-2 text-right text-slate-600 font-bold">{formatDecimal(formTotal)}</td>
                   <td className="px-2 py-2 text-slate-400 text-xs">{form.tax_rate}%</td>
                   <td className="px-2 py-2 text-slate-400 text-xs">{form.currency}</td>
                   <td className="px-2 py-2 text-right text-slate-700 font-bold" colSpan={2}>
-                    含稅 {(formTotal * (1 + (form.tax_rate || 8) / 100)).toLocaleString()}
+                    含稅 {formatDecimal(formTotal * (1 + (form.tax_rate || 8) / 100))}
                   </td>
                 </tr>
               </tfoot>
@@ -563,7 +564,7 @@ export default function PoPage() {
                         </td>
                         <td className="px-4 py-3 font-mono text-xs text-blue-600">{p.po_number}</td>
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[200px] truncate" title={p.supplier_name}>{p.supplier_name}</td>
-                        <td className="px-4 py-3 text-right text-slate-600 font-medium">{Number(p.total_amount).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-slate-600 font-medium">{formatDecimal(p.total_amount)}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{p.currency}</td>
                         <td className="px-4 py-3"><span className={sm.badge}>{sm.label}</span></td>
                         <td className="px-4 py-3 text-slate-300 text-xs">{formatDateYMD(p.created_at) || '—'}</td>
@@ -622,8 +623,8 @@ export default function PoPage() {
                                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[160px] truncate" title={item.material_name}>{item.material_name}</td>
                                           <td className="px-3 py-2 text-slate-400 whitespace-nowrap max-w-[120px] truncate" title={item.spec}>{item.spec}</td>
                                           <td className="px-3 py-2 text-right text-slate-600 font-medium whitespace-nowrap">{Number(item.quantity).toLocaleString()}</td>
-                                          <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
-                                          <td className="px-3 py-2 text-right text-slate-800 font-semibold whitespace-nowrap">{Number(item.total_price).toLocaleString()}</td>
+                                          <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
+                                          <td className="px-3 py-2 text-right text-slate-800 font-semibold whitespace-nowrap">{formatDecimal(item.total_price)}</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{Number((p as any).tax_rate || 8)}%</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit}</td>
                                           <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{item.currency}</td>
@@ -634,7 +635,7 @@ export default function PoPage() {
                                     <tfoot>
                                       <tr className="border-t" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
                                         <td colSpan={7} className="px-3 py-2 text-right text-[10px] text-slate-300 font-semibold uppercase">未稅合計</td>
-                                        <td className="px-3 py-2 text-right text-slate-600 font-bold">{items.reduce((s,i)=>s+Number(i.total_price),0).toLocaleString()}</td>
+                                        <td className="px-3 py-2 text-right text-slate-600 font-bold">{formatDecimal(items.reduce((s,i)=>s+Number(i.total_price),0))}</td>
                                         <td className="px-3 py-2 text-slate-400 text-xs">{Number((p as any).tax_rate || 8)}%</td>
                                         <td colSpan={3} className="px-3 py-2 text-slate-400 text-xs">{items[0]?.currency}</td>
                                       </tr>

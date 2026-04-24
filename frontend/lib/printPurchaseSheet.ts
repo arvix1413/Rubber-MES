@@ -14,7 +14,8 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const fmtQty = (v: any) => num(v).toLocaleString()
+  const fmtMoney = (v: any) => num(v).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
   const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
 
   const co = company || {
@@ -41,10 +42,10 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
         <td class="col-material">${txt(item.material_code)}</td>
         <td class="col-name">${txt(item.material_name)}</td>
         <td class="col-spec">${txt(item.spec)}</td>
-        <td class="col-qty">${fmt(item.quantity)}</td>
+        <td class="col-qty">${fmtQty(item.quantity)}</td>
         <td class="col-unit">${txt(item.unit) || 'PCS'}</td>
-        <td class="col-price">${fmt(item.unit_price)}</td>
-        <td class="col-total">${fmt(item.total_price)}</td>
+        <td class="col-price">${fmtMoney(item.unit_price)}</td>
+        <td class="col-total">${fmtMoney(item.total_price)}</td>
         <td class="col-remark">${fmtText(item.remark)}</td>
       </tr>
     `).join('')
@@ -116,9 +117,9 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
         </tr></thead>
         <tbody>
           ${rows}
-          <tr class="total-row"><td colspan="8">小計</td><td>${fmt(subTotal)}</td><td></td></tr>
-          <tr class="total-row"><td colspan="8">VAT ${taxRate}%</td><td>${fmt(taxAmount)}</td><td></td></tr>
-          <tr class="total-row"><td colspan="8">總計</td><td>${fmt(grandTotal)}</td><td>${txt(data.currency) || 'VND'}</td></tr>
+          <tr class="total-row"><td colspan="8">小計</td><td>${fmtMoney(subTotal)}</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">VAT ${taxRate}%</td><td>${fmtMoney(taxAmount)}</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">總計</td><td>${fmtMoney(grandTotal)}</td><td>${txt(data.currency) || 'VND'}</td></tr>
         </tbody>
       </table>
 

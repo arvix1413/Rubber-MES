@@ -11,6 +11,7 @@ import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
 import { formatDateYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
 
 // Customer order actions based on current status
 function getCOActions(status: string) {
@@ -303,7 +304,7 @@ export default function CustomerOrdersPage() {
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
-  const money = (v?: number) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  const money = (v?: number) => formatDecimal(v || 0)
   const qtyNum = (v: any) => Number(v || 0)
   const pct = (v: any) => Number(v || 0)
 
@@ -431,7 +432,7 @@ export default function CustomerOrdersPage() {
                       <input type="number" className={inp} value={item.unit_price||''} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} />
                     </td>
                     <td className="p-1.5 w-28 text-right">
-                      <span className="font-semibold text-slate-700">{((item.qty||0) * (item.unit_price||0)).toLocaleString()}</span>
+                      <span className="font-semibold text-slate-700">{formatDecimal((item.qty||0) * (item.unit_price||0))}</span>
                     </td>
                     <td className="p-1.5 w-36">
                       <input type="date" className={inp} value={item.rta_date || ''} onChange={e=>updateItem(i,'rta_date',e.target.value)} />
@@ -452,8 +453,8 @@ export default function CustomerOrdersPage() {
             const subtotal = form.items.reduce((s,i) => s + (i.qty||0)*(i.unit_price||0), 0)
             return (
               <div className="flex justify-end mt-3 text-xs text-slate-500 gap-6">
-                <span>小計：<span className="font-semibold text-slate-700">{subtotal.toLocaleString()}</span></span>
-                <span>總計：<span className="font-bold text-slate-900 text-sm">{subtotal.toLocaleString()}</span></span>
+                <span>小計：<span className="font-semibold text-slate-700">{formatDecimal(subtotal)}</span></span>
+                <span>總計：<span className="font-bold text-slate-900 text-sm">{formatDecimal(subtotal)}</span></span>
               </div>
             )
           })()}
@@ -521,7 +522,7 @@ export default function CustomerOrdersPage() {
                             {pct(o.completion_rate).toFixed(2)}%
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-800">{o.total_amount ? Number(o.total_amount).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-800">{o.total_amount ? formatDecimal(o.total_amount) : '—'}</td>
                         {canViewProfit && (
                           <td className={`px-4 py-3 text-right font-semibold ${(profit?.net_profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {profit ? money(profit.net_profit) : '—'}
@@ -614,7 +615,7 @@ export default function CustomerOrdersPage() {
                                             <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
                                             <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
                                             <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
-                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
                                             <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
                                             <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
                                             <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
@@ -652,8 +653,8 @@ export default function CustomerOrdersPage() {
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.supplier_name || '—'}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.lt || '—'}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.moq != null ? Number(bomItem.moq).toLocaleString() : '—'}</td>
-                                                            <td className="px-3 py-1.5 text-right text-slate-700 whitespace-nowrap">{Number(bomItem.supplier_price || 0).toLocaleString()}</td>
-                                                            <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{Number(bomItem.company_price || 0).toLocaleString()}</td>
+                                                            <td className="px-3 py-1.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(bomItem.supplier_price || 0)}</td>
+                                                            <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(bomItem.company_price || 0)}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap max-w-[220px] truncate" title={bomItem.remark || ''}>{bomItem.remark || '—'}</td>
                                                           </tr>
                                                         ))}

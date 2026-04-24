@@ -17,7 +17,8 @@ export const formatQty = (value: any): string => {
   return n.toLocaleString()
 }
 
-export const formatMoney = (value: any): string => toNum(value).toLocaleString()
+export const formatMoney = (value: any): string =>
+  toNum(value).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
 
 export const formatDate = (value: any): string => {
   const s = cleanText(value)

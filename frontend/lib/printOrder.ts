@@ -13,7 +13,8 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const fmtQty = (v: any) => num(v).toLocaleString()
+  const fmtMoney = (v: any) => num(v).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
   const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
   const fmtDate = (v: any) => {
     const s = txt(v)
@@ -51,10 +52,10 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
       `<td class="col-material">${txt(item.product_sku || item.material_code)}</td>`,
       `<td class="col-name">${txt(item.product_name || item.item_name)}</td>`,
       `<td class="col-spec">${txt(item.spec)}</td>`,
-      `<td class="col-qty">${fmt(qty)}</td>`,
+      `<td class="col-qty">${fmtQty(qty)}</td>`,
       `<td class="col-unit" style="text-align:center">${txt(item.unit) || 'PCS'}</td>`,
-      `<td class="col-price">${fmt(unitPrice)}</td>`,
-      `<td class="col-amt">${fmt(amt)}</td>`,
+      `<td class="col-price">${fmtMoney(unitPrice)}</td>`,
+      `<td class="col-amt">${fmtMoney(amt)}</td>`,
       `<td class="col-remark">${fmtText(item.remark)}</td>`,
       '</tr>',
     ].join('')
@@ -121,11 +122,11 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
     <table class="items"><thead><tr>
       <th class="col-st">ST</th><th class="col-code">PO No</th><th class="col-material">MTL No</th><th class="col-name">品名</th><th class="col-spec">規格</th><th class="col-qty">數量</th><th class="col-unit">單位</th><th class="col-price">單價</th><th class="col-amt">金額</th><th class="col-remark">備註</th>
     </tr></thead><tbody>${itemRows}</tbody>
-    <tfoot><tr class="total-row"><td colspan="8">小計</td><td>${fmt(subtotal)}</td><td></td></tr></tfoot></table>
+    <tfoot><tr class="total-row"><td colspan="8">小計</td><td>${fmtMoney(subtotal)}</td><td></td></tr></tfoot></table>
 
     <div class="summary-right">
-      <div class="sum-row"><span>小計</span><span>${fmt(subtotal)}</span></div>
-      <div class="sum-row"><span>總計</span><span>${fmt(subtotal)} ${txt(data.currency) || 'VND'}</span></div>
+      <div class="sum-row"><span>小計</span><span>${fmtMoney(subtotal)}</span></div>
+      <div class="sum-row"><span>總計</span><span>${fmtMoney(subtotal)} ${txt(data.currency) || 'VND'}</span></div>
     </div>
 
     <div class="notes"><div class="notes-title">備註：</div><div>${fmtText(data.remark)}</div></div>
