@@ -364,7 +364,7 @@ export default function CustomerOrdersPage() {
     return matchSearch && matchStatus
   })
   
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
   const money = (v?: number) => formatDecimal(v || 0)

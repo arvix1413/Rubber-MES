@@ -184,7 +184,7 @@ export default function MaterialsPage() {
       || String(r.supplier_name || '').toLowerCase().includes(q)
     )
   })
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
   const onSupplierChange = (supplierId: string) => {
     const sup = suppliers.find((s) => String(s.id) === supplierId)
@@ -402,7 +402,7 @@ export default function MaterialsPage() {
               </table>
             </div>
             </div>
-            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={30} />
+            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
           </>
         )}
       </div>

@@ -314,7 +314,7 @@ export default function InvoicesPage() {
   }
 
   const pendingPg = usePagination(pending, 10)
-  const headerPg = usePagination(headers, 20)
+  const headerPg = usePagination(headers, 10)
 
   return (
     <div>
@@ -576,7 +576,7 @@ export default function InvoicesPage() {
 
       {!loading && headerPg.total > 0 && (
         <div className="mt-4">
-          <Pagination page={headerPg.page} totalPages={headerPg.totalPages} setPage={headerPg.setPage} total={headerPg.total} pageSize={20} />
+          <Pagination page={headerPg.page} totalPages={headerPg.totalPages} setPage={headerPg.setPage} total={headerPg.total} pageSize={10} />
         </div>
       )}
 

@@ -68,7 +68,7 @@ export default function PayablesPage() {
     const matchPay = !payFilter || (i.payment_status || 'pending') === payFilter
     return matchSearch && matchPay
   })
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
   const totalPayable = items.reduce((s, i) => s + toAmount(i.total_amount), 0)
   const totalPaid = items

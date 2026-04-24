@@ -221,7 +221,7 @@ export default function DeliveryNotesPage() {
   const filtered = dns.filter(d => !search ||
     d.dn_number.toLowerCase().includes(search.toLowerCase()) ||
     (d.customer_name||'').toLowerCase().includes(search.toLowerCase()))
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input text-xs py-1.5'
 
   return (

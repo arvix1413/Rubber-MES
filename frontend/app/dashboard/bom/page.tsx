@@ -263,7 +263,7 @@ export default function BomPage() {
     if (!tiers.length) return b.moq ? `MOQ ${formatInteger(b.moq)}` : '—'
     return tiers.map((t) => `${formatInteger(t.moq)}/${formatDecimal(t.price)}`).join(' | ')
   }
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input'
 
   return (
@@ -608,7 +608,7 @@ export default function BomPage() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={30} />
+            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
           </>
         )}
       </div>

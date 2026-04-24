@@ -303,7 +303,7 @@ export default function OrderIntakePage() {
     return { total, open, completed: total - open }
   }, [rows])
 
-  const { page, setPage, totalPages, paged, total } = usePagination(rows, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(rows, 10)
 
   const createLinkedOrders = useMemo(
     () => orders.filter((order) => createForm.linkedOrderIds.includes(order.id)),
@@ -782,7 +782,7 @@ export default function OrderIntakePage() {
       {loading && <div className="mt-3 text-xs text-slate-500">載入中...</div>}
       {!loading && total > 0 && (
         <div className="mt-4">
-          <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={20} />
+          <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
         </div>
       )}
 

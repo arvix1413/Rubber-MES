@@ -47,7 +47,7 @@ export default function InventoryPage() {
     return matchSearch && matchStock
   })
 
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const totalStock = filtered.reduce((s, i) => s + (Number(i.closing_balance) || 0), 0)
   const lowStock = items.filter(i => Number(i.closing_balance) <= 0).length
 
@@ -157,7 +157,7 @@ export default function InventoryPage() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={30} />
+            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
           </>
         )}
       </div>

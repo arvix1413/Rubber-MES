@@ -230,7 +230,7 @@ export default function ShipmentReconciliationPage() {
   }
 
   const pendingPaged = usePagination(pending, 10)
-  const headerPaged = usePagination(headers, 15)
+  const headerPaged = usePagination(headers, 10)
 
   return (
     <div>
@@ -495,7 +495,7 @@ export default function ShipmentReconciliationPage() {
 
       {!loading && headerPaged.total > 0 && (
         <div className="mt-4">
-          <Pagination page={headerPaged.page} totalPages={headerPaged.totalPages} setPage={headerPaged.setPage} total={headerPaged.total} pageSize={15} />
+          <Pagination page={headerPaged.page} totalPages={headerPaged.totalPages} setPage={headerPaged.setPage} total={headerPaged.total} pageSize={10} />
         </div>
       )}
     </div>
