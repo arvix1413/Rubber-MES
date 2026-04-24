@@ -158,6 +158,19 @@ const summarizeItems = (input: string, limit: number) => {
   }
 }
 
+const filterOrdersByKeyword = (rows: OrderSummary[], keyword: string) => {
+  const search = keyword.trim().toLowerCase()
+  if (!search) return rows
+  return rows.filter((order) => {
+    const text = [
+      order.po_number,
+      order.customer_name || '',
+      order.status || '',
+    ].join(' ').toLowerCase()
+    return text.includes(search)
+  })
+}
+
 const statusBadgeClass = (status: string) => {
   if (status === 'completed') return 'bg-emerald-100 text-emerald-700'
   if (status === 'partial') return 'bg-amber-100 text-amber-700'
@@ -176,13 +189,13 @@ export default function OrderIntakePage() {
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
   const [createLineSeed, setCreateLineSeed] = useState(2)
-  const [createOrderToAdd, setCreateOrderToAdd] = useState('')
+  const [createOrderSearch, setCreateOrderSearch] = useState('')
   const [createMaterialOptions, setCreateMaterialOptions] = useState<OrderMaterialOption[]>([])
   const [createMaterialLoading, setCreateMaterialLoading] = useState(false)
   const [editing, setEditing] = useState<ProgressDetail | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editLineSeed, setEditLineSeed] = useState(1000)
-  const [editOrderToAdd, setEditOrderToAdd] = useState('')
+  const [editOrderSearch, setEditOrderSearch] = useState('')
   const [editMaterialOptions, setEditMaterialOptions] = useState<OrderMaterialOption[]>([])
   const [editMaterialLoading, setEditMaterialLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
@@ -303,13 +316,13 @@ export default function OrderIntakePage() {
   }, [createLinkedOrders])
 
   const createOrderOptions = useMemo(() => {
-    const selectedId = createForm.customerId ? Number(createForm.customerId) : 0
-    return orders.filter((order) => {
-      if (createForm.linkedOrderIds.includes(order.id)) return false
+    const selectedId = createLockedCustomerId || (createForm.customerId ? Number(createForm.customerId) : 0)
+    const filtered = orders.filter((order) => {
       if (!selectedId) return true
       return Number(order.customer_id || 0) === selectedId
     })
-  }, [orders, createForm.customerId, createForm.linkedOrderIds])
+    return filterOrdersByKeyword(filtered, createOrderSearch)
+  }, [orders, createForm.customerId, createLockedCustomerId, createOrderSearch])
 
   const editLinkedOrders = useMemo(() => {
     if (!editForm) return []
@@ -318,12 +331,12 @@ export default function OrderIntakePage() {
 
   const editOrderOptions = useMemo(() => {
     if (!editForm || !editing) return []
-    return orders.filter((order) => {
-      if (editForm.linkedOrderIds.includes(order.id)) return false
+    const filtered = orders.filter((order) => {
       if (!editing.customer_id) return true
       return Number(order.customer_id || 0) === Number(editing.customer_id)
     })
-  }, [orders, editForm, editing])
+    return filterOrdersByKeyword(filtered, editOrderSearch)
+  }, [orders, editForm, editing, editOrderSearch])
 
   const exportCsv = async () => {
     try {
@@ -348,7 +361,7 @@ export default function OrderIntakePage() {
   const resetCreate = () => {
     setCreateForm(createEmptyForm())
     setCreateLineSeed(2)
-    setCreateOrderToAdd('')
+    setCreateOrderSearch('')
   }
 
   const openCreate = () => {
@@ -418,34 +431,25 @@ export default function OrderIntakePage() {
     setCreateLineSeed((prev) => prev + 1)
   }
 
-  const addCreateLinkedOrder = () => {
-    const orderId = Number(createOrderToAdd || 0)
-    if (!orderId) return
+  const toggleCreateLinkedOrder = (orderId: number) => {
     const order = orders.find((it) => it.id === orderId)
     if (!order) return
     setCreateForm((prev) => ({
       ...prev,
       customerId: prev.customerId || String(order.customer_id || ''),
       customerName: prev.customerName || order.customer_name || '',
-      linkedOrderIds: prev.linkedOrderIds.includes(orderId) ? prev.linkedOrderIds : [...prev.linkedOrderIds, orderId],
+      linkedOrderIds: prev.linkedOrderIds.includes(orderId)
+        ? prev.linkedOrderIds.filter((id) => id !== orderId)
+        : [...prev.linkedOrderIds, orderId],
     }))
-    setCreateOrderToAdd('')
   }
 
   const removeCreateLinkedOrder = (orderId: number) => {
     setCreateForm((prev) => {
       const nextLinkedOrderIds = prev.linkedOrderIds.filter((id) => id !== orderId)
-      if (nextLinkedOrderIds.length > 0) {
-        return {
-          ...prev,
-          linkedOrderIds: nextLinkedOrderIds,
-        }
-      }
       return {
         ...prev,
-        customerId: '',
-        customerName: '',
-        linkedOrderIds: [],
+        linkedOrderIds: nextLinkedOrderIds,
       }
     })
   }
@@ -538,7 +542,7 @@ export default function OrderIntakePage() {
         })),
       })
       setEditLineSeed(2000)
-      setEditOrderToAdd('')
+      setEditOrderSearch('')
     } catch (e: any) {
       toast(String(e?.message || '交貨進度詳情載入失敗'), 'error')
     } finally {
@@ -549,7 +553,7 @@ export default function OrderIntakePage() {
   const closeEdit = () => {
     setEditing(null)
     setEditForm(null)
-    setEditOrderToAdd('')
+    setEditOrderSearch('')
   }
 
   const updateEditLine = (key: string, patch: Partial<LineForm>) => {
@@ -575,17 +579,16 @@ export default function OrderIntakePage() {
     setEditLineSeed((prev) => prev + 1)
   }
 
-  const addEditLinkedOrder = () => {
+  const toggleEditLinkedOrder = (orderId: number) => {
     if (!editForm) return
-    const orderId = Number(editOrderToAdd || 0)
-    if (!orderId) return
     const order = orders.find((it) => it.id === orderId)
     if (!order) return
     setEditForm({
       ...editForm,
-      linkedOrderIds: editForm.linkedOrderIds.includes(orderId) ? editForm.linkedOrderIds : [...editForm.linkedOrderIds, orderId],
+      linkedOrderIds: editForm.linkedOrderIds.includes(orderId)
+        ? editForm.linkedOrderIds.filter((id) => id !== orderId)
+        : [...editForm.linkedOrderIds, orderId],
     })
-    setEditOrderToAdd('')
   }
 
   const removeEditLinkedOrder = (orderId: number) => {
@@ -809,7 +812,7 @@ export default function OrderIntakePage() {
                         ? createForm.linkedOrderIds.filter((id) => Number(orders.find((o) => o.id === id)?.customer_id || 0) === Number(customerId))
                         : createForm.linkedOrderIds,
                     })
-                    setCreateOrderToAdd('')
+                    setCreateOrderSearch('')
                   }}
                 >
                   <option value="">-- 請選擇客戶 --</option>
@@ -823,16 +826,30 @@ export default function OrderIntakePage() {
               </div>
 
               <div>
-                <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（選填，可多張）</label>
-                <div className="flex gap-2">
-                  <select className="rubber-input" value={createOrderToAdd} onChange={(e) => setCreateOrderToAdd(e.target.value)}>
-                    <option value="">-- 選擇訂單 --</option>
-                    {createOrderOptions.map((o) => (
-                      <option key={o.id} value={String(o.id)}>{o.po_number} {o.customer_name ? `/${o.customer_name}` : ''}</option>
-                    ))}
-                  </select>
-                  <button type="button" className="btn-ghost whitespace-nowrap" onClick={addCreateLinkedOrder}>加入</button>
+                <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
+                <input
+                  className="rubber-input h-9"
+                  value={createOrderSearch}
+                  onChange={(e) => setCreateOrderSearch(e.target.value)}
+                  placeholder="搜尋 PO / 客戶"
+                />
+                <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
+                  {createOrderOptions.length > 0 ? createOrderOptions.map((o) => {
+                    const checked = createForm.linkedOrderIds.includes(o.id)
+                    return (
+                      <label key={o.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
+                        <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleCreateLinkedOrder(o.id)} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-700">{o.po_number}</div>
+                          <div className="text-xs text-slate-500">{o.customer_name || '-'} / {STATUS_LABEL[o.status] || o.status}</div>
+                        </div>
+                      </label>
+                    )
+                  }) : (
+                    <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
+                  )}
                 </div>
+                <p className="mt-1 text-xs text-slate-500">已選 {createLinkedOrders.length} 張訂單，勾選後會自動整合材料候選。</p>
                 {createLinkedOrders.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {createLinkedOrders.map((order) => (
@@ -864,7 +881,6 @@ export default function OrderIntakePage() {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="px-3 py-2 text-left">材料名稱</th>
                       <th className="px-3 py-2 text-right">數量</th>
-                      <th className="px-3 py-2 text-left">交貨 PO No.</th>
                       <th className="px-3 py-2 text-left">交期</th>
                       <th className="px-3 py-2 text-left">備註</th>
                       <th className="px-3 py-2 text-left">操作</th>
@@ -893,6 +909,7 @@ export default function OrderIntakePage() {
                               {(line.material_name || line.material_code) && (
                                 <div className="text-[11px] text-slate-500">
                                   {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
+                                  {line.orderPoNumber ? ` / PO ${line.orderPoNumber}` : ''}
                                 </div>
                               )}
                             </div>
@@ -902,9 +919,6 @@ export default function OrderIntakePage() {
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
-                        </td>
-                        <td className="px-3 py-2">
-                          <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                         </td>
                         <td className="px-3 py-2">
                           <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
@@ -956,16 +970,30 @@ export default function OrderIntakePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（選填）</label>
-                    <div className="flex gap-2">
-                      <select className="rubber-input" value={editOrderToAdd} onChange={(e) => setEditOrderToAdd(e.target.value)}>
-                        <option value="">-- 選擇訂單 --</option>
-                        {editOrderOptions.map((o) => (
-                          <option key={o.id} value={String(o.id)}>{o.po_number}</option>
-                        ))}
-                      </select>
-                      <button type="button" className="btn-ghost whitespace-nowrap" onClick={addEditLinkedOrder}>加入</button>
+                    <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
+                    <input
+                      className="rubber-input h-9"
+                      value={editOrderSearch}
+                      onChange={(e) => setEditOrderSearch(e.target.value)}
+                      placeholder="搜尋 PO"
+                    />
+                    <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
+                      {editOrderOptions.length > 0 ? editOrderOptions.map((o) => {
+                        const checked = editForm.linkedOrderIds.includes(o.id)
+                        return (
+                          <label key={o.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
+                            <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleEditLinkedOrder(o.id)} />
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-700">{o.po_number}</div>
+                              <div className="text-xs text-slate-500">{o.customer_name || '-'} / {STATUS_LABEL[o.status] || o.status}</div>
+                            </div>
+                          </label>
+                        )
+                      }) : (
+                        <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
+                      )}
                     </div>
+                    <p className="mt-1 text-xs text-slate-500">已選 {editLinkedOrders.length} 張訂單，勾選後會自動整合材料候選。</p>
                     {editLinkedOrders.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-2">
                         {editLinkedOrders.map((order) => (
@@ -1005,10 +1033,9 @@ export default function OrderIntakePage() {
                         <tr className="border-b border-slate-200 bg-slate-50">
                           <th className="px-3 py-2 text-left">材料名稱</th>
                           <th className="px-3 py-2 text-right">數量</th>
-                          <th className="px-3 py-2 text-left">交貨 PO No.</th>
+                          <th className="px-3 py-2 text-left">交期</th>
                           <th className="px-3 py-2 text-right">已採購</th>
                           <th className="px-3 py-2 text-right">缺口</th>
-                          <th className="px-3 py-2 text-left">交期</th>
                           <th className="px-3 py-2 text-left">備註</th>
                           <th className="px-3 py-2 text-left">操作</th>
                         </tr>
@@ -1038,6 +1065,7 @@ export default function OrderIntakePage() {
                                     {(line.material_name || line.material_code) && (
                                       <div className="text-[11px] text-slate-500">
                                         {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
+                                        {line.orderPoNumber ? ` / PO ${line.orderPoNumber}` : ''}
                                       </div>
                                     )}
                                   </div>
@@ -1049,13 +1077,10 @@ export default function OrderIntakePage() {
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
                               </td>
                               <td className="px-3 py-2">
-                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                                <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
                               </td>
                               <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
                               <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
-                              <td className="px-3 py-2">
-                                <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateEditLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
-                              </td>
                               <td className="px-3 py-2">
                                 <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />
                               </td>
