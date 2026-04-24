@@ -208,6 +208,12 @@ export default function OrderIntakePage() {
     [orders, createForm.linkedOrderIds],
   )
 
+  const createLockedCustomerId = useMemo(() => {
+    const first = createLinkedOrders[0]
+    const customerId = Number(first?.customer_id || 0)
+    return customerId > 0 ? customerId : 0
+  }, [createLinkedOrders])
+
   const createOrderOptions = useMemo(() => {
     const selectedId = createForm.customerId ? Number(createForm.customerId) : 0
     return orders.filter((order) => {
@@ -310,10 +316,21 @@ export default function OrderIntakePage() {
   }
 
   const removeCreateLinkedOrder = (orderId: number) => {
-    setCreateForm((prev) => ({
-      ...prev,
-      linkedOrderIds: prev.linkedOrderIds.filter((id) => id !== orderId),
-    }))
+    setCreateForm((prev) => {
+      const nextLinkedOrderIds = prev.linkedOrderIds.filter((id) => id !== orderId)
+      if (nextLinkedOrderIds.length > 0) {
+        return {
+          ...prev,
+          linkedOrderIds: nextLinkedOrderIds,
+        }
+      }
+      return {
+        ...prev,
+        customerId: '',
+        customerName: '',
+        linkedOrderIds: [],
+      }
+    })
   }
 
   const createProgress = async () => {
@@ -660,7 +677,8 @@ export default function OrderIntakePage() {
                 <label className="mb-1 block text-xs text-slate-500">客戶</label>
                 <select
                   className="rubber-input"
-                  value={createForm.customerId}
+                  value={createLockedCustomerId ? String(createLockedCustomerId) : createForm.customerId}
+                  disabled={createLockedCustomerId > 0}
                   onChange={(e) => {
                     const customerId = e.target.value
                     const customer = customers.find((c) => String(c.id) === customerId)
@@ -679,6 +697,9 @@ export default function OrderIntakePage() {
                     <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
                   ))}
                 </select>
+                {createLockedCustomerId > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">已依關聯訂單自動鎖定客戶，移除全部訂單後可重新選擇。</p>
+                )}
               </div>
 
               <div>
