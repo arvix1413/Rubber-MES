@@ -563,6 +563,7 @@ const ensureDeliveryProgressTable = async () => {
         CREATE TABLE IF NOT EXISTS delivery_progress_items (
           id INT AUTO_INCREMENT PRIMARY KEY,
           progress_id INT NOT NULL,
+          order_po_number VARCHAR(100) DEFAULT '',
           material_code VARCHAR(255) DEFAULT '',
           material_name VARCHAR(255) DEFAULT '',
           spec VARCHAR(255) DEFAULT '',
@@ -585,10 +586,12 @@ const ensureDeliveryProgressTable = async () => {
       await addIndexSafe('CREATE INDEX idx_delivery_progress_po_links_po ON delivery_progress_po_links (order_po_number)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_progress ON delivery_progress_items (progress_id)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_status ON delivery_progress_items (status)')
+      await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN order_po_number VARCHAR(100) DEFAULT '' AFTER progress_id")
       await execute(`
-        INSERT INTO delivery_progress_items (progress_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
+        INSERT INTO delivery_progress_items (progress_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
         SELECT
           dp.id,
+          COALESCE(dp.order_po_number, ''),
           COALESCE(dp.material_code, ''),
           COALESCE(dp.material_name, ''),
           COALESCE(dp.spec, ''),
@@ -991,6 +994,7 @@ const syncDeliveryProgressPoLinks = async (
 const syncDeliveryProgressItems = async (
   progressId: number,
   items: Array<{
+    order_po_number?: any
     material_code?: any
     material_name?: any
     spec?: any
@@ -1004,16 +1008,18 @@ const syncDeliveryProgressItems = async (
 ) => {
   await execute('UPDATE delivery_progress_items SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId || null, progressId])
   for (const item of items) {
+    const orderPoNumber = String(item?.order_po_number || '').trim()
     const materialCode = String(item?.material_code || '').trim()
     const materialName = String(item?.material_name || '').trim()
     const plannedQty = toQty(item?.planned_qty)
     if (!materialName || plannedQty <= 0) continue
     await execute(
       `INSERT INTO delivery_progress_items
-        (progress_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+        (progress_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
       [
         progressId,
+        orderPoNumber,
         materialCode || materialName,
         materialName,
         String(item?.spec || '').trim(),
@@ -2630,6 +2636,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
           dpi.progress_id,
           COUNT(*) as item_count,
           GROUP_CONCAT(DISTINCT dpi.material_name ORDER BY dpi.material_name SEPARATOR ', ') as material_names,
+          GROUP_CONCAT(DISTINCT NULLIF(dpi.order_po_number, '') ORDER BY dpi.order_po_number SEPARATOR ', ') as item_po_numbers,
           COALESCE(SUM(dpi.planned_qty), 0) as total_planned_qty,
           MIN(dpi.due_date) as due_date,
           COALESCE(SUM(COALESCE(purchased.qty, 0)), 0) as purchased_qty,
@@ -2660,6 +2667,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
       return {
         ...row,
         material_name: String(row.material_names || '').trim(),
+        po_number: String(row.item_po_numbers || row.po_number || '').trim(),
         material_code: '',
         spec: '',
         unit: '',
@@ -2716,6 +2724,7 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
     const purchasedQty = toQty(item.purchased_qty)
     return {
       ...item,
+      order_po_number: String(item.order_po_number || '').trim(),
       planned_qty: plannedQty,
       purchased_qty: purchasedQty,
       purchase_gap_qty: toQty(Math.max(0, plannedQty - purchasedQty)),
@@ -2746,10 +2755,10 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       : []
     let customerId: number | null = b?.customer_id ? Number(b.customer_id) : null
     let customerName = String(b?.customer_name || '').trim()
-    let poNumbers = uniquePoNumbers([...(Array.isArray(b?.po_numbers) ? b.po_numbers : []), String(b?.order_po_number || '')])
     const itemsInput = Array.isArray(b?.items) ? b.items : []
     const items = itemsInput
       .map((item: any) => ({
+        order_po_number: String(item?.order_po_number || '').trim(),
         material_code: String(item?.material_code || item?.material_name || '').trim(),
         material_name: String(item?.material_name || '').trim(),
         spec: String(item?.spec || '').trim(),
@@ -2760,6 +2769,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
         remark: String(item?.remark || '').trim(),
       }))
       .filter((item: any) => item.material_name && item.planned_qty > 0)
+    let poNumbers = uniquePoNumbers(items.map((item: any) => item.order_po_number))
 
     if (!items.length) return c.json({ error: 'items required' }, 400)
     if (!customerName && customerId) {
@@ -2797,7 +2807,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       customerName,
       customerOrderIds[0] || null,
       null,
-      poNumbers[0] || '',
+      firstItem.order_po_number || poNumbers[0] || '',
       '',
       firstItem.material_code || '',
       firstItem.material_name || '',
@@ -2833,10 +2843,10 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     const customerOrderIds: number[] = Array.isArray(b?.customer_order_ids)
       ? Array.from(new Set<number>(b.customer_order_ids.map((it: any) => Number(it)).filter((it: number) => Number.isFinite(it) && it > 0)))
       : []
-    const poNumbers = uniquePoNumbers([...(Array.isArray(b?.po_numbers) ? b.po_numbers : []), String(b?.order_po_number || '')])
     const itemsInput = Array.isArray(b?.items) ? b.items : []
     const items = itemsInput
       .map((item: any) => ({
+        order_po_number: String(item?.order_po_number || '').trim(),
         material_code: String(item?.material_code || item?.material_name || '').trim(),
         material_name: String(item?.material_name || '').trim(),
         spec: String(item?.spec || '').trim(),
@@ -2847,6 +2857,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
         remark: String(item?.remark || '').trim(),
       }))
       .filter((item: any) => item.material_name && item.planned_qty > 0)
+    const poNumbers = uniquePoNumbers(items.map((item: any) => item.order_po_number))
     if (!items.length) return c.json({ error: 'items required' }, 400)
     const firstItem = items[0]
     await execute(`
@@ -2858,7 +2869,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
       items.reduce((sum: number, item: any) => sum + toQty(item.planned_qty), 0),
       b?.remark || '',
       ['pending', 'partial', 'completed'].includes(String(b?.status || '')) ? String(b.status) : 'pending',
-      poNumbers[0] || '',
+      firstItem.order_po_number || poNumbers[0] || '',
       firstItem.material_name || '',
       firstItem.spec || '',
       firstItem.unit || 'PCS',

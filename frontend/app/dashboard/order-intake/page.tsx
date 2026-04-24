@@ -27,6 +27,7 @@ type IntakeItem = {
 
 type ProgressItem = {
   id?: number
+  order_po_number?: string
   material_code?: string
   material_name: string
   spec?: string
@@ -51,6 +52,7 @@ type OrderSummary = { id: number; po_number: string; customer_id: number; custom
 type LineForm = {
   key: string
   materialOptionId: string
+  orderPoNumber: string
   material_code: string
   material_name: string
   spec: string
@@ -79,14 +81,12 @@ type OrderMaterialOption = {
 type CreateForm = {
   customerId: string
   customerName: string
-  poInput: string
   linkedOrderIds: number[]
   remark: string
   lines: LineForm[]
 }
 
 type EditForm = {
-  poInput: string
   linkedOrderIds: number[]
   remark: string
   status: 'pending' | 'partial' | 'completed'
@@ -102,6 +102,7 @@ const STATUS_LABEL: Record<string, string> = {
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
   materialOptionId: '',
+  orderPoNumber: '',
   material_code: '',
   material_name: '',
   spec: '',
@@ -114,18 +115,10 @@ const createEmptyLine = (seed: number): LineForm => ({
 const createEmptyForm = (): CreateForm => ({
   customerId: '',
   customerName: '',
-  poInput: '',
   linkedOrderIds: [],
   remark: '',
   lines: [createEmptyLine(1)],
 })
-
-const splitPoValues = (input: string): string[] => Array.from(new Set(
-  String(input || '')
-    .split(/[\n,，;；]+/)
-    .map((it) => it.trim())
-    .filter(Boolean),
-))
 
 const normalizeYmdInput = (value: string) => {
   const text = String(value || '').trim()
@@ -138,7 +131,12 @@ const normalizeYmdInput = (value: string) => {
 }
 
 const summarizeTokens = (input: string, limit: number) => {
-  const values = splitPoValues(input)
+  const values = Array.from(new Set(
+    String(input || '')
+      .split(/[\n,，;；]+/)
+      .map((it) => it.trim())
+      .filter(Boolean),
+  ))
   if (!values.length) return { text: '未整理', hidden: 0 }
   const shown = values.slice(0, limit)
   return {
@@ -327,9 +325,6 @@ export default function OrderIntakePage() {
     })
   }, [orders, editForm, editing])
 
-  const createPoSummary = useMemo(() => summarizeTokens(createForm.poInput, 3), [createForm.poInput])
-  const editPoSummary = useMemo(() => summarizeTokens(editForm?.poInput || '', 3), [editForm?.poInput])
-
   const exportCsv = async () => {
     try {
       const token = getToken()
@@ -401,6 +396,7 @@ export default function OrderIntakePage() {
 
   const applyMaterialOption = (option: OrderMaterialOption, line: LineForm): Partial<LineForm> => ({
     materialOptionId: option.id,
+    orderPoNumber: option.customer_po_numbers[0] || option.order_po_numbers[0] || line.orderPoNumber,
     material_code: option.material_code,
     material_name: option.material_name,
     spec: option.spec,
@@ -432,7 +428,6 @@ export default function OrderIntakePage() {
       customerId: prev.customerId || String(order.customer_id || ''),
       customerName: prev.customerName || order.customer_name || '',
       linkedOrderIds: prev.linkedOrderIds.includes(orderId) ? prev.linkedOrderIds : [...prev.linkedOrderIds, orderId],
-      poInput: splitPoValues(`${prev.poInput}\n${order.po_number || ''}`).join('\n'),
     }))
     setCreateOrderToAdd('')
   }
@@ -456,20 +451,15 @@ export default function OrderIntakePage() {
   }
 
   const createProgress = async () => {
-    const poNumbers = splitPoValues(createForm.poInput)
     const selectedCustomer = customers.find((c) => String(c.id) === createForm.customerId)
     const customerName = (selectedCustomer?.customer_name || createForm.customerName || '').trim()
     if (!customerName) {
       toast('請先選擇客戶', 'error')
       return
     }
-    if (poNumbers.length <= 0 && createForm.linkedOrderIds.length <= 0) {
-      toast('請至少輸入一個 PO 編號或關聯一張客戶訂單', 'error')
-      return
-    }
-
     const lines = createForm.lines
       .map((line) => ({
+        order_po_number: line.orderPoNumber.trim(),
         material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
         spec: line.spec.trim(),
@@ -501,7 +491,6 @@ export default function OrderIntakePage() {
         body: JSON.stringify({
           customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
           customer_name: customerName,
-          po_numbers: poNumbers,
           customer_order_ids: createForm.linkedOrderIds,
           remark: createForm.remark.trim(),
           items: lines,
@@ -532,13 +521,13 @@ export default function OrderIntakePage() {
       const detail = await apiFetch<ProgressDetail>(`/api/order-intake/${row.id}`)
       setEditing(detail)
       setEditForm({
-        poInput: (detail.po_numbers || []).join('\n'),
         linkedOrderIds: detail.customer_order_ids || [],
         remark: detail.remark || '',
         status: detail.status || 'pending',
         lines: (detail.items || []).map((item, index) => ({
           key: `edit-${item.id || index}`,
           materialOptionId: '',
+          orderPoNumber: item.order_po_number || '',
           material_code: item.material_code || '',
           material_name: item.material_name || '',
           spec: item.spec || '',
@@ -595,7 +584,6 @@ export default function OrderIntakePage() {
     setEditForm({
       ...editForm,
       linkedOrderIds: editForm.linkedOrderIds.includes(orderId) ? editForm.linkedOrderIds : [...editForm.linkedOrderIds, orderId],
-      poInput: splitPoValues(`${editForm.poInput}\n${order.po_number || ''}`).join('\n'),
     })
     setEditOrderToAdd('')
   }
@@ -612,6 +600,7 @@ export default function OrderIntakePage() {
     if (!editing || !editForm) return
     const items = editForm.lines
       .map((line) => ({
+        order_po_number: line.orderPoNumber.trim(),
         material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
         spec: line.spec.trim(),
@@ -641,7 +630,6 @@ export default function OrderIntakePage() {
       await apiFetch(`/api/order-intake/${editing.id}`, {
         method: 'PUT',
         body: JSON.stringify({
-          po_numbers: splitPoValues(editForm.poInput),
           customer_order_ids: editForm.linkedOrderIds,
           remark: editForm.remark.trim(),
           status: editForm.status,
@@ -857,18 +845,6 @@ export default function OrderIntakePage() {
                 )}
               </div>
 
-              <div className="md:col-span-2">
-                <label className="mb-1 block text-xs text-slate-500">PO 編號（可多個，逗號或換行分隔）</label>
-                <textarea
-                  className="rubber-input"
-                  rows={3}
-                  value={createForm.poInput}
-                  onChange={(e) => updateCreateForm({ poInput: e.target.value })}
-                  placeholder={'例如：\nPO-001\nPO-002\nPO-003'}
-                />
-                <p className="mt-1 text-xs text-slate-400">已解析 {splitPoValues(createForm.poInput).length} 個 PO</p>
-                <p className="mt-1 text-xs text-slate-500">摘要：{createPoSummary.text}{createPoSummary.hidden > 0 ? ` +${createPoSummary.hidden}` : ''}</p>
-              </div>
             </div>
 
               <div className="mt-5">
@@ -888,6 +864,7 @@ export default function OrderIntakePage() {
                     <tr className="border-b border-slate-200 bg-slate-50">
                       <th className="px-3 py-2 text-left">材料名稱</th>
                       <th className="px-3 py-2 text-right">數量</th>
+                      <th className="px-3 py-2 text-left">交貨 PO No.</th>
                       <th className="px-3 py-2 text-left">交期</th>
                       <th className="px-3 py-2 text-left">備註</th>
                       <th className="px-3 py-2 text-left">操作</th>
@@ -925,6 +902,9 @@ export default function OrderIntakePage() {
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
+                        </td>
+                        <td className="px-3 py-2">
+                          <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                         </td>
                         <td className="px-3 py-2">
                           <input className="rubber-input h-9" placeholder="YYYY-MM-DD" value={line.due_date} onChange={(e) => updateCreateLine(line.key, { due_date: normalizeYmdInput(e.target.value) })} />
@@ -976,12 +956,6 @@ export default function OrderIntakePage() {
 
                 <div className="grid gap-4 md:grid-cols-2">
                   <div className="md:col-span-2">
-                    <label className="mb-1 block text-xs text-slate-500">PO 編號（可多個）</label>
-                    <textarea className="rubber-input" rows={3} value={editForm.poInput} onChange={(e) => setEditForm({ ...editForm, poInput: e.target.value })} />
-                    <p className="mt-1 text-xs text-slate-500">摘要：{editPoSummary.text}{editPoSummary.hidden > 0 ? ` +${editPoSummary.hidden}` : ''}</p>
-                  </div>
-
-                  <div className="md:col-span-2">
                     <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（選填）</label>
                     <div className="flex gap-2">
                       <select className="rubber-input" value={editOrderToAdd} onChange={(e) => setEditOrderToAdd(e.target.value)}>
@@ -1031,6 +1005,7 @@ export default function OrderIntakePage() {
                         <tr className="border-b border-slate-200 bg-slate-50">
                           <th className="px-3 py-2 text-left">材料名稱</th>
                           <th className="px-3 py-2 text-right">數量</th>
+                          <th className="px-3 py-2 text-left">交貨 PO No.</th>
                           <th className="px-3 py-2 text-right">已採購</th>
                           <th className="px-3 py-2 text-right">缺口</th>
                           <th className="px-3 py-2 text-left">交期</th>
@@ -1072,6 +1047,9 @@ export default function OrderIntakePage() {
                               </td>
                               <td className="px-3 py-2">
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
+                              </td>
+                              <td className="px-3 py-2">
+                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                               </td>
                               <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
                               <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
