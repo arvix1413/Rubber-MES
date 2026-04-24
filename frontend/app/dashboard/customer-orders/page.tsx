@@ -30,7 +30,14 @@ function getCOActions(status: string) {
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Customer = { id:number; customer_code:string; customer_name:string }
+type Customer = {
+  id:number
+  customer_code:string
+  customer_name:string
+  address?: string
+  contact?: string
+  payment_terms?: string
+}
 type BomMaterialItem = {
   material_code?: string
   material_name?: string
@@ -137,6 +144,17 @@ export default function CustomerOrdersPage() {
     const value = Number(text)
     if (!Number.isFinite(value) || value < 0) return null
     return value
+  }
+
+  const applyCustomerDefaults = (customerId: string) => {
+    const cust = customers.find((c) => String(c.id) === customerId)
+    setForm((p) => ({
+      ...p,
+      customer_id: customerId,
+      delivery_address: cust?.address || '',
+      person_in_charge: cust?.contact || '',
+      payment_terms: cust?.payment_terms || '',
+    }))
   }
 
   const toggleExpand = async (id: number) => {
@@ -404,10 +422,7 @@ export default function CustomerOrdersPage() {
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">客戶 *</label>
-              <select className={inp} value={form.customer_id} onChange={e=>{
-                const cust = customers.find(c=>String(c.id)===e.target.value)
-                setForm(p=>({...p, customer_id:e.target.value, payment_terms: (cust as any)?.payment_terms||p.payment_terms }))
-              }}>
+              <select className={inp} value={form.customer_id} onChange={e=>applyCustomerDefaults(e.target.value)}>
                 <option value="">-- 選擇客戶 --</option>
                 {customers.map(c=>(
                   <option key={c.id} value={String(c.id)}>{c.customer_name}{c.customer_code?` (${c.customer_code})`:''}</option>
