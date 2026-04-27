@@ -195,3 +195,32 @@ input[type='number'] { -moz-appearance: textfield; }
   to   { opacity: 1; transform: translateX(-50%) translateY(0) scale(1); }
 }
 .animate-slide-down { animation: slide-down 0.2s ease-out; }
+
+.mes-sticky-header-host {
+  position: sticky;
+  top: 0;
+  z-index: 24;
+  display: none;
+  pointer-events: none;
+}
+.mes-sticky-header-viewport {
+  overflow: hidden;
+  border-bottom: 1px solid rgba(228, 215, 197, 0.92);
+  border-radius: 14px 14px 0 0;
+  background: rgba(249, 243, 234, 0.97);
+  box-shadow: 0 10px 20px -22px rgba(64, 46, 28, 0.24);
+}
+.mes-sticky-header-table {
+  border-collapse: separate;
+  border-spacing: 0;
+  will-change: transform;
+}
+.mes-sticky-header-table thead th {
+  top: 0 !important;
+}
+
+@media (max-width: 767px) {
+  .mes-sticky-header-host {
+    top: 47px;
+  }
+}

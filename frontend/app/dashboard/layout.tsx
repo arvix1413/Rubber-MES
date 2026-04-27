@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
+import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; exact?: boolean }
 type NavGroup = { label: string; icon: React.ReactNode; children: NavItem[]; defaultOpen?: boolean }
@@ -262,6 +263,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="brand-font text-[11px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
           </div>
         </div>
+        <StickyTableHeaderBridge />
         <div className="dashboard-content p-5 md:p-6 xl:p-7">{children}</div>
       </main>
     </div>
