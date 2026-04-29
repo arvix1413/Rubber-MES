@@ -21,12 +21,12 @@ export const metadata: Metadata = {
   description: '橡膠製造執行與訂單協同系統',
   icons: {
     icon: [
-      { url: '/icon.svg', type: 'image/svg+xml' },
+      { url: '/favicon.svg', type: 'image/svg+xml' },
     ],
     apple: [
-      { url: '/apple-icon.svg', type: 'image/svg+xml' },
+      { url: '/apple-touch-icon.svg', type: 'image/svg+xml' },
     ],
-    shortcut: ['/icon.svg'],
+    shortcut: ['/favicon.svg'],
   },
 }
 
