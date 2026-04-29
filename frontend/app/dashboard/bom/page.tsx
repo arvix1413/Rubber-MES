@@ -2,7 +2,7 @@
 import { useDialog } from '@/components/Dialog'
 import FieldLockHint from '@/components/FieldLockHint'
 import { Fragment, useEffect, useState } from 'react'
-import { apiFetch, API, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
@@ -112,7 +112,8 @@ export default function BomPage() {
     setUploading(true)
     try {
       const fd = new FormData(); fd.append('file', file)
-      const res = await fetch(`${API}/api/upload`, { method: 'POST', headers: { Authorization: `Bearer ${getToken()}` }, body: fd })
+      const res = await apiFetchRaw('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('上傳失敗')
       return (await res.json()).url || ''
     } finally { setUploading(false) }
   }

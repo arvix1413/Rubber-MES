@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { API, apiFetch, getSignatureUrl, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw, getSignatureUrl } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
@@ -267,10 +267,7 @@ export default function InvoicesPage() {
     try {
       const qs = new URLSearchParams()
       qs.set('type', invoiceType)
-      const token = getToken()
-      const res = await fetch(`${API}/api/invoices/export/csv?${qs.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw(`/api/invoices/export/csv?${qs.toString()}`)
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })

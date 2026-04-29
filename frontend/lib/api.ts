@@ -119,30 +119,47 @@ function normalizeApiDates<T>(input: T): T {
   return input
 }
 
-export async function apiFetch<T>(path: string, opts: RubberRequestInit = {}): Promise<T> {
+export async function apiFetchRaw(path: string, opts: RequestInit = {}): Promise<Response> {
   const token = getToken()
-  // Don't set Content-Type for FormData (let browser set multipart boundary)
-  const isFormData = opts.body instanceof FormData
+  const isGet = String(opts.method || 'GET').toUpperCase() === 'GET'
   try {
-    const method = String(opts.method || 'GET').toUpperCase()
-    const reloadOnSuccess = opts.reloadOnSuccess || 'auto'
-    const isGet = method === 'GET'
-    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
-    if (isMutation) dispatchMutationEvent('start', { path, method })
     const res = await fetch(`${API}${path}`, {
       ...opts,
       cache: isGet ? 'no-store' : opts.cache,
       headers: {
-        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
         ...(isGet ? { 'Cache-Control': 'no-cache' } : {}),
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
         ...(opts.headers || {}),
       },
     })
+    if (!res.ok && res.status === 401) {
+      redirectToLoginOnUnauthorized()
+    }
+    return res
+  } catch (e: any) {
+    if (e?.name === 'TypeError' && String(e.message || '').toLowerCase().includes('fetch')) {
+      throw new Error('網路連線異常，請檢查網路後重試')
+    }
+    throw e
+  }
+}
+
+export async function apiFetch<T>(path: string, opts: RubberRequestInit = {}): Promise<T> {
+  // Don't set Content-Type for FormData (let browser set multipart boundary)
+  const isFormData = opts.body instanceof FormData
+  try {
+    const method = String(opts.method || 'GET').toUpperCase()
+    const reloadOnSuccess = opts.reloadOnSuccess || 'auto'
+    const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
+    if (isMutation) dispatchMutationEvent('start', { path, method })
+    const res = await apiFetchRaw(path, {
+      ...opts,
+      headers: {
+        ...(isFormData ? {} : { 'Content-Type': 'application/json' }),
+        ...(opts.headers || {}),
+      },
+    })
     if (!res.ok) {
-      if (res.status === 401) {
-        redirectToLoginOnUnauthorized()
-      }
       const err = await res.json().catch(() => ({ error: res.statusText }))
       const raw = (err as any).error || res.statusText
       throw new Error(mapApiErrorMessage(raw, res.status))
@@ -158,10 +175,6 @@ export async function apiFetch<T>(path: string, opts: RubberRequestInit = {}): P
     const method = String(opts.method || 'GET').toUpperCase()
     const isMutation = !['GET', 'HEAD', 'OPTIONS'].includes(method)
     if (isMutation) dispatchMutationEvent('end', { path, method, ok: false })
-    // Network/CORS/timeout
-    if (e?.name === 'TypeError' && String(e.message || '').toLowerCase().includes('fetch')) {
-      throw new Error('網路連線異常，請檢查網路後重試')
-    }
     throw e
   }
 }

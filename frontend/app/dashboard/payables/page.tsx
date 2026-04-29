@@ -1,7 +1,7 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { formatDecimal } from '@/lib/numberFormat'
@@ -79,10 +79,7 @@ export default function PayablesPage() {
 
   const exportCsv = async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API}/api/payables/export/csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw('/api/payables/export/csv')
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })

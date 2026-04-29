@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { useDialog } from '@/components/Dialog'
@@ -341,10 +341,7 @@ export default function OrderIntakePage() {
 
   const exportCsv = async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API}/api/order-intake/export/csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw('/api/order-intake/export/csv')
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })

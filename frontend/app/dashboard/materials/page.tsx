@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import { useDialog } from '@/components/Dialog'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { API, apiFetch, apiFetchRaw } from '@/lib/api'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
@@ -127,11 +127,8 @@ export default function MaterialsPage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(`${API}/api/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: fd,
-      })
+      const res = await apiFetchRaw('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('上傳失敗')
       const body = await res.json()
       return body.url || ''
     } finally {
