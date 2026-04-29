@@ -738,9 +738,23 @@ const resolveMaterialSnapshot = async (materialIdRaw: any, materialCodeRaw: any)
 
 const liveFirst = (...exprs: string[]) => `COALESCE(${exprs.join(', ')})`
 
+const isMissingSchemaError = (error: any) => {
+  const msg = String(error?.message || '').toLowerCase()
+  return (
+    msg.includes("doesn't exist") ||
+    msg.includes('unknown table') ||
+    msg.includes('unknown column')
+  )
+}
+
 const getActiveReferenceCount = async (sql: string, params: any[]) => {
-  const row = await queryOne<any>(sql, params)
-  return Number(row?.cnt || 0)
+  try {
+    const row = await queryOne<any>(sql, params)
+    return Number(row?.cnt || 0)
+  } catch (e: any) {
+    if (isMissingSchemaError(e)) return 0
+    throw e
+  }
 }
 
 const blockIfReferenced = async (
