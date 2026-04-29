@@ -37,6 +37,15 @@ function mapApiErrorMessage(raw: string, status: number): string {
   if (status === 401) return '登入已失效，請重新登入'
   if (status === 403) return '你沒有執行此操作的權限'
 
+  if (msg.includes('無法刪除：此資料目前仍被其他業務單據或主檔引用。')) {
+    return msg
+  }
+
+  if (msg.includes('已經被使用了：')) {
+    const usage = msg.replace('已經被使用了：', '').trim()
+    return `無法刪除：此資料目前仍被其他業務單據或主檔引用。使用情況：${usage}。請先解除關聯、刪除相關單據，或改用停用 / 封存後再操作。`
+  }
+
   // MySQL duplicate key / unique constraint
   if (
     lower.includes('duplicate entry') ||
