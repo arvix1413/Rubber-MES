@@ -8,7 +8,32 @@ type ActiveTableState = {
   thead: HTMLTableSectionElement
 }
 
-function syncStickyColumnMetrics(table: HTMLTableElement, thead: HTMLTableSectionElement) {
+function clampWidth(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value))
+}
+
+function getStickyWidthBudget(wrapper: HTMLElement, firstWidth: number, secondWidth: number) {
+  const viewportWidth = Math.max(wrapper.clientWidth, 320)
+  const firstMin = 140
+  const secondMin = 170
+  const firstMax = Math.max(firstMin, Math.min(280, Math.floor(viewportWidth * 0.24)))
+  const secondMax = Math.max(secondMin, Math.min(360, Math.floor(viewportWidth * 0.32)))
+  const totalMax = Math.max(firstMin + secondMin, Math.min(560, Math.floor(viewportWidth * 0.52)))
+
+  let nextFirst = clampWidth(firstWidth, firstMin, firstMax)
+  let nextSecond = clampWidth(secondWidth, secondMin, secondMax)
+
+  const overflow = nextFirst + nextSecond - totalMax
+  if (overflow > 0) {
+    const shrinkSecond = Math.min(overflow, nextSecond - secondMin)
+    nextSecond -= shrinkSecond
+    nextFirst = Math.max(firstMin, nextFirst - (overflow - shrinkSecond))
+  }
+
+  return { first: nextFirst, second: nextSecond }
+}
+
+function syncStickyColumnMetrics(table: HTMLTableElement, thead: HTMLTableSectionElement, wrapper: HTMLElement) {
   if (table.closest('.no-sticky-cols')) return
   const headerCells = Array.from(thead.querySelectorAll<HTMLElement>('th'))
   const first = headerCells[0]
@@ -17,12 +42,13 @@ function syncStickyColumnMetrics(table: HTMLTableElement, thead: HTMLTableSectio
 
   const firstWidth = Math.ceil(first.getBoundingClientRect().width)
   const secondWidth = Math.ceil(second.getBoundingClientRect().width)
+  const widths = getStickyWidthBudget(wrapper, firstWidth, secondWidth)
 
-  if (firstWidth > 0) {
-    table.style.setProperty('--sticky-col-1-width', `${firstWidth}px`)
+  if (widths.first > 0) {
+    table.style.setProperty('--sticky-col-1-width', `${widths.first}px`)
   }
-  if (secondWidth > 0) {
-    table.style.setProperty('--sticky-col-2-width', `${secondWidth}px`)
+  if (widths.second > 0) {
+    table.style.setProperty('--sticky-col-2-width', `${widths.second}px`)
   }
 }
 
@@ -34,16 +60,11 @@ function normalizeTableColumns(table: HTMLTableElement, thead: HTMLTableSectionE
   headerCells.forEach((headerCell, columnIndex) => {
     const computed = window.getComputedStyle(headerCell)
     const align = computed.textAlign
-    const width = Math.ceil(headerCell.getBoundingClientRect().width)
-    if (!width) return
 
     bodyRows.forEach((row) => {
       const cell = row.cells[columnIndex] as HTMLTableCellElement | undefined
       if (!cell || cell.colSpan > 1) return
       cell.style.textAlign = align
-      cell.style.minWidth = `${width}px`
-      cell.style.width = `${width}px`
-      cell.style.maxWidth = `${width}px`
       cell.style.verticalAlign = computed.verticalAlign || 'middle'
     })
   })
@@ -107,7 +128,7 @@ export default function StickyTableHeaderBridge() {
       if (!active) return
 
       const { wrapper, table, thead } = active
-      syncStickyColumnMetrics(table, thead)
+      syncStickyColumnMetrics(table, thead, wrapper)
       normalizeTableColumns(table, thead)
       const mainRect = main.getBoundingClientRect()
       const wrapperRect = wrapper.getBoundingClientRect()
@@ -175,8 +196,8 @@ export default function StickyTableHeaderBridge() {
     const update = () => {
       const hostRect = host.getBoundingClientRect()
       const candidates = getCandidateTables(content)
-      candidates.forEach(({ table, thead }) => {
-        syncStickyColumnMetrics(table, thead)
+      candidates.forEach(({ wrapper, table, thead }) => {
+        syncStickyColumnMetrics(table, thead, wrapper)
         normalizeTableColumns(table, thead)
       })
       const next = candidates

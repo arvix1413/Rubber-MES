@@ -154,6 +154,10 @@ input[type='number'] { -moz-appearance: textfield; }
   position: sticky;
   left: 0;
   min-width: var(--sticky-col-1-width);
+  width: var(--sticky-col-1-width);
+  max-width: var(--sticky-col-1-width);
+  white-space: normal;
+  overflow-wrap: anywhere;
   z-index: 3;
 }
 .table-scroll-x > table thead th:nth-child(2),
@@ -161,6 +165,10 @@ input[type='number'] { -moz-appearance: textfield; }
   position: sticky;
   left: var(--sticky-col-1-width);
   min-width: var(--sticky-col-2-width);
+  width: var(--sticky-col-2-width);
+  max-width: var(--sticky-col-2-width);
+  white-space: normal;
+  overflow-wrap: anywhere;
   z-index: 3;
 }
 .table-scroll-x > table thead th:nth-child(-n+2) {
