@@ -728,6 +728,8 @@ const resolveMaterialId = async (materialIdRaw: any, materialCodeRaw: any): Prom
   return Number.isFinite(resolved) && resolved > 0 ? resolved : null
 }
 
+const liveFirst = (...exprs: string[]) => `COALESCE(${exprs.join(', ')})`
+
 let ensureInvoiceTablesPromise: Promise<void> | null = null
 const ensureInvoiceTables = async () => {
   if (!ensureInvoiceTablesPromise) {
@@ -2228,7 +2230,7 @@ app.delete('/api/customer-orders/:id', authMiddleware, requirePerm('customer_ord
   try {
     const id = c.req.param('id')
     const row = await queryOne<any>(`
-      SELECT co.po_number, c.customer_name
+      SELECT co.po_number, ${liveFirst('NULLIF(c.customer_name, \'\')', 'NULLIF(co.customer_name, \'\')', '\'\'')} as customer_name
       FROM customer_orders co LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
       WHERE co.id=? AND co.deleted_at IS NULL`, [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
@@ -2334,7 +2336,8 @@ app.get('/api/profit-tracking/orders/:id', authMiddleware, requireManager, async
     const order = await queryOne<any>(`
       SELECT co.id, co.po_number, co.po_date, co.status, co.remark, co.currency,
              co.delivery_date, co.delivery_address, co.person_in_charge, co.payment_terms,
-             c.customer_name, c.customer_code
+             ${liveFirst('NULLIF(c.customer_name, \'\')', 'NULLIF(co.customer_name, \'\')', '\'\'')} as customer_name,
+             c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON c.id = co.customer_id AND c.deleted_at IS NULL
       WHERE co.id=? AND co.deleted_at IS NULL
@@ -4271,7 +4274,7 @@ app.delete('/api/delivery-sheets/:id', authMiddleware, requirePerm('delivery.del
 app.get('/api/inventory', authMiddleware, async c => c.json(await query(`
   SELECT b.id, b.product_sku as product_code, b.product_name,
          b.spec, b.unit, COALESCE(b.current_stock, 0) as closing_balance,
-         b.category, s.name as supplier_name, b.currency, b.image_url
+         b.category, ${liveFirst('NULLIF(s.name, \'\')', 'NULLIF(b.supplier_name, \'\')', '\'\'')} as supplier_name, b.currency, b.image_url
   FROM bom b
   LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
   WHERE b.deleted_at IS NULL
@@ -4283,7 +4286,7 @@ app.get('/api/inventory/bom', authMiddleware, async c => c.json(await query(`
   SELECT b.id, b.product_sku as product_code, b.product_name,
          b.spec, b.unit, b.category,
          COALESCE(b.current_stock, 0) as closing_balance,
-         s.name as supplier_name, b.currency,
+         ${liveFirst('NULLIF(s.name, \'\')', 'NULLIF(b.supplier_name, \'\')', '\'\'')} as supplier_name, b.currency,
          b.image_url
   FROM bom b
   LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
