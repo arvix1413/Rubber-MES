@@ -1422,22 +1422,42 @@ app.post('/api/materials/bulk', authMiddleware, requirePerm('bom.create'), async
 app.get('/api/bom', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
   await ensureBomExtraColumns()
+  await ensureMaterialExtraColumns()
+  await ensureBomItemsExtraColumns()
+  await ensureMaterialReferenceColumns()
   const rows = await query<any>(`
     SELECT
       b.*,
-      s.name as supplier_display_name,
+      COALESCE(ms.name, s.name, b.supplier_name, '') as supplier_display_name,
+      COALESCE(ms.id, b.supplier_id) as linked_supplier_id,
+      COALESCE(NULLIF(m.material_name, ''), NULLIF(b.material_name, ''), '') as live_material_name,
+      COALESCE(NULLIF(m.spec, ''), NULLIF(b.spec, ''), '') as live_spec,
+      COALESCE(NULLIF(m.unit, ''), NULLIF(b.unit, ''), 'PCS') as live_unit,
+      COALESCE(NULLIF(m.currency, ''), NULLIF(b.currency, ''), 'VND') as live_currency,
+      COALESCE(NULLIF(m.color, ''), NULLIF(b.color, ''), '') as live_color,
+      COALESCE(NULLIF(m.leadtime_text, ''), NULLIF(b.lt, ''), '') as live_lt,
+      COALESCE(m.moq, b.moq) as live_moq,
+      COALESCE(m.moq_tiers, b.moq_tiers) as live_moq_tiers,
+      COALESCE(m.supplier_price, b.supplier_price, 0) as live_base_supplier_price,
+      COALESCE(m.company_price, b.company_price, 0) as live_base_company_price,
       COALESCE(bs.item_count, 0) as item_count,
       COALESCE(bs.agg_supplier_price, 0) as agg_supplier_price,
       COALESCE(bs.agg_company_price, 0) as agg_company_price
     FROM bom b
     LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+    LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     LEFT JOIN (
       SELECT
         bom_id,
         COUNT(*) as item_count,
-        COALESCE(SUM(COALESCE(supplier_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_supplier_price,
-        COALESCE(SUM(COALESCE(company_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_company_price
-      FROM bom_items
+        COALESCE(SUM(COALESCE(m2.supplier_price, bi.supplier_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_supplier_price,
+        COALESCE(SUM(COALESCE(m2.company_price, bi.company_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_company_price
+      FROM bom_items bi
+      LEFT JOIN materials m2 ON (
+        (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
+        OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
+      ) AND m2.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
     WHERE b.deleted_at IS NULL
@@ -1445,55 +1465,116 @@ app.get('/api/bom', authMiddleware, async c => {
   `)
   return c.json(rows.map((row: any) => {
     const itemCount = Number(row.item_count || 0)
-    const effectiveSupplier = itemCount > 0 ? toAmount(row.agg_supplier_price || 0) : toAmount(row.supplier_price || 0)
-    const effectiveCompany = itemCount > 0 ? toAmount(row.agg_company_price || 0) : toAmount(row.company_price || 0)
+    const baseSupplierPrice = toAmount(row.live_base_supplier_price || 0)
+    const baseCompanyPrice = toAmount(row.live_base_company_price || 0)
+    const effectiveSupplier = itemCount > 0 ? toAmount(row.agg_supplier_price || 0) : baseSupplierPrice
+    const effectiveCompany = itemCount > 0 ? toAmount(row.agg_company_price || 0) : baseCompanyPrice
     return {
       ...row,
-      base_supplier_price: toAmount(row.supplier_price || 0),
-      base_company_price: toAmount(row.company_price || 0),
+      supplier_id: row.linked_supplier_id ?? row.supplier_id ?? null,
+      supplier_name: row.supplier_display_name || row.supplier_name || '',
+      material_name: row.live_material_name || row.material_name || '',
+      spec: row.live_spec || row.spec || '',
+      unit: row.live_unit || row.unit || 'PCS',
+      currency: row.live_currency || row.currency || 'VND',
+      color: row.live_color || row.color || '',
+      lt: row.live_lt || row.lt || '',
+      moq: row.live_moq ?? row.moq ?? null,
+      base_supplier_price: baseSupplierPrice,
+      base_company_price: baseCompanyPrice,
       supplier_price: effectiveSupplier,
       company_price: effectiveCompany,
-      moq_tiers: parseMoqTiersFromDb(row.moq_tiers),
+      moq_tiers: parseMoqTiersFromDb(row.live_moq_tiers),
     }
   }))
 })
 app.get('/api/bom/:id', authMiddleware, async c => {
   await ensureBomMoqTiersColumn()
   await ensureBomExtraColumns()
+  await ensureMaterialExtraColumns()
+  await ensureBomItemsExtraColumns()
+  await ensureMaterialReferenceColumns()
   const bom = await queryOne<any>(`
     SELECT
       b.*,
-      s.name as supplier_display_name,
+      COALESCE(ms.name, s.name, b.supplier_name, '') as supplier_display_name,
+      COALESCE(ms.id, b.supplier_id) as linked_supplier_id,
+      COALESCE(NULLIF(m.material_name, ''), NULLIF(b.material_name, ''), '') as live_material_name,
+      COALESCE(NULLIF(m.spec, ''), NULLIF(b.spec, ''), '') as live_spec,
+      COALESCE(NULLIF(m.unit, ''), NULLIF(b.unit, ''), 'PCS') as live_unit,
+      COALESCE(NULLIF(m.currency, ''), NULLIF(b.currency, ''), 'VND') as live_currency,
+      COALESCE(NULLIF(m.color, ''), NULLIF(b.color, ''), '') as live_color,
+      COALESCE(NULLIF(m.leadtime_text, ''), NULLIF(b.lt, ''), '') as live_lt,
+      COALESCE(m.moq, b.moq) as live_moq,
+      COALESCE(m.moq_tiers, b.moq_tiers) as live_moq_tiers,
+      COALESCE(m.supplier_price, b.supplier_price, 0) as live_base_supplier_price,
+      COALESCE(m.company_price, b.company_price, 0) as live_base_company_price,
       COALESCE(bs.item_count, 0) as item_count,
       COALESCE(bs.agg_supplier_price, 0) as agg_supplier_price,
       COALESCE(bs.agg_company_price, 0) as agg_company_price
     FROM bom b
     LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
+    LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+    LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     LEFT JOIN (
       SELECT
         bom_id,
         COUNT(*) as item_count,
-        COALESCE(SUM(COALESCE(supplier_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_supplier_price,
-        COALESCE(SUM(COALESCE(company_price, 0) * COALESCE(NULLIF(quantity, 0), 1)), 0) as agg_company_price
-      FROM bom_items
+        COALESCE(SUM(COALESCE(m2.supplier_price, bi.supplier_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_supplier_price,
+        COALESCE(SUM(COALESCE(m2.company_price, bi.company_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_company_price
+      FROM bom_items bi
+      LEFT JOIN materials m2 ON (
+        (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
+        OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
+      ) AND m2.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
     WHERE b.id=? AND b.deleted_at IS NULL`, [c.req.param('id')])
   if (!bom) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
-    SELECT bi.*, bi.material_name as mat_name, bi.spec as mat_spec, bi.unit as mat_unit
+    SELECT
+      bi.*,
+      COALESCE(NULLIF(m.material_name, ''), NULLIF(bi.material_name, ''), '') as material_name,
+      COALESCE(NULLIF(m.spec, ''), NULLIF(bi.spec, ''), '') as spec,
+      COALESCE(NULLIF(m.unit, ''), NULLIF(bi.unit, ''), 'PCS') as unit,
+      COALESCE(NULLIF(ms.name, ''), NULLIF(bi.supplier_name, ''), '') as supplier_name,
+      COALESCE(m.supplier_price, bi.supplier_price, 0) as supplier_price,
+      COALESCE(m.company_price, bi.company_price, 0) as company_price,
+      COALESCE(NULLIF(m.currency, ''), NULLIF(bi.currency, ''), 'VND') as currency,
+      COALESCE(NULLIF(m.color, ''), NULLIF(bi.color, ''), '') as color,
+      COALESCE(NULLIF(m.leadtime_text, ''), NULLIF(bi.lt, ''), '') as lt,
+      COALESCE(m.moq, bi.moq) as moq,
+      bi.material_name as mat_name,
+      bi.spec as mat_spec,
+      bi.unit as mat_unit
     FROM bom_items bi
+    LEFT JOIN materials m ON (
+      (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m.id = bi.material_id)
+      OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m.material_code = bi.material_code)
+    ) AND m.deleted_at IS NULL
+    LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     WHERE bi.bom_id=?`, [c.req.param('id')])
   const itemCount = Number(bom.item_count || 0)
-  const effectiveSupplier = itemCount > 0 ? toAmount(bom.agg_supplier_price || 0) : toAmount(bom.supplier_price || 0)
-  const effectiveCompany = itemCount > 0 ? toAmount(bom.agg_company_price || 0) : toAmount(bom.company_price || 0)
+  const baseSupplierPrice = toAmount(bom.live_base_supplier_price || 0)
+  const baseCompanyPrice = toAmount(bom.live_base_company_price || 0)
+  const effectiveSupplier = itemCount > 0 ? toAmount(bom.agg_supplier_price || 0) : baseSupplierPrice
+  const effectiveCompany = itemCount > 0 ? toAmount(bom.agg_company_price || 0) : baseCompanyPrice
   return c.json({
     ...bom,
-    base_supplier_price: toAmount(bom.supplier_price || 0),
-    base_company_price: toAmount(bom.company_price || 0),
+    supplier_id: bom.linked_supplier_id ?? bom.supplier_id ?? null,
+    supplier_name: bom.supplier_display_name || bom.supplier_name || '',
+    material_name: bom.live_material_name || bom.material_name || '',
+    spec: bom.live_spec || bom.spec || '',
+    unit: bom.live_unit || bom.unit || 'PCS',
+    currency: bom.live_currency || bom.currency || 'VND',
+    color: bom.live_color || bom.color || '',
+    lt: bom.live_lt || bom.lt || '',
+    moq: bom.live_moq ?? bom.moq ?? null,
+    base_supplier_price: baseSupplierPrice,
+    base_company_price: baseCompanyPrice,
     supplier_price: effectiveSupplier,
     company_price: effectiveCompany,
-    moq_tiers: parseMoqTiersFromDb(bom.moq_tiers),
+    moq_tiers: parseMoqTiersFromDb(bom.live_moq_tiers),
     items,
   })
 })
