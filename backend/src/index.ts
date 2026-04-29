@@ -730,6 +730,22 @@ const resolveMaterialId = async (materialIdRaw: any, materialCodeRaw: any): Prom
 
 const liveFirst = (...exprs: string[]) => `COALESCE(${exprs.join(', ')})`
 
+const getActiveReferenceCount = async (sql: string, params: any[]) => {
+  const row = await queryOne<any>(sql, params)
+  return Number(row?.cnt || 0)
+}
+
+const blockIfReferenced = async (
+  id: any,
+  checks: Array<{ sql: string; label: string }>,
+): Promise<string | null> => {
+  for (const check of checks) {
+    const count = await getActiveReferenceCount(check.sql, [id])
+    if (count > 0) return `已經被使用了：${check.label} ${count} 筆`
+  }
+  return null
+}
+
 let ensureInvoiceTablesPromise: Promise<void> | null = null
 const ensureInvoiceTables = async () => {
   if (!ensureInvoiceTablesPromise) {
@@ -1243,9 +1259,14 @@ app.put('/api/suppliers/:id', authMiddleware, requirePerm('supplier.manage'), as
 })
 app.delete('/api/suppliers/:id', authMiddleware, requirePerm('supplier.manage'), async c => {
   const id = c.req.param('id')
-  // Check for linked POs before deleting
-  const linked = await queryOne<any>('SELECT COUNT(*) as cnt FROM purchase_orders WHERE supplier_id=? AND deleted_at IS NULL', [id])
-  if ((linked?.cnt || 0) > 0) return c.json({ error: `此供應商有 ${linked.cnt} 筆採購單，無法刪除` }, 400)
+  const blockedBy = await blockIfReferenced(id, [
+    { label: '材料', sql: 'SELECT COUNT(*) as cnt FROM materials WHERE supplier_id=? AND deleted_at IS NULL' },
+    { label: 'BOM', sql: 'SELECT COUNT(*) as cnt FROM bom WHERE supplier_id=? AND deleted_at IS NULL' },
+    { label: '採購單', sql: 'SELECT COUNT(*) as cnt FROM purchase_orders WHERE supplier_id=? AND deleted_at IS NULL' },
+    { label: '進貨單', sql: 'SELECT COUNT(*) as cnt FROM goods_receipts WHERE supplier_id=? AND deleted_at IS NULL' },
+    { label: '應付發票', sql: "SELECT COUNT(*) as cnt FROM invoice_headers WHERE invoice_type='supplier' AND party_id=? AND deleted_at IS NULL" },
+  ])
+  if (blockedBy) return c.json({ error: blockedBy }, 400)
   const row = await queryOne<any>('SELECT name FROM suppliers WHERE id=? AND deleted_at IS NULL', [id])
   if (!row) return c.json({ error: 'Not found' }, 404)
   await softDeleteById('suppliers', id, c.get('user')?.userId)
@@ -1279,9 +1300,15 @@ app.put('/api/customers/:id', authMiddleware, requirePerm('customer.manage'), as
 })
 app.delete('/api/customers/:id', authMiddleware, requirePerm('customer.manage'), async c => {
   const id = c.req.param('id')
-  // Check for linked orders before deleting
-  const linked = await queryOne<any>('SELECT COUNT(*) as cnt FROM customer_orders WHERE customer_id=? AND deleted_at IS NULL', [id])
-  if ((linked?.cnt || 0) > 0) return c.json({ error: `此客戶有 ${linked.cnt} 筆訂單，無法刪除` }, 400)
+  const blockedBy = await blockIfReferenced(id, [
+    { label: '客戶訂單', sql: 'SELECT COUNT(*) as cnt FROM customer_orders WHERE customer_id=? AND deleted_at IS NULL' },
+    { label: '報價單', sql: 'SELECT COUNT(*) as cnt FROM quotations WHERE customer_id=? AND deleted_at IS NULL' },
+    { label: '出貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_notes WHERE customer_id=? AND deleted_at IS NULL' },
+    { label: '送貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_sheets WHERE customer_id=? AND deleted_at IS NULL' },
+    { label: '交期進度', sql: 'SELECT COUNT(*) as cnt FROM delivery_progress WHERE customer_id=? AND deleted_at IS NULL' },
+    { label: '應收發票', sql: "SELECT COUNT(*) as cnt FROM invoice_headers WHERE invoice_type='customer' AND party_id=? AND deleted_at IS NULL" },
+  ])
+  if (blockedBy) return c.json({ error: blockedBy }, 400)
   const row = await queryOne<any>('SELECT customer_name FROM customers WHERE id=? AND deleted_at IS NULL', [id])
   if (!row) return c.json({ error: 'Not found' }, 404)
   await softDeleteById('customers', id, c.get('user')?.userId)
@@ -1362,6 +1389,17 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
 })
 app.delete('/api/materials/:id', authMiddleware, requirePerm('bom.delete'), async c => {
   const id = c.req.param('id')
+  const blockedBy = await blockIfReferenced(id, [
+    { label: 'BOM 用料', sql: 'SELECT COUNT(*) as cnt FROM bom_items bi JOIN bom b ON b.id = bi.bom_id WHERE bi.material_id=? AND b.deleted_at IS NULL' },
+    { label: '採購單明細', sql: 'SELECT COUNT(*) as cnt FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE pi.material_id=? AND po.deleted_at IS NULL' },
+    { label: '報價單明細', sql: 'SELECT COUNT(*) as cnt FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.material_id=? AND q.deleted_at IS NULL' },
+    { label: '出貨單明細', sql: 'SELECT COUNT(*) as cnt FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id WHERE dni.material_id=? AND dn.deleted_at IS NULL' },
+    { label: '送貨單明細', sql: 'SELECT COUNT(*) as cnt FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id WHERE dsi.material_id=? AND ds.deleted_at IS NULL' },
+    { label: '進貨單明細', sql: 'SELECT COUNT(*) as cnt FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE gri.material_id=? AND gr.deleted_at IS NULL' },
+    { label: '生產領料', sql: 'SELECT COUNT(*) as cnt FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id WHERE pm.material_id=? AND po.deleted_at IS NULL' },
+    { label: '庫存調整', sql: 'SELECT COUNT(*) as cnt FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id WHERE sai.material_id=? AND sa.deleted_at IS NULL' },
+  ])
+  if (blockedBy) return c.json({ error: blockedBy }, 400)
   const row = await queryOne<any>('SELECT material_code, material_name FROM materials WHERE id=? AND deleted_at IS NULL', [id])
   if (!row) return c.json({ error: 'Not found' }, 404)
   await softDeleteById('materials', id, c.get('user')?.userId)
@@ -1683,14 +1721,11 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
 })
 app.delete('/api/bom/:id', authMiddleware, requirePerm('bom.delete'), async c => {
   const id = c.req.param('id')
-  // Only active (non-soft-deleted) customer orders should block BOM deletion.
-  const linkedCO = await queryOne<any>(`
-    SELECT COUNT(*) as cnt
-    FROM customer_order_items coi
-    JOIN customer_orders co ON co.id = coi.order_id
-    WHERE coi.bom_id=? AND co.deleted_at IS NULL
-  `, [id])
-  if ((linkedCO?.cnt || 0) > 0) return c.json({ error: `此 BOM 有 ${linkedCO.cnt} 筆客戶訂單明細，無法刪除` }, 400)
+  const blockedBy = await blockIfReferenced(id, [
+    { label: '客戶訂單明細', sql: 'SELECT COUNT(*) as cnt FROM customer_order_items coi JOIN customer_orders co ON co.id = coi.order_id WHERE coi.bom_id=? AND co.deleted_at IS NULL' },
+    { label: '生產單', sql: 'SELECT COUNT(*) as cnt FROM production_orders WHERE bom_id=? AND deleted_at IS NULL' },
+  ])
+  if (blockedBy) return c.json({ error: blockedBy }, 400)
   const row = await queryOne<any>('SELECT product_sku,product_name FROM bom WHERE id=? AND deleted_at IS NULL', [id])
   if (!row) return c.json({ error: 'Not found' }, 404)
   await softDeleteById('bom', id, c.get('user')?.userId)
