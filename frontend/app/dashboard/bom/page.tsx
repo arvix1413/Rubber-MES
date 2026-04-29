@@ -87,12 +87,41 @@ export default function BomPage() {
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
 
-  const load = () => apiFetch<Bom[]>('/api/bom').then(setBoms).finally(()=>setLoading(false))
-  useEffect(()=>{
-    load()
-    apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(()=>{})
-    apiFetch<Material[]>('/api/materials').then(setMaterials).catch(()=>{})
-  },[])
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const [nextBoms, nextSuppliers, nextMaterials] = await Promise.all([
+        apiFetch<Bom[]>('/api/bom'),
+        apiFetch<Supplier[]>('/api/suppliers').catch(() => [] as Supplier[]),
+        apiFetch<Material[]>('/api/materials').catch(() => [] as Material[]),
+      ])
+      setBoms(nextBoms)
+      setSuppliers(nextSuppliers)
+      setMaterials(nextMaterials)
+      // Expanded row details depend on joined live data too; discard stale cache on refresh.
+      setLoadedItems({})
+    } finally {
+      if (showSpinner) setLoading(false)
+    }
+  }
+
+  useEffect(() => {
+    refreshAll(true)
+  }, [])
+
+  useEffect(() => {
+    const handleVisibility = () => {
+      if (document.visibilityState === 'visible') refreshAll(false)
+    }
+    const handleFocus = () => refreshAll(false)
+
+    window.addEventListener('focus', handleFocus)
+    document.addEventListener('visibilitychange', handleVisibility)
+    return () => {
+      window.removeEventListener('focus', handleFocus)
+      document.removeEventListener('visibilitychange', handleVisibility)
+    }
+  }, [])
   const toggleExpand = async (id: number) => {
     const next = new Set(expanded)
     if (next.has(id)) {
@@ -141,7 +170,7 @@ export default function BomPage() {
         toast('BOM 建立成功')
       }
       setEditing(null)
-      await load()
+      await refreshAll(false)
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
   }
 
@@ -151,7 +180,7 @@ export default function BomPage() {
     try {
       await apiFetch(`/api/bom/${id}`, { method:'DELETE' })
       toast('已刪除')
-      await load()
+      await refreshAll(false)
     } catch(e:any){ toast('刪除失敗：'+e.message, 'error') }
   }
 
