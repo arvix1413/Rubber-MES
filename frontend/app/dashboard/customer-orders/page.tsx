@@ -107,6 +107,75 @@ export default function CustomerOrdersPage() {
   const canWrite = can('customer_order.create')
   const canDel = can('customer_order.delete')
 
+  const loadOrderItems = async (id: number) => {
+    const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
+    const nextItems = data.items || []
+    setLoadedItems(p => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const loadBomMaterialItems = async (bomId: number) => {
+    setLoadingBomDetailIds((prev) => new Set(prev).add(bomId))
+    try {
+      const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+      const nextItems = detail?.items || []
+      setBomItemsByBomId((p) => ({ ...p, [bomId]: nextItems }))
+      return nextItems
+    } finally {
+      setLoadingBomDetailIds((prev) => {
+        const next = new Set(prev)
+        next.delete(bomId)
+        return next
+      })
+    }
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
+          return [id, data.items || []] as const
+        } catch {
+          return [id, []] as const
+        }
+      })
+    )
+    const nextLoadedItems = Object.fromEntries(nextEntries)
+    setLoadedItems(nextLoadedItems)
+
+    const bomIds = new Set<number>()
+    for (const rowKey of expandedItemRows) {
+      const orderId = Number(String(rowKey).split('-')[0] || 0)
+      const orderItems = nextLoadedItems[orderId] || []
+      for (const item of orderItems) {
+        const itemKey = `${orderId}-${item.id || item.bom_id || item.product_sku || orderItems.indexOf(item)}`
+        if (itemKey === rowKey && item.bom_id) {
+          bomIds.add(item.bom_id)
+        }
+      }
+    }
+    if (!bomIds.size) {
+      setBomItemsByBomId({})
+      return
+    }
+    const bomEntries = await Promise.all(
+      Array.from(bomIds).map(async (bomId) => {
+        try {
+          const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+          return [bomId, detail?.items || []] as const
+        } catch {
+          return [bomId, []] as const
+        }
+      })
+    )
+    setBomItemsByBomId(Object.fromEntries(bomEntries))
+  }
+
   const refreshAll = async (showSpinner = false) => {
     if (showSpinner) setLoading(true)
     try {
@@ -120,9 +189,7 @@ export default function CustomerOrdersPage() {
       setOrders((orderList as Order[]) || [])
       setBoms((bomList as BOM[]) || [])
       setCustomers((customerList as Customer[]) || [])
-      setLoadedItems({})
-      setExpandedItemRows(new Set())
-      setBomItemsByBomId({})
+      await refreshExpandedRows(Array.from(expanded))
       if (!canViewProfit) {
         setProfitByOrderId({})
         return
@@ -174,8 +241,7 @@ export default function CustomerOrdersPage() {
     else {
       next.add(id); setExpanded(next)
       if (loadedItems[id] === undefined) {
-        const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: data.items || [] }))
+        await loadOrderItems(id)
       }
     }
   }
@@ -189,17 +255,7 @@ export default function CustomerOrdersPage() {
     next.add(rowKey)
     setExpandedItemRows(next)
     if (bomId && bomItemsByBomId[bomId] === undefined) {
-      setLoadingBomDetailIds((prev) => new Set(prev).add(bomId))
-      try {
-        const detail = await apiFetch<any>(`/api/bom/${bomId}`)
-        setBomItemsByBomId((p) => ({ ...p, [bomId]: detail?.items || [] }))
-      } finally {
-        setLoadingBomDetailIds((prev) => {
-          const next = new Set(prev)
-          next.delete(bomId)
-          return next
-        })
-      }
+      await loadBomMaterialItems(bomId)
     }
   }
 

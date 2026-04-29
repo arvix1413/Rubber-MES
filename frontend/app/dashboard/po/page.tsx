@@ -66,6 +66,31 @@ export default function PoPage() {
   const canApprove = can('po.approve')
   const canDel = can('po.delete')
 
+  const loadPoItems = async (id: number) => {
+    const data = await apiFetch<Po>(`/api/po/${id}`)
+    const nextItems = data.items || []
+    setLoadedItems(p => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const data = await apiFetch<Po>(`/api/po/${id}`)
+          return [id, data.items || []] as const
+        } catch {
+          return [id, []] as const
+        }
+      })
+    )
+    setLoadedItems(Object.fromEntries(nextEntries))
+  }
+
   const refreshAll = async (showSpinner = false) => {
     if (showSpinner) setLoading(true)
     try {
@@ -77,7 +102,7 @@ export default function PoPage() {
       setPos(poRows || [])
       setSuppliers(supplierRows || [])
       setMaterials(materialRows || [])
-      setLoadedItems({})
+      await refreshExpandedRows(Array.from(expanded))
     } finally {
       setLoading(false)
     }
@@ -164,8 +189,7 @@ export default function PoPage() {
       next.add(id)
       setExpanded(next)
       if (!loadedItems[id]) {
-        const data = await apiFetch<Po>(`/api/po/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: data.items || [] }))
+        await loadPoItems(id)
       }
     }
   }

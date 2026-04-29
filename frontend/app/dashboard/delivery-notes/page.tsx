@@ -39,6 +39,31 @@ export default function DeliveryNotesPage() {
   const canWrite = can('delivery.create')
   const canDel = can('delivery.delete')
 
+  const loadDnItems = async (id: number) => {
+    const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
+    const nextItems = d.items || []
+    setLoadedItems(p => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
+          return [id, d.items || []] as const
+        } catch {
+          return [id, []] as const
+        }
+      })
+    )
+    setLoadedItems(Object.fromEntries(nextEntries))
+  }
+
   // Create form state
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
   const [poSearch, setPoSearch] = useState('')
@@ -58,7 +83,7 @@ export default function DeliveryNotesPage() {
       ])
       setDns(noteRows || [])
       setCustomers(customerRows || [])
-      setLoadedItems({})
+      await refreshExpandedRows(Array.from(expanded))
     } finally {
       setLoading(false)
     }
@@ -163,8 +188,7 @@ export default function DeliveryNotesPage() {
     else {
       next.add(id); setExpanded(next)
       if (!loadedItems[id]) {
-        const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: d.items || [] }))
+        await loadDnItems(id)
       }
     }
   }
