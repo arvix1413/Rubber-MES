@@ -1701,7 +1701,7 @@ app.get('/api/po', authMiddleware, async c => {
   const url = new URL(c.req.url)
   const status = url.searchParams.get('status') || ''
   const supplierId = url.searchParams.get('supplier_id') || ''
-  let sql = `SELECT po.*, s.name as supplier_name, s.supplier_code
+  let sql = `SELECT po.*, COALESCE(s.name, po.supplier_name) as supplier_name, s.supplier_code
     FROM purchase_orders po LEFT JOIN suppliers s ON po.supplier_id = s.id AND s.deleted_at IS NULL`
   const params: any[] = []
   const where: string[] = ['po.deleted_at IS NULL']
@@ -1713,7 +1713,7 @@ app.get('/api/po', authMiddleware, async c => {
 })
 app.get('/api/po/:id', authMiddleware, async c => {
   const po = await queryOne<any>(`
-    SELECT po.*, s.name as supplier_name, s.supplier_code
+    SELECT po.*, COALESCE(s.name, po.supplier_name) as supplier_name, s.supplier_code
     FROM purchase_orders po LEFT JOIN suppliers s ON po.supplier_id = s.id AND s.deleted_at IS NULL
     WHERE po.id=? AND po.deleted_at IS NULL`, [c.req.param('id')])
   if (!po) return c.json({ error: 'Not found' }, 404)
@@ -2010,7 +2010,7 @@ app.get('/api/customer-orders', authMiddleware, async c => {
                WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
                ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
              END as completion_rate,
-             c.customer_name, c.customer_code
+             COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
       LEFT JOIN customer_order_items ci ON ci.order_id = co.id
@@ -2024,7 +2024,7 @@ app.get('/api/customer-orders', authMiddleware, async c => {
     try {
       const orders = await query(`
         SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
-               c.customer_name, c.customer_code
+               COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
         FROM customer_orders co LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
         WHERE co.deleted_at IS NULL
         ORDER BY co.created_at DESC
@@ -2043,7 +2043,7 @@ app.get('/api/customer-orders/pending', authMiddleware, async c => {
 
   let sql = `
     SELECT co.id, co.po_number, co.po_date, co.status, co.customer_id,
-           c.customer_name,
+           COALESCE(c.customer_name, co.customer_name) as customer_name,
            GROUP_CONCAT(b.product_name ORDER BY ci.id SEPARATOR ', ') as items_summary
     FROM customer_orders co
     LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
@@ -2116,16 +2116,16 @@ app.get('/api/customer-orders/:id', authMiddleware, async c => {
            co.tax_rate, co.tax_amount, co.total_amount, co.currency,
            co.delivery_date, co.delivery_address, co.person_in_charge, co.payment_terms,
            co.received_amount, co.payment_status, co.payment_date, co.payment_note,
-           c.customer_name, c.customer_code, c.address, c.phone, c.fax, c.email, c.tax_id
+           COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code, c.address, c.phone, c.fax, c.email, c.tax_id
     FROM customer_orders co LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
     WHERE co.id=? AND co.deleted_at IS NULL`, [c.req.param('id')])
   if (!order) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT ci.id, ci.order_id, ci.bom_id, ci.qty, ci.unit_price, ci.rta_date, ci.po_no, ci.remark,
            ci.arrived_qty, ci.arrived_date, ci.balance, ci.status,
-           b.product_sku, b.product_name, b.version, b.spec, b.unit
+           b.product_sku, COALESCE(b.product_name, '') as product_name, b.version, COALESCE(b.spec, '') as spec, COALESCE(b.unit, 'PCS') as unit
     FROM customer_order_items ci
-    LEFT JOIN bom b ON ci.bom_id = b.id
+    LEFT JOIN bom b ON ci.bom_id = b.id AND b.deleted_at IS NULL
     WHERE ci.order_id=?`, [c.req.param('id')])
   return c.json({ ...order, items })
 })
@@ -2260,7 +2260,7 @@ app.get('/api/profit-tracking/orders', authMiddleware, requireManager, async c =
 
     const orders = await query<any>(`
       SELECT co.id, co.po_number, co.po_date, co.status, co.created_at, co.currency,
-             c.customer_name, c.customer_code
+             COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
       ${whereClause}
@@ -4066,7 +4066,7 @@ app.delete('/api/invoices/:id', authMiddleware, requirePerm('customer_order.crea
 
 // ── Delivery Notes ────────────────────────────────────────────────────────────
 app.get('/api/delivery-notes', authMiddleware, async c => c.json(await query(`
-  SELECT dn.*, c.customer_name, c.customer_code,
+  SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code,
          co.po_number as order_po_number
   FROM delivery_notes dn 
   LEFT JOIN customers c ON dn.customer_id = c.id AND c.deleted_at IS NULL
@@ -4076,7 +4076,7 @@ app.get('/api/delivery-notes', authMiddleware, async c => c.json(await query(`
 `)))
 app.get('/api/delivery-notes/:id', authMiddleware, async c => {
   const dn = await queryOne<any>(`
-    SELECT dn.*, c.customer_name, c.customer_code, c.address,
+    SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code, c.address,
            co.po_number as po_ref
     FROM delivery_notes dn 
     LEFT JOIN customers c ON dn.customer_id = c.id AND c.deleted_at IS NULL
@@ -4176,7 +4176,7 @@ app.delete('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.dele
 
 // ── Delivery Sheets (送貨單) ────────────────────────────────────────────────
 app.get('/api/delivery-sheets', authMiddleware, async c => c.json(await query(`
-  SELECT ds.*, c.customer_name, c.customer_code,
+  SELECT ds.*, COALESCE(c.customer_name, ds.customer_name) as customer_name, c.customer_code,
          co.po_number as order_po_number
   FROM delivery_sheets ds
   LEFT JOIN customers c ON ds.customer_id = c.id AND c.deleted_at IS NULL
@@ -4186,7 +4186,7 @@ app.get('/api/delivery-sheets', authMiddleware, async c => c.json(await query(`
 `)))
 app.get('/api/delivery-sheets/:id', authMiddleware, async c => {
   const ds = await queryOne<any>(`
-    SELECT ds.*, c.customer_name, c.customer_code, c.address,
+    SELECT ds.*, COALESCE(c.customer_name, ds.customer_name) as customer_name, c.customer_code, c.address,
            co.po_number as po_ref
     FROM delivery_sheets ds
     LEFT JOIN customers c ON ds.customer_id = c.id AND c.deleted_at IS NULL
@@ -4421,7 +4421,7 @@ app.get('/api/receivables', authMiddleware, async c => {
       SELECT
         ih.id,
         ih.invoice_no as dn_number,
-        ih.party_name as customer_name,
+        COALESCE(c.customer_name, ih.party_name) as customer_name,
         ih.invoice_date as delivery_date,
         ih.status,
         ih.remark,
@@ -4437,6 +4437,7 @@ app.get('/api/receivables', authMiddleware, async c => {
           WHERE ii.invoice_id = ih.id AND ii.deleted_at IS NULL
         ) as customer_po
       FROM invoice_headers ih
+      LEFT JOIN customers c ON c.id = ih.party_id AND c.deleted_at IS NULL
       WHERE ih.invoice_type = 'customer'
         AND ih.status = 'confirmed'
         AND ih.deleted_at IS NULL
@@ -4469,7 +4470,7 @@ app.get('/api/receivables/export/csv', authMiddleware, async c => {
     const rows = await query<any>(`
       SELECT
         ih.invoice_no,
-        ih.party_name as customer_name,
+        COALESCE(c.customer_name, ih.party_name) as customer_name,
         ih.invoice_date,
         ih.grand_total as invoice_amount,
         ih.received_amount,
@@ -4477,6 +4478,7 @@ app.get('/api/receivables/export/csv', authMiddleware, async c => {
         ih.payment_date,
         ih.payment_note
       FROM invoice_headers ih
+      LEFT JOIN customers c ON c.id = ih.party_id AND c.deleted_at IS NULL
       WHERE ih.invoice_type='customer' AND ih.status='confirmed' AND ih.deleted_at IS NULL
       ORDER BY ih.created_at DESC
       LIMIT 5000
@@ -4503,7 +4505,7 @@ app.get('/api/payables', authMiddleware, async c => {
       SELECT
         ih.id,
         ih.invoice_no as po_number,
-        ih.party_name as supplier_name,
+        COALESCE(s.name, ih.party_name) as supplier_name,
         ih.grand_total as total_amount,
         ih.currency,
         ih.status,
@@ -4514,6 +4516,7 @@ app.get('/api/payables', authMiddleware, async c => {
         ih.created_at,
         ih.confirmed_at as approved_at
       FROM invoice_headers ih
+      LEFT JOIN suppliers s ON s.id = ih.party_id AND s.deleted_at IS NULL
       WHERE ih.invoice_type = 'supplier'
         AND ih.status = 'confirmed'
         AND ih.deleted_at IS NULL
@@ -4546,7 +4549,7 @@ app.get('/api/payables/export/csv', authMiddleware, async c => {
     const rows = await query<any>(`
       SELECT
         ih.invoice_no,
-        ih.party_name as supplier_name,
+        COALESCE(s.name, ih.party_name) as supplier_name,
         ih.invoice_date,
         ih.grand_total as payable_amount,
         ih.paid_amount,
@@ -4554,6 +4557,7 @@ app.get('/api/payables/export/csv', authMiddleware, async c => {
         ih.payment_date,
         ih.payment_note
       FROM invoice_headers ih
+      LEFT JOIN suppliers s ON s.id = ih.party_id AND s.deleted_at IS NULL
       WHERE ih.invoice_type='supplier' AND ih.status='confirmed' AND ih.deleted_at IS NULL
       ORDER BY ih.created_at DESC
       LIMIT 5000
@@ -4734,7 +4738,7 @@ app.get('/api/process-health', authMiddleware, async c => {
 // ── Goods Receipts (進貨單) ───────────────────────────────────────────────────
 app.get('/api/goods-receipts', authMiddleware, async c => {
   const rows = await query(`
-    SELECT gr.*, s.name as supplier_name, s.supplier_code
+    SELECT gr.*, COALESCE(s.name, gr.supplier_name) as supplier_name, s.supplier_code
     FROM goods_receipts gr LEFT JOIN suppliers s ON gr.supplier_id = s.id AND s.deleted_at IS NULL
     WHERE gr.deleted_at IS NULL
     ORDER BY gr.created_at DESC`)
@@ -4742,7 +4746,7 @@ app.get('/api/goods-receipts', authMiddleware, async c => {
 })
 app.get('/api/goods-receipts/:id', authMiddleware, async c => {
   const gr = await queryOne<any>(`
-    SELECT gr.*, s.name as supplier_name
+    SELECT gr.*, COALESCE(s.name, gr.supplier_name) as supplier_name
     FROM goods_receipts gr LEFT JOIN suppliers s ON gr.supplier_id = s.id AND s.deleted_at IS NULL
     WHERE gr.id=? AND gr.deleted_at IS NULL`, [c.req.param('id')])
   if (!gr) return c.json({ error: 'Not found' }, 404)
