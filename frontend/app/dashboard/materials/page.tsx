@@ -346,10 +346,10 @@ export default function MaterialsPage() {
         {loading ? <div className="text-xs text-slate-500 p-6">載入中...</div> : (
           <>
             <div className="px-4 pt-4 text-xs text-slate-500">
-              表格區域可直接橫向與縱向捲動，滾動體驗與其他列表頁保持一致，查看後方欄位不需先把整頁滑到底部。
+              表格區域支援橫向捲動，頁面維持整體縱向捲動，與其他列表頁一致。
             </div>
             <div className="px-4 pb-4 pt-3">
-            <div className="table-scroll-x max-h-[68vh] overflow-y-auto rounded-xl border border-slate-200 bg-white shadow-inner">
+            <div className="table-scroll-x rounded-xl border border-slate-200 bg-white shadow-inner">
               <table className="rubber-table" style={{ minWidth: 1540 }}>
                 <thead>
                   <tr>
