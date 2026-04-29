@@ -19,6 +19,15 @@ const brandFont = Noto_Serif_TC({
 export const metadata: Metadata = {
   title: 'Rubber MES',
   description: '橡膠製造執行與訂單協同系統',
+  icons: {
+    icon: [
+      { url: '/icon.svg', type: 'image/svg+xml' },
+    ],
+    apple: [
+      { url: '/apple-icon.svg', type: 'image/svg+xml' },
+    ],
+    shortcut: ['/icon.svg'],
+  },
 }
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
