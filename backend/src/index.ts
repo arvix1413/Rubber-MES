@@ -2066,9 +2066,9 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
     SELECT
       COALESCE(bi.material_id, 0) as material_id,
       TRIM(COALESCE(bi.material_code, '')) as material_code,
-      TRIM(COALESCE(bi.material_name, '')) as material_name,
-      TRIM(COALESCE(bi.spec, '')) as spec,
-      TRIM(COALESCE(NULLIF(bi.unit, ''), 'PCS')) as unit,
+      TRIM(COALESCE(NULLIF(m.material_name, ''), bi.material_name, '')) as material_name,
+      TRIM(COALESCE(NULLIF(m.spec, ''), bi.spec, '')) as spec,
+      TRIM(COALESCE(NULLIF(m.unit, ''), NULLIF(bi.unit, ''), 'PCS')) as unit,
       COALESCE(SUM(COALESCE(ci.qty, 0) * COALESCE(bi.quantity, 0)), 0) as suggested_qty,
       MIN(ci.rta_date) as due_date,
       GROUP_CONCAT(DISTINCT co.po_number ORDER BY co.po_number SEPARATOR ', ') as order_po_numbers,
@@ -2080,13 +2080,17 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
     JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
     JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
     JOIN bom_items bi ON bi.bom_id = b.id
+    LEFT JOIN materials m ON (
+      (bi.material_id IS NOT NULL AND bi.material_id > 0 AND bi.material_id = m.id)
+      OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
     WHERE ci.order_id IN (${orderIds.map(() => '?').join(',')})
     GROUP BY
       COALESCE(bi.material_id, 0),
       TRIM(COALESCE(bi.material_code, '')),
-      TRIM(COALESCE(bi.material_name, '')),
-      TRIM(COALESCE(bi.spec, '')),
-      TRIM(COALESCE(NULLIF(bi.unit, ''), 'PCS'))
+      TRIM(COALESCE(NULLIF(m.material_name, ''), bi.material_name, '')),
+      TRIM(COALESCE(NULLIF(m.spec, ''), bi.spec, '')),
+      TRIM(COALESCE(NULLIF(m.unit, ''), NULLIF(bi.unit, ''), 'PCS'))
     ORDER BY material_name ASC, material_code ASC, spec ASC
   `, orderIds)
 
@@ -2576,24 +2580,38 @@ app.delete('/api/profit-tracking/entries/:entryId', authMiddleware, requireManag
 
 // ── Quotations ────────────────────────────────────────────────────────────────
 app.get('/api/quotations', authMiddleware, async c => c.json(await query(`
-  SELECT q.*, c.customer_name, c.customer_code
+  SELECT q.*, COALESCE(c.customer_name, q.customer_name) as customer_name, c.customer_code
   FROM quotations q LEFT JOIN customers c ON q.customer_id = c.id AND c.deleted_at IS NULL
   WHERE q.deleted_at IS NULL
   ORDER BY q.created_at DESC
 `)))
 app.get('/api/quotations/:id', authMiddleware, async c => {
   const q = await queryOne<any>(`
-    SELECT q.*, c.customer_name, c.customer_code
+    SELECT q.*, COALESCE(c.customer_name, q.customer_name) as customer_name, c.customer_code
     FROM quotations q LEFT JOIN customers c ON q.customer_id = c.id AND c.deleted_at IS NULL
     WHERE q.id=? AND q.deleted_at IS NULL`, [c.req.param('id')])
   if (!q) return c.json({ error: 'Not found' }, 404)
-  const rawItems = await query<any>('SELECT * FROM quotation_items WHERE quotation_id=?', [c.req.param('id')])
+  const rawItems = await query<any>(`
+    SELECT
+      qi.*,
+      COALESCE(NULLIF(m.material_name, ''), NULLIF(qi.item_name, ''), '') as item_name,
+      COALESCE(NULLIF(m.spec, ''), NULLIF(qi.spec, ''), '') as spec,
+      COALESCE(NULLIF(m.unit, ''), NULLIF(qi.unit, ''), 'PCS') as unit,
+      COALESCE(m.image_url, qi.image_url, '') as image_url,
+      COALESCE(m.moq_tiers, qi.moq) as moq_source
+    FROM quotation_items qi
+    LEFT JOIN materials m ON (
+      (qi.material_id IS NOT NULL AND qi.material_id > 0 AND qi.material_id = m.id)
+      OR ((qi.material_id IS NULL OR qi.material_id = 0) AND qi.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
+    WHERE qi.quotation_id=?
+  `, [c.req.param('id')])
   // Parse moq JSON into moq_tiers array
   const items = rawItems.map((item: any) => {
     let moq_tiers: {moq:number;price:number}[] = []
-    if (item.moq) {
+    if (item.moq_source) {
       try {
-        const parsed = JSON.parse(String(item.moq))
+        const parsed = JSON.parse(String(item.moq_source))
         if (Array.isArray(parsed)) moq_tiers = parsed
       } catch { /* legacy number */ }
     }
@@ -3033,9 +3051,15 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       if (remainingQty <= 0) continue
 
       const bom = await queryOne<any>(`
-        SELECT supplier_id, supplier_name, supplier_price, company_price
-        FROM bom
-        WHERE product_sku=? AND deleted_at IS NULL
+        SELECT
+          COALESCE(m.supplier_id, b.supplier_id) as supplier_id,
+          COALESCE(ms.name, b.supplier_name, '') as supplier_name,
+          COALESCE(m.supplier_price, b.supplier_price, 0) as supplier_price,
+          COALESCE(m.company_price, b.company_price, 0) as company_price
+        FROM bom b
+        LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+        LEFT JOIN suppliers ms ON ms.id = m.supplier_id AND ms.deleted_at IS NULL
+        WHERE b.product_sku=? AND b.deleted_at IS NULL
         LIMIT 1
       `, [item.material_code])
       const supplierId = bom?.supplier_id ? Number(bom.supplier_id) : null
@@ -3167,14 +3191,18 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
         co.po_number,
         dn.customer_name,
         dni.material_code,
-        dni.item_name as material_name,
-        COALESCE(NULLIF(dni.spec, ''), '') as spec,
-        COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
+        COALESCE(NULLIF(m.material_name, ''), NULLIF(dni.item_name, ''), '') as material_name,
+        COALESCE(NULLIF(m.spec, ''), NULLIF(dni.spec, ''), '') as spec,
+        COALESCE(NULLIF(m.unit, ''), NULLIF(dni.unit, ''), 'PCS') as unit,
         COALESCE(dni.qty, 0) as shipped_qty
       FROM delivery_note_items dni
       JOIN delivery_notes dn ON dn.id = dni.dn_id
       LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+      LEFT JOIN materials m ON (
+        (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
+        OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
+      ) AND m.deleted_at IS NULL
       WHERE dn.status = 'shipped'
         AND dn.deleted_at IS NULL
         AND sri.id IS NULL
