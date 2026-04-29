@@ -728,6 +728,14 @@ const resolveMaterialId = async (materialIdRaw: any, materialCodeRaw: any): Prom
   return Number.isFinite(resolved) && resolved > 0 ? resolved : null
 }
 
+const resolveMaterialSnapshot = async (materialIdRaw: any, materialCodeRaw: any) => {
+  const resolvedId = await resolveMaterialId(materialIdRaw, materialCodeRaw)
+  const material = resolvedId
+    ? await queryOne<any>('SELECT * FROM materials WHERE id=? AND deleted_at IS NULL LIMIT 1', [resolvedId])
+    : null
+  return { resolvedId, material }
+}
+
 const liveFirst = (...exprs: string[]) => `COALESCE(${exprs.join(', ')})`
 
 const getActiveReferenceCount = async (sql: string, params: any[]) => {
@@ -1673,9 +1681,25 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
     const bomId = r.insertId
     if (b.items?.length) {
       for (const item of b.items) {
-        const materialId = await resolveMaterialId(item.material_id, item.material_code)
+        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, item.material_code)
         await execute('INSERT INTO bom_items (bom_id,material_id,material_code,material_name,spec,unit,quantity,supplier_name,supplier_price,company_price,currency,remark,color,lt,moq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          [bomId,materialId,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity||null,item.supplier_name||'',item.supplier_price||0,item.company_price||0,item.currency||'VND',item.remark||'',item.color||'',item.lt||'',item.moq||null])
+          [
+            bomId,
+            materialId,
+            material?.material_code || item.material_code,
+            material?.material_name || item.material_name,
+            material?.spec || item.spec || '',
+            material?.unit || item.unit || 'PCS',
+            item.quantity || null,
+            material?.supplier_name || item.supplier_name || '',
+            material?.supplier_price || item.supplier_price || 0,
+            material?.company_price || item.company_price || 0,
+            material?.currency || item.currency || 'VND',
+            item.remark || '',
+            material?.color || item.color || '',
+            material?.leadtime_text || item.lt || '',
+            material?.moq ?? item.moq ?? null,
+          ])
       }
     }
     await audit(u, 'CREATE', 'BOM', bomId, `${productSku} ${productName}`)
@@ -1710,9 +1734,25 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
     await execute('DELETE FROM bom_items WHERE bom_id=?', [id])
     if (b.items?.length) {
       for (const item of b.items) {
-        const materialId = await resolveMaterialId(item.material_id, item.material_code)
+        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, item.material_code)
         await execute('INSERT INTO bom_items (bom_id,material_id,material_code,material_name,spec,unit,quantity,supplier_name,supplier_price,company_price,currency,remark,color,lt,moq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
-          [id,materialId,item.material_code,item.material_name,item.spec||'',item.unit||'PCS',item.quantity||null,item.supplier_name||'',item.supplier_price||0,item.company_price||0,item.currency||'VND',item.remark||'',item.color||'',item.lt||'',item.moq||null])
+          [
+            id,
+            materialId,
+            material?.material_code || item.material_code,
+            material?.material_name || item.material_name,
+            material?.spec || item.spec || '',
+            material?.unit || item.unit || 'PCS',
+            item.quantity || null,
+            material?.supplier_name || item.supplier_name || '',
+            material?.supplier_price || item.supplier_price || 0,
+            material?.company_price || item.company_price || 0,
+            material?.currency || item.currency || 'VND',
+            item.remark || '',
+            material?.color || item.color || '',
+            material?.leadtime_text || item.lt || '',
+            material?.moq ?? item.moq ?? null,
+          ])
       }
     }
     await audit(u, 'UPDATE', 'BOM', id, `${existing.product_sku} ${productName}`)

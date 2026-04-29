@@ -296,6 +296,8 @@ export default function BomPage() {
   }
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input'
+  const lockedInp = `${inp} bom-locked-field`
+  const headerMaterialLocked = Boolean(headerMaterialCode)
 
   return (
     <div>
@@ -351,29 +353,30 @@ export default function BomPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">規格</label>
-                <input className={inp} value={editing.spec||''} onChange={e=>setEditing(p=>({...p,spec:e.target.value}))} />
+                <input className={headerMaterialLocked ? lockedInp : inp} value={editing.spec||''} onChange={e=>setEditing(p=>({...p,spec:e.target.value}))} readOnly={headerMaterialLocked} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">顏色</label>
-                <input className={inp} value={editing.color||''} onChange={e=>setEditing(p=>({...p,color:e.target.value}))} />
+                <input className={headerMaterialLocked ? lockedInp : inp} value={editing.color||''} onChange={e=>setEditing(p=>({...p,color:e.target.value}))} readOnly={headerMaterialLocked} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">單位</label>
                 <select
-                  className={inp}
+                  className={headerMaterialLocked ? lockedInp : inp}
                   value={normalizeUnit(editing.unit)}
                   onChange={e=>setEditing(p=>({...p,unit:e.target.value}))}
+                  disabled={headerMaterialLocked}
                 >
                   {UNIT_OPTIONS.map(u => <option key={u} value={u}>{u}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">Leadtime</label>
-                <input className={inp} value={editing.lt||''} onChange={e=>setEditing(p=>({...p,lt:e.target.value}))} />
+                <input className={headerMaterialLocked ? lockedInp : inp} value={editing.lt||''} onChange={e=>setEditing(p=>({...p,lt:e.target.value}))} readOnly={headerMaterialLocked} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">MOQ</label>
-                <input type="number" className={inp} value={editing.moq ?? ''} onChange={e=>setEditing(p=>({...p,moq:e.target.value ? Number(e.target.value) : null}))} />
+                <input type="number" className={headerMaterialLocked ? lockedInp : inp} value={editing.moq ?? ''} onChange={e=>setEditing(p=>({...p,moq:e.target.value ? Number(e.target.value) : null}))} readOnly={headerMaterialLocked} />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">分類</label>
@@ -381,14 +384,14 @@ export default function BomPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商</label>
-                <select className={inp} value={editing.supplier_id != null ? String(editing.supplier_id) : ''} onChange={e=>onSupplierChange(e.target.value)}>
+                <select className={headerMaterialLocked ? lockedInp : inp} value={editing.supplier_id != null ? String(editing.supplier_id) : ''} onChange={e=>onSupplierChange(e.target.value)} disabled={headerMaterialLocked}>
                   <option value="">-- 選擇供應商 --</option>
                   {suppliers.map(s=><option key={s.id} value={String(s.id)}>{s.name}</option>)}
                 </select>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">幣別</label>
-                <select className={inp} value={editing.currency||'VND'} onChange={e=>setEditing(p=>({...p,currency:e.target.value}))}>
+                <select className={headerMaterialLocked ? lockedInp : inp} value={editing.currency||'VND'} onChange={e=>setEditing(p=>({...p,currency:e.target.value}))} disabled={headerMaterialLocked}>
                   <option>VND</option><option>TWD</option><option>CNY</option><option>USD</option>
                 </select>
               </div>
@@ -396,18 +399,20 @@ export default function BomPage() {
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
                 <DecimalInput
                   required
-                  className={inp}
+                  className={headerMaterialLocked ? lockedInp : inp}
                   value={editing.supplier_price}
                   onValueChange={(value) => setEditing((p) => ({ ...p, supplier_price: value }))}
+                  readOnly={headerMaterialLocked}
                 />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">公司售價</label>
                 <DecimalInput
                   required
-                  className={inp}
+                  className={headerMaterialLocked ? lockedInp : inp}
                   value={editing.company_price}
                   onValueChange={(value) => setEditing((p) => ({ ...p, company_price: value }))}
+                  readOnly={headerMaterialLocked}
                 />
               </div>
               <div className="col-span-2">
@@ -479,28 +484,30 @@ export default function BomPage() {
                               {materials.map(m => <option key={m.id} value={m.material_code}>{m.material_name}</option>)}
                             </datalist>
                           </td>
-                          <td className="p-1"><input className={inp} value={item.material_name || ''} onChange={e => updateItem(i, 'material_name', e.target.value)} /></td>
-                          <td className="p-1"><input className={inp} value={item.spec || ''} onChange={e => updateItem(i, 'spec', e.target.value)} /></td>
-                          <td className="p-1"><input className={inp} value={item.color || ''} onChange={e => updateItem(i, 'color', e.target.value)} /></td>
-                          <td className="p-1"><input className={inp} value={item.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} /></td>
-                          <td className="p-1"><input className={inp} value={item.supplier_name || ''} onChange={e => updateItem(i, 'supplier_name', e.target.value)} /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.material_name || ''} onChange={e => updateItem(i, 'material_name', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.spec || ''} onChange={e => updateItem(i, 'spec', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.color || ''} onChange={e => updateItem(i, 'color', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.supplier_name || ''} onChange={e => updateItem(i, 'supplier_name', e.target.value)} readOnly /></td>
                           <td className="p-1">
                             <DecimalInput
-                              className={inp}
+                              className={lockedInp}
                               value={item.supplier_price}
                               onValueChange={(value) => updateItem(i, 'supplier_price', value)}
+                              readOnly
                             />
                           </td>
                           <td className="p-1">
                             <DecimalInput
-                              className={inp}
+                              className={lockedInp}
                               value={item.company_price}
                               onValueChange={(value) => updateItem(i, 'company_price', value)}
+                              readOnly
                             />
                           </td>
-                          <td className="p-1"><input className={inp} value={item.currency || 'VND'} onChange={e => updateItem(i, 'currency', e.target.value)} /></td>
-                          <td className="p-1"><input className={inp} value={item.lt || ''} onChange={e => updateItem(i, 'lt', e.target.value)} /></td>
-                          <td className="p-1"><input type="number" className={inp} value={item.moq ?? ''} onChange={e => updateItem(i, 'moq', e.target.value ? Number(e.target.value) : null)} /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.currency || 'VND'} onChange={e => updateItem(i, 'currency', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input className={lockedInp} value={item.lt || ''} onChange={e => updateItem(i, 'lt', e.target.value)} readOnly /></td>
+                          <td className="p-1"><input type="number" className={lockedInp} value={item.moq ?? ''} onChange={e => updateItem(i, 'moq', e.target.value ? Number(e.target.value) : null)} readOnly /></td>
                           <td className="p-1"><input className={inp} value={item.remark || ''} onChange={e => updateItem(i, 'remark', e.target.value)} /></td>
                           <td className="p-1 text-center"><button type="button" className="text-slate-300 hover:text-red-600" onClick={() => removeItem(i)}>✕</button></td>
                         </tr>
