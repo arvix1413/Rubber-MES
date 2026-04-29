@@ -87,6 +87,31 @@ export default function BomPage() {
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
 
+  const loadBomItems = async (id: number) => {
+    const detail = await apiFetch<Bom>(`/api/bom/${id}`)
+    const nextItems = detail.items || []
+    setLoadedItems((p) => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const detail = await apiFetch<Bom>(`/api/bom/${id}`)
+          return [id, detail.items || []] as const
+        } catch {
+          return [id, []] as const
+        }
+      })
+    )
+    setLoadedItems(Object.fromEntries(nextEntries))
+  }
+
   const refreshAll = async (showSpinner = false) => {
     if (showSpinner) setLoading(true)
     try {
@@ -98,8 +123,7 @@ export default function BomPage() {
       setBoms(nextBoms)
       setSuppliers(nextSuppliers)
       setMaterials(nextMaterials)
-      // Expanded row details depend on joined live data too; discard stale cache on refresh.
-      setLoadedItems({})
+      await refreshExpandedRows(Array.from(expanded))
     } finally {
       if (showSpinner) setLoading(false)
     }
@@ -132,8 +156,7 @@ export default function BomPage() {
     next.add(id)
     setExpanded(next)
     if (loadedItems[id] === undefined) {
-      const detail = await apiFetch<Bom>(`/api/bom/${id}`)
-      setLoadedItems((p) => ({ ...p, [id]: detail.items || [] }))
+      await loadBomItems(id)
     }
   }
 
@@ -149,6 +172,7 @@ export default function BomPage() {
 
   const save = async () => {
     if (!editing) return
+    const editingId = editing.id ? Number(editing.id) : null
     if (!String(editing.product_sku || '').trim()) { toast('請填寫物料編號', 'error'); return }
     if (!String(editing.product_name || '').trim()) { toast('請填寫產品名稱', 'error'); return }
     if (!String(editing.unit || '').trim()) { toast('請選擇單位', 'error'); return }
@@ -170,7 +194,9 @@ export default function BomPage() {
         toast('BOM 建立成功')
       }
       setEditing(null)
+      setHeaderMaterialCode('')
       await refreshAll(false)
+      if (editingId && expanded.has(editingId)) await loadBomItems(editingId)
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
   }
 
