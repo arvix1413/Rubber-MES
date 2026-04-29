@@ -26,6 +26,29 @@ function syncStickyColumnMetrics(table: HTMLTableElement, thead: HTMLTableSectio
   }
 }
 
+function normalizeTableColumns(table: HTMLTableElement, thead: HTMLTableSectionElement) {
+  const headerCells = Array.from(thead.querySelectorAll<HTMLElement>('th'))
+  const bodyRows = Array.from(table.tBodies).flatMap((tbody) => Array.from(tbody.rows))
+  if (!headerCells.length || !bodyRows.length) return
+
+  headerCells.forEach((headerCell, columnIndex) => {
+    const computed = window.getComputedStyle(headerCell)
+    const align = computed.textAlign
+    const width = Math.ceil(headerCell.getBoundingClientRect().width)
+    if (!width) return
+
+    bodyRows.forEach((row) => {
+      const cell = row.cells[columnIndex] as HTMLTableCellElement | undefined
+      if (!cell || cell.colSpan > 1) return
+      cell.style.textAlign = align
+      cell.style.minWidth = `${width}px`
+      cell.style.width = `${width}px`
+      cell.style.maxWidth = `${width}px`
+      cell.style.verticalAlign = computed.verticalAlign || 'middle'
+    })
+  })
+}
+
 function getWrapperForTable(table: HTMLTableElement): HTMLElement | null {
   return (
     table.closest<HTMLElement>('.table-scroll-x') ||
@@ -85,6 +108,7 @@ export default function StickyTableHeaderBridge() {
 
       const { wrapper, table, thead } = active
       syncStickyColumnMetrics(table, thead)
+      normalizeTableColumns(table, thead)
       const mainRect = main.getBoundingClientRect()
       const wrapperRect = wrapper.getBoundingClientRect()
       const theadRect = thead.getBoundingClientRect()
@@ -151,7 +175,10 @@ export default function StickyTableHeaderBridge() {
     const update = () => {
       const hostRect = host.getBoundingClientRect()
       const candidates = getCandidateTables(content)
-      candidates.forEach(({ table, thead }) => syncStickyColumnMetrics(table, thead))
+      candidates.forEach(({ table, thead }) => {
+        syncStickyColumnMetrics(table, thead)
+        normalizeTableColumns(table, thead)
+      })
       const next = candidates
         .map(({ wrapper, table, thead }) => {
           const wrapperRect = wrapper.getBoundingClientRect()
