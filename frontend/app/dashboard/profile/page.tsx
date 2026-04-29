@@ -16,6 +16,12 @@ export default function ProfilePage() {
   const [uploadingSign, setUploadingSign] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
+  const syncUserToLayout = (nextUser: any) => {
+    if (!nextUser || typeof window === 'undefined') return
+    localStorage.setItem('rubber_user', JSON.stringify(nextUser))
+    window.dispatchEvent(new Event('rubber:user-updated'))
+  }
+
   const handleChangePw = async (e: React.FormEvent) => {
     e.preventDefault()
     if (!pwForm.currentPassword || !pwForm.newPassword) { toast('請填寫所有欄位', 'error'); return }
@@ -41,8 +47,8 @@ export default function ProfilePage() {
       form.append('file', file)
       const res = await apiFetch<{ url: string }>('/api/upload', { method: 'POST', body: form })
       const result = await apiFetch<{ ok: boolean; user: any }>('/api/auth/signature', { method: 'POST', body: JSON.stringify({ signature_url: res.url }) })
-      setSignatureUrl(res.url)
-      if (result.user) localStorage.setItem('rubber_user', JSON.stringify(result.user))
+      setSignatureUrl(`${res.url}${res.url.includes('?') ? '&' : '?'}t=${Date.now()}`)
+      syncUserToLayout(result.user)
       toast('簽名已儲存')
     } catch (e: any) { toast(e.message || '上傳失敗', 'error') }
     finally { setUploadingSign(false); if (fileInputRef.current) fileInputRef.current.value = '' }
@@ -52,7 +58,7 @@ export default function ProfilePage() {
     try {
       const result = await apiFetch<{ ok: boolean; user: any }>('/api/auth/signature', { method: 'POST', body: JSON.stringify({ signature_url: null }) })
       setSignatureUrl('')
-      if (result.user) localStorage.setItem('rubber_user', JSON.stringify(result.user))
+      syncUserToLayout(result.user)
       toast('簽名已移除')
     } catch (e: any) { toast(e.message, 'error') }
   }

@@ -1,5 +1,6 @@
 import { type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
+import { formatQuantity } from './numberFormat'
 
 export function generateDeliverySheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -12,7 +13,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const fmt = (v: any) => formatQuantity(num(v))
 
   const co = company || {
     company_name: 'CÔNG TY TNHH ĐÔNG PHƯƠNG VŨNG TÀU (TO2)',

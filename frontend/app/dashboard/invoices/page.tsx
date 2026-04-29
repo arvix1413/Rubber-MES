@@ -10,6 +10,7 @@ import { generateInvoiceHTML } from '@/lib/printInvoice'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { formatDecimal } from '@/lib/numberFormat'
+import DecimalInput from '@/components/DecimalInput'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -402,13 +403,12 @@ export default function InvoicesPage() {
                         />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
+                        <DecimalInput
                           className="rubber-input text-right w-28 ml-auto"
                           disabled={!checked}
-                          value={row?.unit_price ?? ''}
-                          onChange={(e) => {
-                            const unitPrice = Number(e.target.value || 0)
+                          value={row?.unit_price}
+                          onValueChange={(value) => {
+                            const unitPrice = value ?? 0
                             setSelected((prev) => ({ ...prev, [p.reconciliation_item_id]: { qty: prev[p.reconciliation_item_id]?.qty ?? p.remaining_qty, unit_price: unitPrice } }))
                           }}
                         />
@@ -539,13 +539,12 @@ export default function InvoicesPage() {
                                       />
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      <input
-                                        type="number"
+                                      <DecimalInput
                                         className="rubber-input text-right w-28 ml-auto"
                                         disabled={detail.status !== 'draft'}
                                         value={i.unit_price}
-                                        onChange={(e) => {
-                                          const unitPrice = Number(e.target.value || 0)
+                                        onValueChange={(value) => {
+                                          const unitPrice = value ?? 0
                                           setDetails((prev) => ({ ...prev, [h.id]: { ...detail, items: detail.items.map((row) => row.id === i.id ? { ...row, unit_price: unitPrice, amount: Number(row.qty || 0) * unitPrice } : row) } }))
                                         }}
                                       />

@@ -5,6 +5,7 @@ import { API, apiFetch, getToken } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { formatDecimal } from '@/lib/numberFormat'
+import DecimalInput from '@/components/DecimalInput'
 
 type AP = {
   id: number; po_number: string; supplier_name: string; total_amount: number | string
@@ -137,7 +138,11 @@ export default function PayablesPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{formatDecimal(editing.total_amount||0)} {editing.currency}）</label>
-                <input type="number" className="rubber-input" value={form.paid_amount === 0 ? '' : form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: e.target.value === '' ? 0 : Number(e.target.value) }))} />
+                <DecimalInput
+                  className="rubber-input"
+                  value={form.paid_amount === 0 ? undefined : Number(form.paid_amount)}
+                  onValueChange={(value) => setForm((p) => ({ ...p, paid_amount: value ?? 0 }))}
+                />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款日期</label>

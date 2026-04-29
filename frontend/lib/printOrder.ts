@@ -1,6 +1,7 @@
 import { type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
+import { formatDecimal, formatQuantity } from './numberFormat'
 
 export function generateOrderHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -13,8 +14,8 @@ export function generateOrderHTML(data: any, signatureUrl?: string, company?: Co
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmtQty = (v: any) => num(v).toLocaleString()
-  const fmtMoney = (v: any) => num(v).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+  const fmtQty = (v: any) => formatQuantity(num(v))
+  const fmtMoney = (v: any) => formatDecimal(num(v))
   const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
   const fmtDate = (v: any) => {
     const s = txt(v)

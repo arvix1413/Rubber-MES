@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { formatInteger } from '@/lib/numberFormat'
 
 type ProcessHealth = {
   generated_at: string
@@ -14,7 +15,7 @@ type ProcessHealth = {
   overdue_payables: { invoice_count: number; outstanding_amount: number }
 }
 
-const fmt = (n: number) => Number(n || 0).toLocaleString()
+const fmt = (n: number) => formatInteger(n || 0)
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)

@@ -11,7 +11,7 @@ import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
 import { formatDateYMD } from '@/lib/datetime'
-import { formatDecimal } from '@/lib/numberFormat'
+import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 
 // Customer order actions based on current status
 function getCOActions(status: string) {
@@ -593,8 +593,8 @@ export default function CustomerOrdersPage() {
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate whitespace-nowrap" title={o.customer_name}>{o.customer_name}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.po_date) || '—'}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.delivery_date) || '—'}</td>
-                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{qtyNum(o.shipped_total_qty).toLocaleString()} / {qtyNum(o.order_total_qty).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{qtyNum(o.balance_total_qty).toLocaleString()}</td>
+                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{formatInteger(qtyNum(o.shipped_total_qty))} / {formatInteger(qtyNum(o.order_total_qty))}</td>
+                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{formatInteger(qtyNum(o.balance_total_qty))}</td>
                         <td className="px-4 py-3 text-right whitespace-nowrap">
                           <span className={`text-xs font-semibold ${pct(o.completion_rate) >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>
                             {pct(o.completion_rate).toFixed(2)}%
@@ -692,12 +692,12 @@ export default function CustomerOrdersPage() {
                                             <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
                                             <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
                                             <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
-                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{formatInteger(Number(item.qty))}</td>
                                             <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
                                             <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
                                             <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
-                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
-                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{formatInteger(Number(item.arrived_qty||0))}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{formatInteger(Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)))}</td>
                                             <td className="px-4 py-2 text-right whitespace-nowrap">
                                               {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
                                             </td>
@@ -730,7 +730,7 @@ export default function CustomerOrdersPage() {
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.unit || 'PCS'}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.supplier_name || '—'}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.lt || '—'}</td>
-                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.moq != null ? Number(bomItem.moq).toLocaleString() : '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.moq != null ? formatInteger(Number(bomItem.moq)) : '—'}</td>
                                                             <td className="px-3 py-1.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(bomItem.supplier_price || 0)}</td>
                                                             <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(bomItem.company_price || 0)}</td>
                                                             <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap max-w-[220px] truncate" title={bomItem.remark || ''}>{bomItem.remark || '—'}</td>

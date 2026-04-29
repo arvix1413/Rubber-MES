@@ -1,4 +1,5 @@
 import { formatDateYMD } from './datetime'
+import { formatDecimal, formatQuantity } from './numberFormat'
 
 export const cleanText = (value: any): string => {
   if (value === null || value === undefined) return ''
@@ -14,11 +15,10 @@ export const toNum = (value: any): number => {
 
 export const formatQty = (value: any): string => {
   const n = Math.round(toNum(value) * 10000) / 10000
-  return n.toLocaleString()
+  return formatQuantity(n)
 }
 
-export const formatMoney = (value: any): string =>
-  toNum(value).toLocaleString(undefined, { minimumFractionDigits: 3, maximumFractionDigits: 3 })
+export const formatMoney = (value: any): string => formatDecimal(toNum(value))
 
 export const formatDate = (value: any): string => {
   const s = cleanText(value)

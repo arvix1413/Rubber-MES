@@ -8,6 +8,7 @@ import { StatusFlow, DN_STEPS, getDNActions } from '@/components/StatusFlow'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import { formatDateYMD } from '@/lib/datetime'
+import { formatQuantity } from '@/lib/numberFormat'
 
 type DNItem = { bom_id?:number|null; item_name:string; material_code:string; qty:number; shipped_qty:number; remark:string; po_ref?: string; spec?: string; unit?: string }
 type DN = { id:number; dn_number:string; customer_name:string; delivery_date:string; status:string; remark:string; created_at:string; items?:DNItem[]; order_po_number?:string }
@@ -296,7 +297,7 @@ export default function DeliveryNotesPage() {
                       <tr key={item.id} className="border-b border-slate-100 last:border-0">
                         <td className="px-3 py-2 text-slate-700 font-medium">{item.product_name}</td>
                         <td className="px-3 py-2 font-mono text-blue-600">{item.product_sku}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{item.qty.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{formatQuantity(item.qty)}</td>
                         <td className="px-3 py-2 text-right">
                           <input type="number" className={`${inp} w-24 text-right`}
                             min={0} max={item.qty}
@@ -443,7 +444,7 @@ export default function DeliveryNotesPage() {
                                           <td className="px-3 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{item.material_code}</td>
                                           <td className="px-3 py-2 text-slate-400">{(item as any).spec || '—'}</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit || 'PCS'}</td>
-                                          <td className="px-3 py-2 text-right font-medium">{Number(item.qty).toLocaleString()}</td>
+                                          <td className="px-3 py-2 text-right font-medium">{formatQuantity(Number(item.qty))}</td>
                                           <td className="px-3 py-2 text-slate-400">{item.remark}</td>
                                         </tr>
                                       ))}

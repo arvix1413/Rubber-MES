@@ -10,7 +10,7 @@ import { getCompany } from '@/lib/useCompany'
 import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 import { formatDateYMD } from '@/lib/datetime'
-import { formatDecimal } from '@/lib/numberFormat'
+import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 
 type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; material_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
@@ -683,7 +683,7 @@ export default function PoPage() {
                                           <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code}</td>
                                           <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[160px] truncate" title={item.material_name}>{item.material_name}</td>
                                           <td className="px-3 py-2 text-slate-400 whitespace-nowrap max-w-[120px] truncate" title={item.spec}>{item.spec}</td>
-                                          <td className="px-3 py-2 text-right text-slate-600 font-medium whitespace-nowrap">{Number(item.quantity).toLocaleString()}</td>
+                                          <td className="px-3 py-2 text-right text-slate-600 font-medium whitespace-nowrap">{formatInteger(Number(item.quantity))}</td>
                                           <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
                                           <td className="px-3 py-2 text-right text-slate-800 font-semibold whitespace-nowrap">{formatDecimal(item.total_price)}</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{Number((p as any).tax_rate || 8)}%</td>

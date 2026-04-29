@@ -7,6 +7,7 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import DecimalInput from '@/components/DecimalInput'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
@@ -363,26 +364,20 @@ export default function BomPage() {
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">供應商單價</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.001"
+                <DecimalInput
                   required
                   className={inp}
-                  value={editing.supplier_price ?? ''}
-                  onChange={e=>setEditing(p=>({...p,supplier_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
+                  value={editing.supplier_price}
+                  onValueChange={(value) => setEditing((p) => ({ ...p, supplier_price: value }))}
                 />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">公司售價</label>
-                <input
-                  type="number"
-                  min={0}
-                  step="0.001"
+                <DecimalInput
                   required
                   className={inp}
-                  value={editing.company_price ?? ''}
-                  onChange={e=>setEditing(p=>({...p,company_price:e.target.value === '' ? undefined : Number(e.target.value)}))}
+                  value={editing.company_price}
+                  onValueChange={(value) => setEditing((p) => ({ ...p, company_price: value }))}
                 />
               </div>
               <div className="col-span-2">
@@ -398,12 +393,11 @@ export default function BomPage() {
                         value={tier.moq || ''}
                         onChange={e=>updateTier(i, 'moq', Number(e.target.value))}
                       />
-                      <input
-                        type="number"
+                      <DecimalInput
                         className={inp}
                         placeholder="單價"
-                        value={tier.price || ''}
-                        onChange={e=>updateTier(i, 'price', Number(e.target.value))}
+                        value={tier.price}
+                        onValueChange={(value) => updateTier(i, 'price', value ?? 0)}
                       />
                     </div>
                   ))}
@@ -460,8 +454,20 @@ export default function BomPage() {
                           <td className="p-1"><input className={inp} value={item.color || ''} onChange={e => updateItem(i, 'color', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.unit || ''} onChange={e => updateItem(i, 'unit', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.supplier_name || ''} onChange={e => updateItem(i, 'supplier_name', e.target.value)} /></td>
-                          <td className="p-1"><input type="number" className={inp} value={item.supplier_price ?? ''} onChange={e => updateItem(i, 'supplier_price', e.target.value === '' ? undefined : Number(e.target.value))} /></td>
-                          <td className="p-1"><input type="number" className={inp} value={item.company_price ?? ''} onChange={e => updateItem(i, 'company_price', e.target.value === '' ? undefined : Number(e.target.value))} /></td>
+                          <td className="p-1">
+                            <DecimalInput
+                              className={inp}
+                              value={item.supplier_price}
+                              onValueChange={(value) => updateItem(i, 'supplier_price', value)}
+                            />
+                          </td>
+                          <td className="p-1">
+                            <DecimalInput
+                              className={inp}
+                              value={item.company_price}
+                              onValueChange={(value) => updateItem(i, 'company_price', value)}
+                            />
+                          </td>
                           <td className="p-1"><input className={inp} value={item.currency || 'VND'} onChange={e => updateItem(i, 'currency', e.target.value)} /></td>
                           <td className="p-1"><input className={inp} value={item.lt || ''} onChange={e => updateItem(i, 'lt', e.target.value)} /></td>
                           <td className="p-1"><input type="number" className={inp} value={item.moq ?? ''} onChange={e => updateItem(i, 'moq', e.target.value ? Number(e.target.value) : null)} /></td>

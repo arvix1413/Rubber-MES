@@ -8,6 +8,7 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
+import DecimalInput from '@/components/DecimalInput'
 
 type Material = {
   id: number
@@ -293,12 +294,11 @@ export default function MaterialsPage() {
                         value={tier.moq || ''}
                         onChange={e=>updateTier(i, 'moq', Number(e.target.value))}
                       />
-                      <input
-                        type="number"
+                      <DecimalInput
                         className="rubber-input"
                         placeholder="單價"
-                        value={tier.price || ''}
-                        onChange={e=>updateTier(i, 'price', Number(e.target.value))}
+                        value={tier.price}
+                        onValueChange={(value) => updateTier(i, 'price', value ?? 0)}
                       />
                     </div>
                   ))}
