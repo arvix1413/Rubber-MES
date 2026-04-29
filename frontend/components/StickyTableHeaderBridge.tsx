@@ -8,6 +8,24 @@ type ActiveTableState = {
   thead: HTMLTableSectionElement
 }
 
+function syncStickyColumnMetrics(table: HTMLTableElement, thead: HTMLTableSectionElement) {
+  if (table.closest('.no-sticky-cols')) return
+  const headerCells = Array.from(thead.querySelectorAll<HTMLElement>('th'))
+  const first = headerCells[0]
+  const second = headerCells[1]
+  if (!first || !second) return
+
+  const firstWidth = Math.ceil(first.getBoundingClientRect().width)
+  const secondWidth = Math.ceil(second.getBoundingClientRect().width)
+
+  if (firstWidth > 0) {
+    table.style.setProperty('--sticky-col-1-width', `${firstWidth}px`)
+  }
+  if (secondWidth > 0) {
+    table.style.setProperty('--sticky-col-2-width', `${secondWidth}px`)
+  }
+}
+
 function getWrapperForTable(table: HTMLTableElement): HTMLElement | null {
   return (
     table.closest<HTMLElement>('.table-scroll-x') ||
@@ -66,6 +84,7 @@ export default function StickyTableHeaderBridge() {
       if (!active) return
 
       const { wrapper, table, thead } = active
+      syncStickyColumnMetrics(table, thead)
       const mainRect = main.getBoundingClientRect()
       const wrapperRect = wrapper.getBoundingClientRect()
       const theadRect = thead.getBoundingClientRect()
@@ -89,6 +108,8 @@ export default function StickyTableHeaderBridge() {
       viewport.style.marginLeft = `${Math.max(0, wrapperRect.left - mainRect.left)}px`
       cloneTable.style.width = `${table.scrollWidth}px`
       cloneTable.style.minWidth = `${table.scrollWidth}px`
+      cloneTable.style.setProperty('--sticky-col-1-width', table.style.getPropertyValue('--sticky-col-1-width'))
+      cloneTable.style.setProperty('--sticky-col-2-width', table.style.getPropertyValue('--sticky-col-2-width'))
       cloneTable.style.transform = `translateX(${-wrapper.scrollLeft}px)`
 
       const sourceCells = Array.from(thead.querySelectorAll<HTMLElement>('th'))
@@ -130,6 +151,7 @@ export default function StickyTableHeaderBridge() {
     const update = () => {
       const hostRect = host.getBoundingClientRect()
       const candidates = getCandidateTables(content)
+      candidates.forEach(({ table, thead }) => syncStickyColumnMetrics(table, thead))
       const next = candidates
         .map(({ wrapper, table, thead }) => {
           const wrapperRect = wrapper.getBoundingClientRect()
