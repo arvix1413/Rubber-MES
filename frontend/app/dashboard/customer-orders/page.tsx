@@ -149,7 +149,7 @@ export default function CustomerOrdersPage() {
     setLoadedItems(nextLoadedItems)
 
     const bomIds = new Set<number>()
-    for (const rowKey of expandedItemRows) {
+    for (const rowKey of Array.from(expandedItemRows)) {
       const orderId = Number(String(rowKey).split('-')[0] || 0)
       const orderItems = nextLoadedItems[orderId] || []
       for (const item of orderItems) {
