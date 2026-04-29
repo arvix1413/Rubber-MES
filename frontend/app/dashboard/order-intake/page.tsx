@@ -6,6 +6,7 @@ import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
 import { useDialog } from '@/components/Dialog'
 import { SearchableSelect } from '@/components/SearchableSelect'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type IntakeItem = {
   id: number
@@ -201,15 +202,21 @@ export default function OrderIntakePage() {
   const [editMaterialLoading, setEditMaterialLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
 
-  const load = async (nextStatus = status) => {
-    setLoading(true)
+  const refreshAll = async (nextStatus = status, showSpinner = false) => {
+    if (showSpinner) setLoading(true)
     try {
       const params = new URLSearchParams()
       if (search.trim()) params.set('search', search.trim())
       if (nextStatus) params.set('status', nextStatus)
       params.set('page_size', '1000')
-      const data = await apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`)
-      setRows(data)
+      const [progressRows, customerRows, orderRows] = await Promise.all([
+        apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`),
+        apiFetch<Customer[]>('/api/customers'),
+        apiFetch<OrderSummary[]>('/api/customer-orders'),
+      ])
+      setRows(progressRows || [])
+      setCustomers(customerRows || [])
+      setOrders((orderRows || []).filter((it) => it.status !== 'completed'))
     } catch (e: any) {
       toast(String(e?.message || '交期進度載入失敗'), 'error')
     } finally {
@@ -217,24 +224,12 @@ export default function OrderIntakePage() {
     }
   }
 
-  const loadBaseOptions = async () => {
-    try {
-      const [customerRows, orderRows] = await Promise.all([
-        apiFetch<Customer[]>('/api/customers'),
-        apiFetch<OrderSummary[]>('/api/customer-orders'),
-      ])
-      setCustomers(customerRows || [])
-      setOrders((orderRows || []).filter((it) => it.status !== 'completed'))
-    } catch {
-      // ignore
-    }
-  }
-
   useEffect(() => {
-    load('')
-    loadBaseOptions()
+    void refreshAll('', true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
+
+  useRefreshOnFocus(() => refreshAll(status, false))
 
   const fetchOrderMaterialOptions = async (orderIds: number[]) => {
     if (!orderIds.length) return []
@@ -503,7 +498,7 @@ export default function OrderIntakePage() {
         notice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
       }
       closeCreate()
-      await load(status)
+      await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '建立失敗'), 'error')
     }
@@ -514,7 +509,7 @@ export default function OrderIntakePage() {
     try {
       await apiFetch(`/api/order-intake/${row.id}`, { method: 'DELETE' })
       toast('已刪除')
-      await load(status)
+      await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '刪除失敗'), 'error')
     }
@@ -650,7 +645,7 @@ export default function OrderIntakePage() {
       })
       toast('交期進度已更新')
       closeEdit()
-      await load(status)
+      await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '更新失敗'), 'error')
     }
@@ -662,7 +657,7 @@ export default function OrderIntakePage() {
     try {
       const { res, lines } = await generatePoForProgress(id)
       notice(`已生成 ${res.count || lines.length} 張採購單`, '本次建立結果：', lines)
-      await load(status)
+      await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '生成採購單失敗'), 'error')
     } finally {
@@ -699,7 +694,7 @@ export default function OrderIntakePage() {
             <option value="open">進行中</option>
             <option value="completed">已完成</option>
           </select>
-          <button className="btn-primary" onClick={() => { setPage(1); load(status) }}>查詢</button>
+          <button className="btn-primary" onClick={() => { setPage(1); void refreshAll(status, true) }}>查詢</button>
         </div>
       </div>
 

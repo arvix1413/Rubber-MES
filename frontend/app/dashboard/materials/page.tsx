@@ -9,6 +9,7 @@ import { UNIT_OPTIONS, normalizeUnit } from '@/lib/units'
 import { normalizeMoqTiers, type MoqTier } from '@/lib/moqPricing'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import DecimalInput from '@/components/DecimalInput'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type Material = {
   id: number
@@ -72,12 +73,25 @@ export default function MaterialsPage() {
   const canEdit = can('bom.edit')
   const canDel = can('bom.delete')
 
-  const load = () => apiFetch<Material[]>('/api/materials').then(setRows).finally(() => setLoading(false))
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const [materialRows, supplierRows] = await Promise.all([
+        apiFetch<Material[]>('/api/materials'),
+        apiFetch<Supplier[]>('/api/suppliers'),
+      ])
+      setRows(materialRows || [])
+      setSuppliers(supplierRows || [])
+    } finally {
+      setLoading(false)
+    }
+  }
 
   useEffect(() => {
-    load()
-    apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(() => {})
+    void refreshAll(true)
   }, [])
+
+  useRefreshOnFocus(() => refreshAll(false))
 
   useEffect(() => {
     if (!editing) {
@@ -155,7 +169,7 @@ export default function MaterialsPage() {
         toast('材料建立成功')
       }
       setEditing(null)
-      await load()
+      await refreshAll(false)
     } catch (e: any) {
       toast(`儲存失敗：${e.message}`, 'error')
     }
@@ -166,7 +180,7 @@ export default function MaterialsPage() {
     try {
       await apiFetch(`/api/materials/${id}`, { method: 'DELETE' })
       toast('已刪除')
-      await load()
+      await refreshAll(false)
     } catch (e: any) {
       toast(`刪除失敗：${e.message}`, 'error')
     }

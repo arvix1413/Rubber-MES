@@ -12,6 +12,7 @@ import { getCompany } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
 import { formatDateYMD } from '@/lib/datetime'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 // Customer order actions based on current status
 function getCOActions(status: string) {
@@ -106,33 +107,43 @@ export default function CustomerOrdersPage() {
   const canWrite = can('customer_order.create')
   const canDel = can('customer_order.delete')
 
-  const load = () => {
-    const requests: Promise<any>[] = [apiFetch<Order[]>('/api/customer-orders')]
-    if (canViewProfit) requests.push(apiFetch<{ orders: ProfitOrderSummary[] }>('/api/profit-tracking/orders'))
-    return Promise.all(requests)
-      .then(([orderList, profitResp]) => {
-        setOrders(orderList as Order[])
-        if (!canViewProfit) {
-          setProfitByOrderId({})
-          return
-        }
-        const map: Record<number, ProfitOrderSummary> = {}
-        ;((profitResp as { orders?: ProfitOrderSummary[] } | undefined)?.orders || []).forEach((row) => {
-          map[Number(row.id)] = row
-        })
-        setProfitByOrderId(map)
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const requests: Promise<any>[] = [
+        apiFetch<Order[]>('/api/customer-orders'),
+        apiFetch<BOM[]>('/api/bom'),
+        apiFetch<Customer[]>('/api/customers'),
+      ]
+      if (canViewProfit) requests.push(apiFetch<{ orders: ProfitOrderSummary[] }>('/api/profit-tracking/orders'))
+      const [orderList, bomList, customerList, profitResp] = await Promise.all(requests)
+      setOrders((orderList as Order[]) || [])
+      setBoms((bomList as BOM[]) || [])
+      setCustomers((customerList as Customer[]) || [])
+      setLoadedItems({})
+      setExpandedItemRows(new Set())
+      setBomItemsByBomId({})
+      if (!canViewProfit) {
+        setProfitByOrderId({})
+        return
+      }
+      const map: Record<number, ProfitOrderSummary> = {}
+      ;((profitResp as { orders?: ProfitOrderSummary[] } | undefined)?.orders || []).forEach((row) => {
+        map[Number(row.id)] = row
       })
-      .catch(err => {
-        console.error('Failed to load orders:', err)
-        toast('載入訂單失敗：' + err.message, 'error')
-      })
-      .finally(()=>setLoading(false))
+      setProfitByOrderId(map)
+    } catch (err: any) {
+      console.error('Failed to load orders:', err)
+      toast('載入訂單失敗：' + err.message, 'error')
+    } finally {
+      setLoading(false)
+    }
   }
   useEffect(()=>{
-    load()
-    apiFetch<BOM[]>('/api/bom').then(setBoms).catch(()=>{})
-    apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(()=>{})
+    void refreshAll(true)
   },[])
+
+  useRefreshOnFocus(() => refreshAll(false))
 
   const buildUnitPriceInputs = (items: OrderItem[]) =>
     Object.fromEntries(items.map((item, idx) => [idx, Number(item.unit_price || 0) ? formatDecimal(item.unit_price) : '']))
@@ -208,7 +219,7 @@ export default function CustomerOrdersPage() {
       }
       setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] })
       setUnitPriceInputs({})
-      await load()
+      await refreshAll(false)
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
   }
 
@@ -287,7 +298,7 @@ export default function CustomerOrdersPage() {
     try {
       await apiFetch(`/api/customer-orders/${id}`, { method:'DELETE' })
       toast('已刪除')
-      await load()
+      await refreshAll(false)
     } catch(e:any){ toast('刪除失敗：'+e.message, 'error') }
   }
 
@@ -305,7 +316,7 @@ export default function CustomerOrdersPage() {
     try {
       await apiFetch(`/api/customer-orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       toast('狀態已更新')
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 

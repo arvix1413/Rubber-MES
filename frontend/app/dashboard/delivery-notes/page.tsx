@@ -9,6 +9,7 @@ import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
 import { formatDateYMD } from '@/lib/datetime'
 import { formatQuantity } from '@/lib/numberFormat'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type DNItem = { bom_id?:number|null; item_name:string; material_code:string; qty:number; shipped_qty:number; remark:string; po_ref?: string; spec?: string; unit?: string }
 type DN = { id:number; dn_number:string; customer_name:string; delivery_date:string; status:string; remark:string; created_at:string; items?:DNItem[]; order_po_number?:string }
@@ -48,11 +49,26 @@ export default function DeliveryNotesPage() {
   const [deliveryDate, setDeliveryDate] = useState('')
   const [remark, setRemark] = useState('')
 
-  const load = () => apiFetch<DN[]>('/api/delivery-notes').then(setDns).finally(() => setLoading(false))
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const [noteRows, customerRows] = await Promise.all([
+        apiFetch<DN[]>('/api/delivery-notes'),
+        apiFetch<Customer[]>('/api/customers'),
+      ])
+      setDns(noteRows || [])
+      setCustomers(customerRows || [])
+      setLoadedItems({})
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    load()
-    apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(() => {})
+    void refreshAll(true)
   }, [])
+
+  useRefreshOnFocus(() => refreshAll(false))
 
   const lockedCustomerId = (() => {
     const selectedOrder = pendingOrders.find((order) => String(order.id) === selectedOrderId)
@@ -131,7 +147,7 @@ export default function DeliveryNotesPage() {
       toast('出貨單建立成功')
       setCreating(false)
       resetForm()
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 
@@ -169,7 +185,7 @@ export default function DeliveryNotesPage() {
       await apiFetch(`/api/delivery-notes/${editing.id}`, { method: 'PUT', body: JSON.stringify(editForm) })
       toast('出貨單已更新')
       setEditing(null)
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('更新失敗：' + e.message, 'error') }
   }
 
@@ -184,7 +200,7 @@ export default function DeliveryNotesPage() {
     try {
       await apiFetch(`/api/delivery-notes/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       toast('狀態已更新')
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('操作失敗：' + e.message, 'error') }
     finally { setActionLoading(null) }
   }
@@ -193,7 +209,7 @@ export default function DeliveryNotesPage() {
     if (!await confirmDialog('確定刪除？')) return
     try {
       await apiFetch(`/api/delivery-notes/${id}`, { method: 'DELETE' })
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('刪除失敗：' + e.message, 'error') }
   }
 

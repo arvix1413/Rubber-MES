@@ -11,6 +11,7 @@ import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 import { formatDateYMD } from '@/lib/datetime'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type PoItem = { material_code:string; material_name:string; spec:string; unit:string; quantity:number; unit_price:number; total_price:number; currency:string; remark:string; po_ref:string; thickness?:number|string; image_url?:string; material_id?:number }
 type Po = { id:number; po_number:string; supplier_name:string; status:string; total_amount:number; tax_rate?:number; currency:string; remark:string; created_at:string; approved_at?:string; items?:PoItem[] }
@@ -65,12 +66,28 @@ export default function PoPage() {
   const canApprove = can('po.approve')
   const canDel = can('po.delete')
 
-  const load = () => apiFetch<Po[]>('/api/po').then(setPos).finally(() => setLoading(false))
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const [poRows, supplierRows, materialRows] = await Promise.all([
+        apiFetch<Po[]>('/api/po'),
+        apiFetch<Supplier[]>('/api/suppliers'),
+        apiFetch<Material[]>('/api/materials'),
+      ])
+      setPos(poRows || [])
+      setSuppliers(supplierRows || [])
+      setMaterials(materialRows || [])
+      setLoadedItems({})
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    load()
-    apiFetch<Supplier[]>('/api/suppliers').then(setSuppliers).catch(() => {})
-    apiFetch<Material[]>('/api/materials').then(setMaterials).catch(() => {})
+    void refreshAll(true)
   }, [])
+
+  useRefreshOnFocus(() => refreshAll(false))
 
   const buildUnitPriceInputs = (items: PoItemExt[]) =>
     Object.fromEntries(items.map((item, idx) => [idx, Number(item.unit_price || 0) ? formatDecimal(item.unit_price) : '']))
@@ -158,8 +175,7 @@ export default function PoPage() {
     try {
       await apiFetch(`/api/po/${id}/approve`, { method: 'PATCH' })
       toast('已核准')
-      setLoadedItems(p => { const n = { ...p }; delete n[id]; return n })
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('核准失敗：' + e.message, 'error') }
   }
 
@@ -169,8 +185,7 @@ export default function PoPage() {
     try {
       await apiFetch(`/api/po/${po.id}/receive`, { method: 'PATCH' })
       toast('收貨完成，庫存已更新')
-      setLoadedItems(p => { const n = { ...p }; delete n[po.id]; return n })
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('收貨失敗：' + e.message, 'error') }
   }
 
@@ -182,11 +197,7 @@ export default function PoPage() {
     try {
       await apiFetch(`/api/po/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       toast('狀態已更新')
-      await load()
-      if (expanded.has(id)) {
-        const data = await apiFetch<Po>(`/api/po/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: data.items || [] }))
-      }
+      await refreshAll(false)
     } catch (e: any) { toast('操作失敗：' + e.message, 'error') }
   }
 
@@ -195,7 +206,7 @@ export default function PoPage() {
     if (!await confirmDialog('確定刪除此採購單？')) return
     try {
       await apiFetch(`/api/po/${id}`, { method: 'DELETE' })
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('刪除失敗：' + e.message, 'error') }
   }
 
@@ -342,7 +353,7 @@ export default function PoPage() {
       setUnitPriceInputs({})
       setSourceOrderPoNo('')
       setSourceMeta(null)
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 
