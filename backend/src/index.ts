@@ -1719,13 +1719,16 @@ app.get('/api/po/:id', authMiddleware, async c => {
   if (!po) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT pi.*,
-           COALESCE(pi.material_name, m.material_name, b.product_name, '') as material_name,
-           COALESCE(pi.spec, m.spec, b.spec, '') as spec,
-           COALESCE(pi.unit, m.unit, b.unit, 'PCS') as unit,
+           COALESCE(NULLIF(m.material_name, ''), NULLIF(pi.material_name, ''), b.product_name, '') as material_name,
+           COALESCE(NULLIF(m.spec, ''), NULLIF(pi.spec, ''), b.spec, '') as spec,
+           COALESCE(NULLIF(m.unit, ''), NULLIF(pi.unit, ''), b.unit, 'PCS') as unit,
            COALESCE(m.image_url, b.image_url, '') as image_url
     FROM po_items pi 
-    LEFT JOIN materials m ON pi.material_id = m.id
-    LEFT JOIN bom b ON pi.material_code = b.product_sku
+    LEFT JOIN materials m ON (
+      (pi.material_id IS NOT NULL AND pi.material_id > 0 AND pi.material_id = m.id)
+      OR ((pi.material_id IS NULL OR pi.material_id = 0) AND pi.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
+    LEFT JOIN bom b ON pi.material_code = b.product_sku AND b.deleted_at IS NULL
     WHERE pi.po_id=?`, [c.req.param('id')])
   return c.json({ ...po, items })
 })
@@ -1763,22 +1766,25 @@ app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm
         SELECT
           bi.material_id,
           bi.material_code,
-          bi.material_name,
-          bi.spec,
-          bi.unit,
+          COALESCE(NULLIF(m.material_name, ''), NULLIF(bi.material_name, ''), '') as material_name,
+          COALESCE(NULLIF(m.spec, ''), NULLIF(bi.spec, ''), '') as spec,
+          COALESCE(NULLIF(m.unit, ''), NULLIF(bi.unit, ''), 'PCS') as unit,
           bi.quantity as bom_qty,
-          bi.supplier_name as bom_supplier_name,
+          COALESCE(NULLIF(s.name, ''), NULLIF(bi.supplier_name, ''), '') as bom_supplier_name,
           bi.supplier_price as bom_supplier_price,
-          bi.currency as bom_currency,
+          COALESCE(NULLIF(m.currency, ''), NULLIF(bi.currency, ''), 'VND') as bom_currency,
           bi.remark,
-          m.supplier_id,
-          s.name as supplier_name,
+          COALESCE(m.supplier_id, NULL) as supplier_id,
+          COALESCE(NULLIF(s.name, ''), NULLIF(bi.supplier_name, ''), '') as supplier_name,
           m.supplier_price as material_supplier_price,
           m.currency as material_currency,
           m.moq_tiers,
           m.image_url
         FROM bom_items bi
-        LEFT JOIN materials m ON bi.material_id = m.id AND m.deleted_at IS NULL
+        LEFT JOIN materials m ON (
+          (bi.material_id IS NOT NULL AND bi.material_id > 0 AND bi.material_id = m.id)
+          OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
+        ) AND m.deleted_at IS NULL
         LEFT JOIN suppliers s ON m.supplier_id = s.id AND s.deleted_at IS NULL
         WHERE bi.bom_id=?
         ORDER BY bi.id ASC
@@ -3346,16 +3352,21 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
         dn.customer_order_id,
         co.po_number,
         dni.material_code,
-        COALESCE(NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
-        b.supplier_id,
-        s.name as supplier_name,
-        COALESCE(NULLIF(dni.unit, ''), 'PCS') as unit,
+        COALESCE(NULLIF(m.material_name, ''), NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
+        COALESCE(m.supplier_id, b.supplier_id) as supplier_id,
+        COALESCE(ms.name, s.name, '') as supplier_name,
+        COALESCE(NULLIF(m.unit, ''), NULLIF(dni.unit, ''), 'PCS') as unit,
         COALESCE(dni.qty, 0) as shipped_qty
       FROM delivery_note_items dni
       JOIN delivery_notes dn ON dn.id = dni.dn_id
       LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+      LEFT JOIN materials m ON (
+        (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
+        OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
+      ) AND m.deleted_at IS NULL
       LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
+      LEFT JOIN suppliers ms ON ms.id = m.supplier_id AND ms.deleted_at IS NULL
       LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
       WHERE dni.id IN (${placeholders})
         AND dn.status = 'shipped'
@@ -3611,11 +3622,12 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
         co.customer_id,
         co.customer_name,
         COALESCE(ci.unit_price, 0) as customer_unit_price,
-        COALESCE(b.supplier_price, 0) as supplier_unit_price
+        COALESCE(m.supplier_price, b.supplier_price, 0) as supplier_unit_price
       FROM shipment_reconciliation_items sri
       JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
       LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN customer_order_items ci ON ci.id = sri.order_item_id
+      LEFT JOIN materials m ON sri.material_code = m.material_code AND m.deleted_at IS NULL
       LEFT JOIN bom b ON b.product_sku = sri.material_code AND b.deleted_at IS NULL
       WHERE sr.status = 'confirmed'
         AND sr.deleted_at IS NULL
@@ -3819,12 +3831,13 @@ app.post('/api/invoices', authMiddleware, requirePerm('customer_order.create'), 
         co.customer_id,
         co.customer_name,
         COALESCE(coi.unit_price, 0) as customer_unit_price,
-        COALESCE(b.supplier_price, 0) as supplier_unit_price,
+        COALESCE(m.supplier_price, b.supplier_price, 0) as supplier_unit_price,
         s.name as supplier_name_resolved
       FROM shipment_reconciliation_items sri
       JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
       LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN customer_order_items coi ON coi.id = sri.order_item_id
+      LEFT JOIN materials m ON sri.material_code = m.material_code AND m.deleted_at IS NULL
       LEFT JOIN bom b ON b.product_sku = sri.material_code AND b.deleted_at IS NULL
       LEFT JOIN suppliers s ON s.id = sri.supplier_id AND s.deleted_at IS NULL
       WHERE sri.id IN (${placeholders})
@@ -4044,11 +4057,14 @@ app.get('/api/delivery-notes/:id', authMiddleware, async c => {
   if (!dn) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT dni.*, 
-           COALESCE(NULLIF(dni.item_name,''), m.material_name, b.product_name, '') as item_name,
-           COALESCE(NULLIF(dni.spec,''), m.spec, b.spec) as spec,
-           COALESCE(NULLIF(dni.unit,''), m.unit, b.unit, 'PCS') as unit
+           COALESCE(NULLIF(m.material_name,''), NULLIF(dni.item_name,''), b.product_name, '') as item_name,
+           COALESCE(NULLIF(m.spec,''), NULLIF(dni.spec,''), b.spec) as spec,
+           COALESCE(NULLIF(m.unit,''), NULLIF(dni.unit,''), b.unit, 'PCS') as unit
     FROM delivery_note_items dni
-    LEFT JOIN materials m ON dni.material_id = m.id AND m.deleted_at IS NULL
+    LEFT JOIN materials m ON (
+      (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
+      OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
     LEFT JOIN (
       SELECT bom.id, bom.product_sku, bom.product_name, 
              COALESCE(bom.spec, GROUP_CONCAT(DISTINCT bi.spec SEPARATOR ', ')) as spec,
@@ -4151,11 +4167,14 @@ app.get('/api/delivery-sheets/:id', authMiddleware, async c => {
   if (!ds) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT dsi.*,
-           COALESCE(NULLIF(dsi.item_name,''), m.material_name, b.product_name, '') as item_name,
-           COALESCE(NULLIF(dsi.spec,''), m.spec, b.spec) as spec,
-           COALESCE(NULLIF(dsi.unit,''), m.unit, b.unit, 'PCS') as unit
+           COALESCE(NULLIF(m.material_name,''), NULLIF(dsi.item_name,''), b.product_name, '') as item_name,
+           COALESCE(NULLIF(m.spec,''), NULLIF(dsi.spec,''), b.spec) as spec,
+           COALESCE(NULLIF(m.unit,''), NULLIF(dsi.unit,''), b.unit, 'PCS') as unit
     FROM delivery_sheet_items dsi
-    LEFT JOIN materials m ON dsi.material_id = m.id AND m.deleted_at IS NULL
+    LEFT JOIN materials m ON (
+      (dsi.material_id IS NOT NULL AND dsi.material_id > 0 AND dsi.material_id = m.id)
+      OR ((dsi.material_id IS NULL OR dsi.material_id = 0) AND dsi.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
     LEFT JOIN (
       SELECT bom.id, bom.product_sku, bom.product_name,
              COALESCE(bom.spec, GROUP_CONCAT(DISTINCT bi.spec SEPARATOR ', ')) as spec,
@@ -4701,12 +4720,15 @@ app.get('/api/goods-receipts/:id', authMiddleware, async c => {
   if (!gr) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT gri.*,
-           COALESCE(NULLIF(gri.material_name,''), m.material_name, b.product_name, '') as material_name,
-           COALESCE(NULLIF(gri.spec,''), m.spec, b.spec) as spec,
-           COALESCE(NULLIF(gri.unit,''), m.unit, b.unit, 'PCS') as unit
+           COALESCE(NULLIF(m.material_name,''), NULLIF(gri.material_name,''), b.product_name, '') as material_name,
+           COALESCE(NULLIF(m.spec,''), NULLIF(gri.spec,''), b.spec) as spec,
+           COALESCE(NULLIF(m.unit,''), NULLIF(gri.unit,''), b.unit, 'PCS') as unit
     FROM goods_receipt_items gri
-    LEFT JOIN materials m ON gri.material_id = m.id AND m.deleted_at IS NULL
-    LEFT JOIN bom b ON gri.material_code = b.product_sku
+    LEFT JOIN materials m ON (
+      (gri.material_id IS NOT NULL AND gri.material_id > 0 AND gri.material_id = m.id)
+      OR ((gri.material_id IS NULL OR gri.material_id = 0) AND gri.material_code = m.material_code)
+    ) AND m.deleted_at IS NULL
+    LEFT JOIN bom b ON gri.material_code = b.product_sku AND b.deleted_at IS NULL
     WHERE gri.gr_id=?`, [c.req.param('id')])
   return c.json({ ...gr, items })
 })
