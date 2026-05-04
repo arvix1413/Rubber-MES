@@ -8,8 +8,6 @@ import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany } from '@/lib/useCompany'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
-import { SHARED_PRINT_ITEM_TABLE_CSS } from '@/lib/printItemTableStyles'
-import { SHARED_PRINT_PARTY_TABLE_CSS } from '@/lib/printPartyTableStyles'
 
 type MoqTier = { moq: number; price: number }
 type QItem = { bom_id?:number|null; item_name:string; material_code:string; spec:string; unit:string; qty:number; unit_price:number; total_price:number; remark:string; moq_tiers:MoqTier[]; image_url?:string }
@@ -22,7 +20,7 @@ type Customer = {
   phone?: string
   address?: string
 }
-type BOM = { id:number; product_sku:string; product_name:string; spec:string; unit:string; company_price:number; image_url?:string; moq_tiers?: MoqTier[] }
+type BOM = { id:number; product_sku:string; product_name:string; spec:string; unit:string; company_price:number; image_url?:string; moq_tiers?: MoqTier[]; color?: string }
 
 const emptyTiers = (): MoqTier[] => Array.from({length:5}, () => ({ moq: 0, price: 0 }))
 const emptyItem = (): QItem => ({ bom_id:null, item_name:'', material_code:'', spec:'', unit:'', qty:0, unit_price:0, total_price:0, remark:'', moq_tiers:emptyTiers(), image_url:'' })
@@ -240,6 +238,20 @@ export default function QuotationsPage() {
       return Number.isFinite(n) ? n : 0
     }
     const fmt = (v: any) => formatDecimal(num(v))
+    const escapeHtml = (v: any) => txt(v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+    const extractThickness = (spec: string) => {
+      const source = txt(spec)
+      if (!source) return ''
+      const match = source.match(/(\d+(?:\.\d+)?)\s*mm/i)
+      if (match) return `${match[1]} MM`
+      const leading = source.match(/^(\d+(?:\.\d+)?)(?=\D|$)/)
+      if (leading) return `${leading[1]} MM`
+      return ''
+    }
 
     const [data, company] = await Promise.all([
       apiFetch<Q>(`/api/quotations/${id}`),
@@ -248,8 +260,6 @@ export default function QuotationsPage() {
     const quotation = data as any
     const items = data.items || []
     const signUrl = getSignatureUrl()
-    const apiBase = process.env.NEXT_PUBLIC_API_URL || (typeof window !== 'undefined' ? window.location.origin : 'http://43.160.199.226')
-    const logoUrl = company.logo_url ? (company.logo_url.startsWith('http') ? company.logo_url : `${apiBase}${company.logo_url}`) : null
     const rawCustomerId = quotation.customer_id ?? q.customer_id
     const customerDetail = rawCustomerId
       ? customers.find(c => String(c.id) === String(rawCustomerId))
@@ -257,166 +267,123 @@ export default function QuotationsPage() {
     const customerAddress = txt(customerDetail?.address)
     const customerPhone = txt(customerDetail?.phone)
     const customerContact = txt(customerDetail?.contact)
+    const issueDate = String(q.created_at || '').slice(0,10).replace(/-/g, '/')
+    const expireDate = q.valid_until ? String(q.valid_until).slice(0,10).replace(/-/g, '/') : ''
+    const todayRateLine = txt(q.currency) === 'USD' ? '匯率: 1 USD = 26,500 VND' : ''
 
     const itemRows = items.map((item: any, idx: number) => {
-      const imgUrl = item.image_url
-        ? (item.image_url.startsWith('http') ? item.image_url : `${apiBase}${item.image_url}`)
-        : ''
-      let tiers: {moq:number;price:number}[] = []
-      if (item.moq_tiers && Array.isArray(item.moq_tiers)) {
-        tiers = item.moq_tiers.filter((t: any) => t.moq > 0 || t.price > 0)
-      } else if (item.moq) {
-        try {
-          const parsed = JSON.parse(String(item.moq))
-          if (Array.isArray(parsed)) tiers = parsed.filter((t: any) => t.moq > 0 || t.price > 0)
-        } catch { if (item.moq) tiers = [{moq: Number(item.moq)||0, price: Number(item.unit_price)||0}] }
-      }
-      if (tiers.length === 0 && num(item.unit_price) > 0) tiers = [{moq:0, price: num(item.unit_price)}]
-
-      const moqCell = tiers.map(t => `<div style="line-height:1.6;white-space:nowrap">${t.moq > 0 ? fmt(t.moq) : ''}</div>`).join('')
-      const priceCell = tiers.map(t => `<div style="line-height:1.6;white-space:nowrap">${t.price > 0 ? fmt(t.price) : ''}</div>`).join('')
+      const matchedBom = boms.find(b => b.product_sku === item.material_code)
+      const spec = txt(item.spec || matchedBom?.spec)
+      const color = txt((matchedBom as any)?.color)
+      const thickness = extractThickness(spec)
+      const unitPrice = num(item.unit_price)
+      const usdPrice = txt(q.currency).toUpperCase() === 'USD' ? fmt(unitPrice) : ''
+      const vndPrice = txt(q.currency).toUpperCase() === 'VND' ? fmt(unitPrice) : ''
+      const remark = txt(item.remark)
+      const displayRemark = remark || (txt(q.currency).toUpperCase() === 'TWD' ? `Price in ${escapeHtml(q.currency)}` : '')
 
       return `
       <tr>
-        <td class="col-st" style="text-align:center;font-size:11px">${idx+1}</td>
-        <td style="font-size:11px">${txt(item.item_name)}</td>
-        <td class="col-code" style="text-align:center;font-size:11px">${txt(item.material_code)}</td>
-        <td class="col-spec" style="font-size:11px">${txt(item.spec)}</td>
-        <td class="col-unit" style="text-align:center;font-size:11px">${txt(item.unit) || 'PCS'}</td>
-        <td class="col-moq" style="text-align:center;font-size:11px">${moqCell}</td>
-        <td class="col-price" style="text-align:center;font-size:11px">${priceCell}</td>
-        <td class="col-image" style="text-align:center;padding:2px">
-          ${imgUrl ? `<img src="${imgUrl}" style="max-width:60px;max-height:50px;object-fit:contain" onerror="this.style.display='none'"/>` : ''}
-        </td>
-        <td class="col-remark" style="text-align:center;font-size:10px;color:#555">${txt(item.remark)}</td>
+        <td class="seq">${idx + 1}</td>
+        <td class="product">${escapeHtml(item.item_name)}</td>
+        <td class="spec">${escapeHtml(spec)}</td>
+        <td class="thin">${escapeHtml(thickness)}</td>
+        <td class="color">${escapeHtml(color)}</td>
+        <td class="unit">${escapeHtml(txt(item.unit) || 'PCS')}</td>
+        <td class="money">${usdPrice}</td>
+        <td class="money">${vndPrice}</td>
+        <td class="remark">${escapeHtml(displayRemark)}</td>
       </tr>`
     }).join('')
+
+    const noteText = txt(q.remark) || [
+      '付款條件 / Payment: according to sales contract.',
+      '交貨日期 / Lead time: Samples 3~5 days, production 5~8 days after PO confirmed.',
+      '交貨方式 / Delivery: Vietnam local door to door.',
+      '單價不含 VAT / Price excluding VAT.',
+      '任何問題根據合同內容討論 / Any concern according to sales contract.',
+      todayRateLine,
+      txt(company.company_name),
+    ].filter(Boolean).join('\n')
 
     const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/>
     <title>報價單 ${txt(quotation.quotation_number || q.quotation_number)}</title>
     <style>
       *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:"Microsoft JhengHei","PingFang TC",Arial,sans-serif;font-size:11px;font-weight:400;color:#000;background:#fff}
-      .page{padding:8mm 6mm;max-width:210mm;margin:0 auto}
-      .header{display:flex;justify-content:space-between;align-items:flex-start;border-bottom:2px solid #000;padding-bottom:5mm;margin-bottom:5mm}
-      .company{font-size:18px;font-weight:700;letter-spacing:1px;text-transform:uppercase}
-      .subtitle{font-size:10px;color:#666;margin-top:3px}
-      .doc-title{font-size:22px;font-weight:700;color:#1a56db;text-align:right}
-      .doc-sub{font-size:10px;color:#666;text-align:right;margin-top:2px}
-      .doc-no{font-size:12px;font-weight:600;text-align:right;margin-top:3px}
-      ${SHARED_PRINT_PARTY_TABLE_CSS}
-      .info-table{width:100%;border-collapse:collapse;margin-bottom:5mm}
-      .info-table td{border:1px solid #bbb;padding:5px 8px;font-size:11px;font-weight:400;vertical-align:middle;text-align:center}
-      .info-table .lbl{font-weight:600;background:#f5f5f5;white-space:nowrap;width:120px;color:#333}
-      ${SHARED_PRINT_ITEM_TABLE_CSS}
-      .note-box{border:1px solid #bbb;padding:6px 10px;margin-bottom:5mm;font-size:10px;line-height:1.6}
-      .note-title{font-weight:600;margin-bottom:4px}
-      .sign-row{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
-      .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
-      .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-      .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
-      .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
+      body{font-family:"Microsoft JhengHei","PingFang TC",Arial,sans-serif;font-size:11px;color:#111;background:#fff}
+      .page{padding:8mm 8mm 10mm;max-width:210mm;margin:0 auto}
+      .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4mm}
+      .title{font-size:24px;font-weight:700;letter-spacing:.5px}
+      .doc-no{font-size:11px;font-weight:600;text-align:right;margin-top:4px}
+      .block{margin-bottom:5px;font-size:11px;line-height:1.45}
+      .block strong{font-weight:700}
+      .meta{margin-top:2mm;margin-bottom:4mm}
+      table.quote{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}
+      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle}
+      table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
+      table.quote td{height:30px}
+      .seq{width:6%;text-align:center}
+      .product{width:24%}
+      .spec{width:18%}
+      .thin{width:10%;text-align:center}
+      .color{width:10%;text-align:center}
+      .unit{width:8%;text-align:center}
+      .money{width:10%;text-align:right;font-variant-numeric:tabular-nums}
+      .remark{width:14%}
+      .notes{margin-top:4mm}
+      .notes-title{font-weight:700;margin-bottom:4px}
+      .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
+      .signature{margin-top:6mm;text-align:left}
+      .signature img{max-height:36px;max-width:140px;object-fit:contain}
+      .signature-name{margin-top:8px;font-size:10px;font-weight:600}
       @media print{body{-webkit-print-color-adjust:exact}@page{size:A4;margin:0}}
     </style></head><body>
     <div class="page">
-      <div class="header">
+      <div class="topbar">
         <div>
-          ${logoUrl ? `<img src="${logoUrl}" style="max-height:40px;max-width:160px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'"/><br/>` : ''}
-          <div class="company">${txt(company.company_name)}</div>
-          <div class="subtitle">${txt(company.company_name_local)}</div>
+          <div class="title">報價單 QUOTATION</div>
         </div>
         <div>
-          <div class="doc-title">報價單</div>
-          <div class="doc-sub">QUOTATION / BẢNG BÁO GIÁ</div>
-          <div class="doc-no">No. ${txt(quotation.quotation_number || q.quotation_number)}</div>
+          <div class="doc-no">No. ${escapeHtml(quotation.quotation_number || q.quotation_number)}</div>
         </div>
       </div>
 
-      <table class="party-table">
-        <tr>
-          <td class="section" colspan="4">本公司 / Company Name</td>
-          <td class="section" colspan="4">客戶公司 / Customer Name</td>
-        </tr>
-        <tr>
-          <td class="label">公司名</td>
-          <td class="value" colspan="3">${txt(company.company_name)}</td>
-          <td class="label">公司名</td>
-          <td class="value" colspan="3">${txt(q.customer_name)}</td>
-        </tr>
-        <tr>
-          <td class="label">地址</td>
-          <td class="value" colspan="3">${txt(company.address)}</td>
-          <td class="label">地址</td>
-          <td class="value" colspan="3">${customerAddress}</td>
-        </tr>
-        <tr>
-          <td class="label">電話</td>
-          <td class="value" colspan="3">${txt(company.phone)}</td>
-          <td class="label">電話</td>
-          <td class="value" colspan="3">${customerPhone}</td>
-        </tr>
-        <tr>
-          <td class="label">聯絡人</td>
-          <td class="value" colspan="3">${txt(company.contact_person)}</td>
-          <td class="label">聯絡人</td>
-          <td class="value" colspan="3">${customerContact}</td>
-        </tr>
-      </table>
+      <div class="meta">
+        <div class="block"><strong>公司名稱 Company Name:</strong> ${escapeHtml(company.company_name)}</div>
+        <div class="block"><strong>地址 Address:</strong> ${escapeHtml(company.address)}</div>
+        <div class="block"><strong>電話 Tel:</strong> ${escapeHtml(company.phone)}</div>
+        <div class="block"><strong>聯繫人 Contact person:</strong> ${escapeHtml(company.contact_person)}</div>
+        <div class="block"><strong>報價日期 Date Issue:</strong> ${escapeHtml(issueDate)}</div>
+        <div class="block"><strong>報價期限 Date Expire:</strong> ${escapeHtml(expireDate)}</div>
+        <div class="block"><strong>客戶工廠名稱 Company Name:</strong> ${escapeHtml(q.customer_name)}</div>
+        <div class="block"><strong>地址 Address:</strong> ${escapeHtml(customerAddress)}</div>
+        <div class="block"><strong>電話 Tel:</strong> ${escapeHtml(customerPhone)}</div>
+        <div class="block"><strong>聯繫人 Contact person:</strong> ${escapeHtml(customerContact)}</div>
+      </div>
 
-      <table class="info-table">
-        <tr>
-          <td class="lbl">客戶<br/>Khách hàng</td>
-          <td style="font-weight:600;font-size:12px" colspan="3">${txt(q.customer_name)}</td>
-          <td class="lbl">報價日<br/>Date issue</td>
-          <td>${String(q.created_at || '').slice(0,10) || ''}</td>
-        </tr>
-        <tr>
-          <td class="lbl">聯絡人<br/>Contact</td>
-          <td>${txt(company.contact_person)}</td>
-          <td class="lbl">有效期<br/>Valid until</td>
-          <td>${q.valid_until ? String(q.valid_until).slice(0,10) : ''}</td>
-          <td class="lbl">幣別<br/>Currency</td>
-          <td>${txt(q.currency) || 'VND'}</td>
-        </tr>
-        <tr>
-          <td class="lbl">地址<br/>Address</td>
-          <td colspan="5">${txt(company.address)}</td>
-        </tr>
-      </table>
-
-      <table class="items">
+      <table class="quote">
         <thead><tr>
-          <th class="col-st">ST</th>
-          <th class="col-name">品名 / Products</th>
-          <th class="col-code">物料編號</th>
-          <th class="col-spec">規格</th>
-          <th class="col-unit">單位</th>
-          <th class="col-moq">MOQ</th>
-          <th class="col-price">單價</th>
-          <th class="col-image">圖片</th>
-          <th style="width:1%">備註</th>
+          <th>項目\nItem</th>
+          <th>產品 Products</th>
+          <th>規格\nSpec</th>
+          <th>厚度 MM</th>
+          <th>顏色\nColor</th>
+          <th>單位\nUnit</th>
+          <th>美金價\nPrice USD</th>
+          <th>越盾價\nVND</th>
+          <th>備註</th>
         </tr></thead>
         <tbody>${itemRows}</tbody>
       </table>
 
-      <div class="note-box">
-        <div class="note-title">備註 / Ghi chú：</div>
-        <div style="white-space:pre-line">${txt(q.remark) || '1. 交易方式：現金轉款\n2. 樣品日期：8-10天\n3. 以上單價不包含8%VAT\n4. 交貨方式：越南當地門到門\n5. 如有問題根據樣品報價單\n6. 三天內確認打樣費用，請簽回並確認\n7. 收到量產訂單出貨後，打樣費將在8天內退還'}</div>
+      <div class="notes">
+        <div class="notes-title">備註 Mark</div>
+        <div class="notes-body">${escapeHtml(noteText)}</div>
       </div>
 
-      <div class="sign-row">
-        <div class="sign-box">
-          <div class="sign-label">FAN YONG 確認 / Xác nhận</div>
-          <div class="sign-area">
-            ${signUrl ? `<img src="${signUrl}" style="max-height:44px;max-width:150px;object-fit:contain"/>` : ''}
-          </div>
-          <div class="sign-line">${txt(company.company_name)}</div>
-        </div>
-        <div class="sign-box">
-          <div class="sign-label">客戶確認 / Khách hàng xác nhận</div>
-          <div class="sign-area"></div>
-          <div class="sign-line">${txt(q.customer_name)}</div>
-        </div>
+      <div class="signature">
+        ${signUrl ? `<img src="${signUrl}" onerror="this.style.display='none'"/>` : ''}
+        <div class="signature-name">${escapeHtml(company.company_name)}</div>
       </div>
     </div>
     </body></html>`
