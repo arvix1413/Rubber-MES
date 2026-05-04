@@ -625,6 +625,7 @@ export default function BomPage() {
                               {canEdit && <button onClick={async ()=>{
                                 const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
                                 const matchedMaterial =
+                                  materials.find((m) => m.material_code === detail.product_sku) ||
                                   materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
                                   materials.find((m) => m.material_name === detail.material_name)
                                 setHeaderMaterialCode(matchedMaterial ? String(matchedMaterial.id) : '')
