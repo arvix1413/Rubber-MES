@@ -32,6 +32,7 @@ app.use('/api/*', async (_c, next) => {
   await ensurePoItemProgressIdColumn()
   await ensurePoItemProgressItemIdColumn()
   await ensureMaterialReferenceColumns()
+  await ensureQuotationItemMoqColumn()
   await ensureUserSignatureColumn()
   await ensureSoftDeleteColumns()
   await next()
@@ -716,6 +717,29 @@ const ensureMaterialReferenceColumns = async () => {
     })
   }
   await ensureMaterialReferenceColumnsPromise
+}
+
+let ensureQuotationItemMoqColumnPromise: Promise<void> | null = null
+const ensureQuotationItemMoqColumn = async () => {
+  if (!ensureQuotationItemMoqColumnPromise) {
+    ensureQuotationItemMoqColumnPromise = (async () => {
+      try {
+        await execute('ALTER TABLE quotation_items MODIFY COLUMN moq TEXT NULL')
+      } catch (e: any) {
+        const msg = String(e?.message || '').toLowerCase()
+        if (
+          msg.includes("doesn't exist") ||
+          msg.includes('unknown table') ||
+          msg.includes('check that column/key exists')
+        ) return
+        throw e
+      }
+    })().catch((e) => {
+      ensureQuotationItemMoqColumnPromise = null
+      throw e
+    })
+  }
+  await ensureQuotationItemMoqColumnPromise
 }
 
 const resolveMaterialId = async (materialIdRaw: any, materialCodeRaw: any): Promise<number | null> => {

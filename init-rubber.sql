@@ -220,7 +220,7 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   unit_price DECIMAL(15,2) DEFAULT 0,
   total_price DECIMAL(15,2) DEFAULT 0,
   remark TEXT,
-  moq DECIMAL(15,2) DEFAULT NULL,
+  moq TEXT DEFAULT NULL,
   image_url TEXT DEFAULT NULL,
   INDEX idx_quotation_items_material_id (material_id),
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
