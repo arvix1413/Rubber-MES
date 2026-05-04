@@ -1,95 +1,287 @@
-# Rubber MES - Manufacturing Execution System
+# Rubber MES
 
-FAN YONG CO., LTD 訂單管理系統，部署在 VPS 雲端伺服器，使用 Docker 容器化運行。
+Rubber MES 是橡胶业务用的制造执行 / 订单执行系统。它和 `oms-instance-v2` 有明显的同源关系，但已经不是简单复制品，业务模块、页面命名、数据库扩展和部署端口都已经分叉。
 
-## 線上地址
+这份 README 面向新接手的工程师或 AI，重点是让接手者立刻理解：系统主线是什么、关键逻辑文件在哪里、部署怎么走、哪些地方已经做过全局统一。
 
-- 前端：http://43.133.56.234:10101
-- 後端 API：http://43.133.56.234:10102/api
-- MySQL：43.133.56.234:10103
-- 預設帳號：`admin@rubber.local` / `admin123`
+## 1. Current Environment
 
-## 技術棧
+### Branch To Environment
+- `stg` -> STG 环境，服务器 `43.133.56.234`
+- `prd` -> PRD 环境，服务器 `43.160.199.226`
 
-- **前端**：Next.js 14 + TypeScript + Tailwind CSS
-- **後端**：Hono + Node.js + MySQL
-- **部署**：Docker Compose + GitHub Actions CI/CD
-- **測試**：Playwright E2E
+### Online URLs
+- STG 前端: `http://43.133.56.234:10101`
+- STG 后端: `http://43.133.56.234:10102`
+- STG MySQL: `43.133.56.234:10103`
+- PRD 前端: `http://43.160.199.226:10101`
+- PRD 后端: `http://43.160.199.226:10102`
+- PRD MySQL: `43.160.199.226:10103`
 
-## 功能模組
+### Account Access
+- 请使用个人账号登录
+- 不要在 README、登录页或其他入口展示共用主账号密码
+- 如需开通或重置账号，请由管理员处理
 
-### 業務流程
-- 客戶訂單管理（建立 → 出貨 → 完成）
-- BOM 材料明細管理（含圖片上傳）
-- 採購單管理（草稿 → 核准 → 發送 → 收貨）
-- 生產單管理
-- 出貨單管理（確認出貨時自動扣減庫存）
+## 2. Tech Stack
 
-### 基礎資料
-- 客戶管理
-- 供應商管理
+### Frontend
+- Next.js 14 App Router
+- TypeScript
+- Tailwind CSS
 
-### 倉庫管理
-- 庫存查詢（BOM 成品庫存）
-- 庫存流水帳
-- 庫存調整（需核准）
+### Backend
+- Hono
+- Node.js
+- MySQL 8
+- TypeScript
 
-### 系統管理
-- RBAC 動態權限系統（角色：manager / employee）
-- 用戶管理（新增/重置密碼，預設密碼 admin123）
-- 角色權限管理（即時生效，登入時從後端獲取）
-- 操作日誌
-- 個人資料（電子簽名上傳，重複使用於採購單/出貨單列印）
+### Deployment
+- Docker Compose
+- GitHub Actions
+- Docker Hub
+- Telegram 部署通知
 
-## 庫存邏輯
+### Testing
+- Playwright
+- 项目内保留了多套实际业务测试和排查脚本
 
-| 操作 | 庫存變化 |
-|------|---------|
-| 採購單收貨（received）| +採購數量 |
-| 出貨單確認出貨（shipped）| -出貨數量 |
-| 生產單完工（有原材料配置）| -原材料用量 |
-| 庫存調整核准 | ±差異數量 |
+## 3. Repository Layout
 
-## 角色權限
-
-| 角色 | 說明 |
-|------|------|
-| manager | 全部功能 + 核准採購單/庫存調整/刪除資料/用戶管理 |
-| employee | 建立/編輯基本資料，不可核准或刪除 |
-
-權限可在「權限管理」頁面動態調整，登入時即時生效。
-
-## 採購單 / 出貨單列印
-
-- 列印格式參考 `referenceFiles/` 目錄中的範本
-- 電子簽名從個人資料頁面上傳，自動帶入列印預覽
-- 採購單欄位：物料編號（連結 BOM）、材料名稱、規格、重量、單價、數量
-
-## 部署資訊
-
-- **伺服器**：43.133.56.234
-- **自動部署**：push 到 main 分支觸發 GitHub Actions，約 150 秒完成
-- **Docker 容器**：rubber-frontend, rubber-backend, rubber-mysql
-
-## 本地開發
-
-```bash
-# 後端
-cd backend && npm run dev   # http://localhost:3001
-
-# 前端
-cd frontend && npm run dev  # http://localhost:3000
+```text
+Rubber-MES/
+├── frontend/
+│   ├── app/dashboard/
+│   ├── components/
+│   ├── lib/
+│   ├── Dockerfile
+│   └── Dockerfile.rubber
+├── backend/
+│   ├── src/index.ts
+│   ├── src/db.ts
+│   └── src/auth.ts
+├── scripts/
+├── docker-compose.yml
+├── docker-compose.rubber.yml
+├── deploy-local.sh
+├── verify-deployment.sh
+├── init.sql
+└── init-rubber.sql
 ```
 
-## 下次開發待辦
+## 4. Frontend Main Routes
 
-- [ ] 出貨單出貨後更新客戶訂單「已出貨數量」欄位（已部分實現：自動更新 arrived_qty）
-- [ ] 生產單原材料配置與庫存聯動（完工時扣減原材料）
-- [ ] 報表模組（月度銷售/採購統計圖表）
-- [ ] 應收/應付帳款管理
-- [ ] 多語言支援（繁中/越南文）
-- [ ] 手機版 RWD 優化
-- [ ] 批量匯入客戶/供應商資料（Excel）
-- [ ] 採購單 PDF 匯出（含電子簽名）
-- [ ] 客戶訂單關聯出貨單（一對多追蹤）
-- [ ] 庫存預警（低於安全庫存自動提示）
+### Core Business Pages
+- [frontend/app/dashboard/customer-orders/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/customer-orders/page.tsx)
+- [frontend/app/dashboard/order-intake/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/order-intake/page.tsx)
+- [frontend/app/dashboard/po/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/po/page.tsx)
+- [frontend/app/dashboard/delivery-notes/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/delivery-notes/page.tsx)
+- [frontend/app/dashboard/shipment-reconciliation/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/shipment-reconciliation/page.tsx)
+- [frontend/app/dashboard/invoices/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/invoices/page.tsx)
+- [frontend/app/dashboard/payables/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/payables/page.tsx)
+- [frontend/app/dashboard/materials/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/materials/page.tsx)
+- [frontend/app/dashboard/bom/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/bom/page.tsx)
+- [frontend/app/dashboard/customers/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/customers/page.tsx)
+- [frontend/app/dashboard/suppliers/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/suppliers/page.tsx)
+- [frontend/app/dashboard/company/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/company/page.tsx)
+- [frontend/app/dashboard/users/page.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/users/page.tsx)
+
+### Frontend Shell And Shared Logic
+- [frontend/app/dashboard/layout.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/layout.tsx)
+  - 负责导航分组、角色拦截、移动端侧栏、页面主壳。
+- [frontend/lib/api.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/lib/api.ts)
+  - 所有 API 调用的统一入口。
+  - 统一注入 token、错误翻译、日期格式整理、mutation 事件。
+- [frontend/components/StickyTableHeaderBridge.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/components/StickyTableHeaderBridge.tsx)
+  - 统一处理“往下滚时表头仍可见”。
+
+## 5. Backend Entry Points
+
+### Core Files
+- [backend/src/index.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/index.ts)
+- [backend/src/db.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/db.ts)
+- [backend/src/auth.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/auth.ts)
+
+### Critical Backend Characteristic
+和 OMS 一样，Rubber MES 的后端也高度集中在 `backend/src/index.ts`。API、业务规则、运行时补表结构逻辑都在这里。
+
+接手时必须知道：
+- 这不是纯净的 migration-first 项目
+- 很多 schema 由 `ensure*` 系列函数在运行时自动创建或补齐
+- 你改业务前，先搜索相关表名、字段名和 `ensure` 方法
+
+特别重要的运行时补结构包括：
+- `delivery_progress` 相关表
+- `shipment_reconciliation` 相关表
+- `invoice` 相关表
+- 客户订单追踪字段
+- BOM / 材料扩展字段
+- `stock_ledger`
+- `soft delete` 字段
+
+## 6. Core Business Logic
+
+### 6.1 Order Intake / 交期進度
+这是 Rubber MES 最关键的定制模块之一。
+
+它不是简单列表，而是围绕交期、订单、PO、材料明细、数量状态做的一层执行视图。近期已经做过多轮需求调整，接手时要特别注意：
+- 客户订单与明细的组织方式
+- PO 字段应该放在哪一层展示
+- 日期格式统一要求
+- 列表摘要与编辑弹窗摘要条的设计
+- 老数据没有 PO link 时的回退展示策略
+
+### 6.2 Shipment Reconciliation / 数量核对
+- 用于对客户订单、出货、结算数量做核对
+- 与订单追踪字段联动
+
+### 6.3 Invoices / Payables
+- 发票和应付是橡胶业务中的后续结算模块
+- 这些页面通常依赖前面订单、对账、收货的数据
+
+### 6.4 Materials / BOM
+- 材料管理和 BOM 是大多数业务页面的基础数据源
+- 材料、BOM、采购、订单 intake 之间的联动比较强
+
+### 6.5 Customers / Suppliers / Company / Users
+- 客户和供应商是主档
+- 公司设定用于打印、税率、基础配置
+- 用户管理和权限仍是 `manager / employee` 两级主导
+
+## 7. Important Frontend Conventions
+
+### Local Storage Keys
+- token: `rubber_token`
+- user: `rubber_user`
+- permissions: `rubber_permissions`
+
+### Shared Mutation Event
+- 事件名: `rubber:mutation`
+- 页面如果有“提交后局部刷新”或“状态提示”联动，优先复用现有机制
+
+### Date Handling
+- API 层会把午夜时间串自动规范成 `YYYY-MM-DD`
+- 同类页面不要混用多种日期格式
+
+### Table UX
+这个项目已经做过多轮表格统一，接手时默认要保持，而不是局部另起一套。
+
+已有统一点包括：
+- 宽表允许左右滑动
+- 页面下滚时表头跟随
+- 某些页面做冻结列或等价的可读性处理
+- 视觉风格尽量与现有主页面保持一致
+
+## 8. Local Development
+
+### Install
+```bash
+cd Rubber-MES/frontend && npm install
+cd ../backend && npm install
+```
+
+### Run Frontend
+```bash
+cd frontend
+npm run dev
+```
+
+### Run Backend
+```bash
+cd backend
+npm run dev
+```
+
+### Build
+```bash
+cd frontend && npm run build
+cd ../backend && npm run build
+```
+
+## 9. Deployment
+
+### Source Of Truth
+发布以 GitHub Actions 为准，手工 `deploy-local.sh` 只是辅助脚本。
+
+### Workflow
+- 文件: [/.github/workflows/deploy-rubber.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/deploy-rubber.yml)
+- 触发条件: push 到 `stg` 或 `prd`
+- 流程:
+  1. checkout
+  2. 登录 Docker Hub
+  3. 构建并推送 `rubber-backend:<branch>`
+  4. 使用 `frontend/Dockerfile.rubber` 构建并推送 `rubber-frontend:<branch>`
+  5. 上传 `docker-compose.yml` 到服务器 `/opt/rubber/`
+  6. SSH 执行 `/opt/rubber/deploy.sh`
+  7. 成功失败都发 Telegram
+
+### Runtime Containers
+- `rubber-mysql`
+- `rubber-backend`
+- `rubber-frontend`
+
+### Compose Files
+- 主部署文件: [docker-compose.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/docker-compose.yml)
+- 历史/专用版本: [docker-compose.rubber.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/docker-compose.rubber.yml)
+
+### Legacy Scripts
+- [deploy-local.sh](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/deploy-local.sh)
+- [verify-deployment.sh](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/verify-deployment.sh)
+
+它们有参考价值，但不是团队的唯一真相来源。
+
+## 10. Validation After Changes
+
+### Minimum Build Check
+```bash
+cd frontend && npm run build
+cd ../backend && npm run build
+```
+
+### High-Value Page Checks
+如果改动影响主流程，至少手动验证：
+- 登录
+- 客户订单
+- 交期進度
+- 材料管理
+- BOM
+- 採購下單
+- 出貨單
+- 數量核對
+- 發票管理
+- 使用者管理
+
+### Existing Test Scripts
+项目里已经有很多可复用脚本，例如：
+- `test-flow-all-crud.spec.ts`
+- `test-prod-crud-sweep.spec.ts`
+- `test-prod-full.spec.ts`
+- `test-rbac.spec.ts`
+- `debug-prod-inventory.spec.ts`
+
+## 11. Common Pitfalls
+
+### Rubber 和 OMS 不是完全同步
+虽然它们很像，但不要把一个项目的假设生搬到另一个项目。
+
+### 后端是单文件主逻辑
+先定位 `backend/src/index.ts` 里的真实规则，再动。
+
+### 交期進度页面是高敏感区域
+需求多、改动频繁、客户反馈密集。任何改动都应做真实页面走查。
+
+### 列表和表格风格不要随意分叉
+这个项目已经在往“全局一致”方向整理，尤其是表头跟随、宽表阅读和页面密度。
+
+## 12. AI Handoff Checklist
+
+建议阅读顺序：
+1. [README.md](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/README.md)
+2. [frontend/app/dashboard/layout.tsx](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/app/dashboard/layout.tsx)
+3. [frontend/lib/api.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/frontend/lib/api.ts)
+4. [backend/src/index.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/index.ts)
+5. 当前目标页面的 `page.tsx`
+6. 对应 Playwright 脚本
+7. [/.github/workflows/deploy-rubber.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/deploy-rubber.yml)
+
+如果要改交期、数量核对、发票、库存、软删除或部署，请默认这是系统级改动，而不是单页改动。

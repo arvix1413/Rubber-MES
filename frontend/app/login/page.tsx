@@ -68,7 +68,7 @@ export default function LoginPage() {
                 value={form.email}
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                 className="rubber-input"
-                placeholder="admin@rubber.local"
+                placeholder="name@company.com"
               />
             </div>
             <div>
@@ -97,7 +97,7 @@ export default function LoginPage() {
           </form>
 
           <div className="mt-7 rounded-xl border border-[#e5d7c6] bg-[#faf3e9] p-3 text-[11px] text-[#7a6d5f]">
-            預設帳號：admin@rubber.local · admin123
+            請使用個人帳號登入。如未開通，請聯絡管理員。
           </div>
         </div>
       </div>
