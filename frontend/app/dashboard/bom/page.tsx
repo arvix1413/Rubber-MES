@@ -645,14 +645,14 @@ export default function BomPage() {
                         {isOpen && (
                           <tr key={`${b.id}-items`} className="border-b border-slate-100/80">
                             <td colSpan={18} className="px-0 py-0">
-                              <div className="expand-row-wrap bg-[linear-gradient(180deg,#fffdf9_0%,#faf7f1_100%)]">
+                              <div className="expand-row-wrap layer-panel-l2">
                                 {detailItems.length === 0 ? (
                                   <div className="expand-row-empty">此 BOM 尚無輔料明細</div>
                                 ) : (
                                   <div className="table-scroll-x">
                                     <table className="w-full text-xs" style={{ minWidth: 1160 }}>
                                       <thead>
-                                        <tr className="border-b border-slate-100 bg-slate-50/75">
+                                        <tr className="layer-head-l2">
                                           {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
                                             <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                           ))}

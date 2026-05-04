@@ -577,7 +577,7 @@ export default function QuotationsPage() {
                   return (
                     <React.Fragment key={q.id}>
                       <tr
-                        className={`cursor-pointer border-b border-[#f0e7da] transition-colors ${isOpen ? 'bg-[#faf2e7]' : 'hover:bg-[#fcf7f1]'}`}
+                        className={`cursor-pointer border-b border-[#f0e7da] transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(q.id)}>
                         <td className="pl-4 py-3"><span className="text-[#8f7d67]"><ChevronIcon open={isOpen} /></span></td>
                         <td className="px-4 py-3 font-mono text-xs text-[#8d4a1d]">{q.quotation_number}</td>
@@ -600,15 +600,15 @@ export default function QuotationsPage() {
                       {isOpen && (
                         <tr className="border-b border-[#f0e7da]">
                           <td colSpan={8} className="px-0 py-0">
-                            <div className="bg-[#fffaf4] px-4 py-3">
+                            <div className="expand-row-wrap layer-panel-l2">
                               {qItems.length === 0 ? (
-                                <div className="flex items-center gap-2 text-sm text-[#7d705f]">
+                                <div className="expand-row-loading">
                                   <div className="h-3 w-3 animate-spin rounded-full border border-[#d8c3ac] border-t-[#9a5d2d]"/>載入中...
                                 </div>
                               ) : (
-                                <div className="overflow-x-auto">
-                                  <table className="w-full text-xs" style={{minWidth:600}}>
-                                    <thead><tr className="border-b border-[#eadfce]">
+                                <div className="table-scroll-x">
+                                  <table className="w-full text-xs" style={{ minWidth: 980 }}>
+                                    <thead><tr className="layer-head-l2">
                                       {['品名','物料編號','規格','單位','MOQ / 單價（阶梯）','備註'].map(h=>(
                                         <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold uppercase whitespace-nowrap text-[#7d705f]">{h}</th>
                                       ))}

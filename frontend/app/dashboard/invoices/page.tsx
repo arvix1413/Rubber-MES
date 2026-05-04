@@ -469,7 +469,8 @@ export default function InvoicesPage() {
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={9} className="layer-panel-l2 border-t border-[#dccab2] p-3">
+                        <td colSpan={9} className="px-0 py-0">
+                          <div className="expand-row-wrap layer-panel-l2">
                           <div className="grid md:grid-cols-2 gap-3 mb-3">
                             <div className="text-xs text-slate-700">驗證碼：<span className="font-mono font-semibold">{detail.verification_code || '-'}</span></div>
                             <div className="text-xs text-slate-500 truncate">QR Payload：{detail.qr_payload || '-'}</div>
@@ -558,6 +559,7 @@ export default function InvoicesPage() {
                               <button className="btn-primary" disabled={saving === h.id} onClick={() => saveDraft(h.id)}>儲存草稿</button>
                             </div>
                           )}
+                          </div>
                         </td>
                       </tr>
                     )}

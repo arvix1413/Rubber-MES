@@ -385,7 +385,8 @@ export default function ShipmentReconciliationPage() {
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={8} className="layer-panel-l2 border-t border-[#dccab2] p-3">
+                        <td colSpan={8} className="px-0 py-0">
+                          <div className="expand-row-wrap layer-panel-l2">
                           <div className="grid md:grid-cols-3 gap-3 mb-3">
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">核對日期</label>
@@ -476,6 +477,7 @@ export default function ShipmentReconciliationPage() {
                               <button className="btn-primary" disabled={saving === h.id} onClick={() => saveDraftDetail(h.id)}>儲存草稿</button>
                             </div>
                           )}
+                          </div>
                         </td>
                       </tr>
                     )}
