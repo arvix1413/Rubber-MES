@@ -2,10 +2,15 @@
 
 import { useEffect } from 'react'
 
-function getScrollWrapper(target: HTMLElement) {
-  const wrappers = target.closest('.table-scroll-x, .overflow-x-auto') as HTMLElement | null
-  if (!wrappers) return null
-  if (!wrappers.querySelector('table')) return null
+function getScrollWrappers(target: HTMLElement) {
+  const wrappers: HTMLElement[] = []
+  let node: HTMLElement | null = target
+  while (node) {
+    if (node.matches('.table-scroll-x, .overflow-x-auto') && node.querySelector('table')) {
+      wrappers.push(node)
+    }
+    node = node.parentElement
+  }
   return wrappers
 }
 
@@ -28,14 +33,12 @@ export default function HorizontalTableWheelBridge() {
       const target = event.target
       if (!(target instanceof HTMLElement)) return
 
-      const wrapper = getScrollWrapper(target)
-      if (!wrapper || !canScrollHorizontally(wrapper)) return
-
       const interactive = target.closest('input, textarea, select, [contenteditable="true"]')
       if (interactive) return
 
       const delta = event.deltaY
-      if (!canAdvance(wrapper, delta)) return
+      const wrapper = getScrollWrappers(target).find((node) => canScrollHorizontally(node) && canAdvance(node, delta))
+      if (!wrapper) return
 
       wrapper.scrollLeft += delta
       event.preventDefault()
