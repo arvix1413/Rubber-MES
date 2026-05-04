@@ -649,7 +649,7 @@ export default function BomPage() {
                                 {detailItems.length === 0 ? (
                                   <div className="expand-row-empty">此 BOM 尚無輔料明細</div>
                                 ) : (
-                                  <div className="table-scroll-x no-sticky-cols">
+                                  <div className="table-scroll-x">
                                     <table className="w-full text-xs" style={{ minWidth: 1160 }}>
                                       <thead>
                                         <tr className="layer-head-l2">
