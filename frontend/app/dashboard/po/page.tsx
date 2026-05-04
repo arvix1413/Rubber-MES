@@ -696,8 +696,7 @@ export default function PoPage() {
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                <div className="table-scroll-x">
-                                <table className="w-full text-xs" style={{ minWidth: 1240 }}>
+                                <table className="w-full text-xs">
                                   <thead>
                                     <tr className="layer-head-l2">
                                       {['PO訂單編號','料號','材料名稱','規格'].map(h=>(
@@ -737,7 +736,6 @@ export default function PoPage() {
                                     </tr>
                                   </tfoot>
                                 </table>
-                                </div>
                               )}
                             </div>
                           </td>

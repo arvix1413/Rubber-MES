@@ -126,25 +126,12 @@ input[type='number'] { -moz-appearance: textfield; }
 /* Unified hierarchy style (MES palette) */
 .layer-row-open { background: #f8f4ee; box-shadow: inset 0 0 0 1px rgba(31, 79, 95, 0.08); }
 .layer-row-hover:hover { background: #fbf8f3; }
-.layer-panel-l2 {
-  background: linear-gradient(180deg, #fdfbf7 0%, #f8f3ec 100%);
-  border-left: 2px solid #e7d8c4;
-  padding: 12px 0 10px 16px;
-}
+.layer-panel-l2 { background: linear-gradient(180deg, #fdfbf7 0%, #f8f3ec 100%); border-left: 2px solid #e7d8c4; padding-left: 12px; }
 .layer-head-l2 { border-bottom: 1px solid #ece2d5; background: #faf6ef; }
 .layer-row-l2-open { background: #f7efe4; }
 .layer-row-l2-hover:hover { background: #fbf6ef; }
-.layer-panel-l3 {
-  padding: 10px 0 2px 40px;
-  background: linear-gradient(180deg, #faf5ee 0%, #f5ede2 100%);
-  border-left: 2px solid #dfccb4;
-}
+.layer-panel-l3 { padding-left: 32px; padding-right: 0; padding-top: 0; padding-bottom: 0; background: linear-gradient(180deg, #faf5ee 0%, #f5ede2 100%); border-left: 2px solid #dfccb4; }
 .layer-head-l3 { border-bottom: 1px solid #e5d7c7; background: #f7f0e7; }
-.layer-panel-l2 > .table-scroll-x,
-.layer-panel-l3 > .table-scroll-x {
-  padding-right: 12px;
-  padding-bottom: 4px;
-}
 
 .scroll-x-unified {
   @apply overflow-x-auto overscroll-x-contain;
