@@ -3,6 +3,7 @@ import './globals.css'
 import { DialogProvider } from '@/components/Dialog'
 import { Noto_Sans_TC, Noto_Serif_TC } from 'next/font/google'
 import NumberInputWheelGuard from '@/components/NumberInputWheelGuard'
+import HorizontalTableWheelBridge from '@/components/HorizontalTableWheelBridge'
 
 const bodyFont = Noto_Sans_TC({
   subsets: ['latin'],
@@ -35,6 +36,7 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
     <html lang="zh-TW">
       <body className={`${bodyFont.variable} ${brandFont.variable}`}>
         <NumberInputWheelGuard />
+        <HorizontalTableWheelBridge />
         <DialogProvider>{children}</DialogProvider>
       </body>
     </html>
