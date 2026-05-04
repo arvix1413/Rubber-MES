@@ -28,7 +28,6 @@ export default function HorizontalTableWheelBridge() {
   useEffect(() => {
     const onWheel = (event: WheelEvent) => {
       if (event.ctrlKey || event.metaKey) return
-      if (Math.abs(event.deltaX) > Math.abs(event.deltaY)) return
 
       const target = event.target
       if (!(target instanceof HTMLElement)) return
@@ -36,7 +35,10 @@ export default function HorizontalTableWheelBridge() {
       const interactive = target.closest('input, textarea, select, [contenteditable="true"]')
       if (interactive) return
 
-      const delta = event.deltaY
+      const useShiftYAxis = event.shiftKey && event.deltaY !== 0 && event.deltaX === 0
+      const delta = useShiftYAxis ? event.deltaY : event.deltaX
+      if (delta === 0) return
+
       const wrapper = getScrollWrappers(target).find((node) => canScrollHorizontally(node) && canAdvance(node, delta))
       if (!wrapper) return
 
