@@ -696,48 +696,46 @@ export default function PoPage() {
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                <div className="table-scroll-x">
-                                  <table className="w-full text-xs" style={{minWidth:700}}>
-                                    <thead>
-                                      <tr className="layer-head-l2">
-                                        {['PO訂單編號','料號','材料名稱','規格'].map(h=>(
-                                          <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
-                                        ))}
-                                        {['數量','單價','小計'].map(h=>(
-                                          <th key={h} className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
-                                        ))}
-                                        {['稅率','單位','幣別','備註'].map(h=>(
-                                          <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
-                                        ))}
-                                      </tr>
-                                    </thead>
-                                    <tbody>
-                                      {items.map((item, i) => (
-                                        <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
-                                          <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.po_ref}</td>
-                                          <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code}</td>
-                                          <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[160px] truncate" title={item.material_name}>{item.material_name}</td>
-                                          <td className="px-3 py-2 text-slate-400 whitespace-nowrap max-w-[120px] truncate" title={item.spec}>{item.spec}</td>
-                                          <td className="px-3 py-2 text-right text-slate-600 font-medium whitespace-nowrap">{formatInteger(Number(item.quantity))}</td>
-                                          <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
-                                          <td className="px-3 py-2 text-right text-slate-800 font-semibold whitespace-nowrap">{formatDecimal(item.total_price)}</td>
-                                          <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{Number((p as any).tax_rate || 8)}%</td>
-                                          <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit}</td>
-                                          <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{item.currency}</td>
-                                          <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{item.remark}</td>
-                                        </tr>
+                                <table className="w-full text-xs">
+                                  <thead>
+                                    <tr className="layer-head-l2">
+                                      {['PO訂單編號','料號','材料名稱','規格'].map(h=>(
+                                        <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                       ))}
-                                    </tbody>
-                                    <tfoot>
-                                      <tr className="border-t" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
-                                        <td colSpan={7} className="px-3 py-2 text-right text-[10px] text-slate-300 font-semibold uppercase">未稅合計</td>
-                                        <td className="px-3 py-2 text-right text-slate-600 font-bold">{formatDecimal(items.reduce((s,i)=>s+Number(i.total_price),0))}</td>
-                                        <td className="px-3 py-2 text-slate-400 text-xs">{Number((p as any).tax_rate || 8)}%</td>
-                                        <td colSpan={3} className="px-3 py-2 text-slate-400 text-xs">{items[0]?.currency}</td>
+                                      {['數量','單價','小計'].map(h=>(
+                                        <th key={h} className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                                      ))}
+                                      {['稅率','單位','幣別','備註'].map(h=>(
+                                        <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                                      ))}
+                                    </tr>
+                                  </thead>
+                                  <tbody>
+                                    {items.map((item, i) => (
+                                      <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
+                                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.po_ref}</td>
+                                        <td className="px-3 py-2 font-mono text-blue-600 whitespace-nowrap">{item.material_code}</td>
+                                        <td className="px-3 py-2 text-slate-600 whitespace-nowrap max-w-[160px] truncate" title={item.material_name}>{item.material_name}</td>
+                                        <td className="px-3 py-2 text-slate-400 whitespace-nowrap max-w-[120px] truncate" title={item.spec}>{item.spec}</td>
+                                        <td className="px-3 py-2 text-right text-slate-600 font-medium whitespace-nowrap">{formatInteger(Number(item.quantity))}</td>
+                                        <td className="px-3 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
+                                        <td className="px-3 py-2 text-right text-slate-800 font-semibold whitespace-nowrap">{formatDecimal(item.total_price)}</td>
+                                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{Number((p as any).tax_rate || 8)}%</td>
+                                        <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit}</td>
+                                        <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{item.currency}</td>
+                                        <td className="px-3 py-2 text-slate-400 whitespace-nowrap">{item.remark}</td>
                                       </tr>
-                                    </tfoot>
-                                  </table>
-                                </div>
+                                    ))}
+                                  </tbody>
+                                  <tfoot>
+                                    <tr className="border-t" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
+                                      <td colSpan={7} className="px-3 py-2 text-right text-[10px] text-slate-300 font-semibold uppercase">未稅合計</td>
+                                      <td className="px-3 py-2 text-right text-slate-600 font-bold">{formatDecimal(items.reduce((s,i)=>s+Number(i.total_price),0))}</td>
+                                      <td className="px-3 py-2 text-slate-400 text-xs">{Number((p as any).tax_rate || 8)}%</td>
+                                      <td colSpan={3} className="px-3 py-2 text-slate-400 text-xs">{items[0]?.currency}</td>
+                                    </tr>
+                                  </tfoot>
+                                </table>
                               )}
                             </div>
                           </td>
