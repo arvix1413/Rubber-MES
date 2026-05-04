@@ -153,6 +153,22 @@ input[type='number'] { -moz-appearance: textfield; }
   width: max-content;
   min-width: max(max-content, calc(100% + 360px));
 }
+.no-sticky-cols > table thead th:nth-child(-n+2),
+.no-sticky-cols > table tbody td:nth-child(-n+2) {
+  position: static !important;
+  left: auto !important;
+  min-width: unset !important;
+  width: auto !important;
+  max-width: none !important;
+  z-index: auto !important;
+  box-shadow: none !important;
+}
+.no-sticky-cols > table thead th:nth-child(-n+2) {
+  background: inherit !important;
+}
+.no-sticky-cols > table tbody td:nth-child(-n+2) {
+  background: inherit !important;
+}
 .table-scroll-x > table thead th:nth-child(1),
 .table-scroll-x > table tbody td:nth-child(1) {
   position: sticky;
