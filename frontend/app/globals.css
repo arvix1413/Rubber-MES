@@ -149,6 +149,10 @@ input[type='number'] { -moz-appearance: textfield; }
   --sticky-col-1-width: 170px;
   --sticky-col-2-width: 190px;
 }
+.expand-row-wrap .table-scroll-x > table {
+  width: max-content;
+  min-width: max(max-content, calc(100% + 360px));
+}
 .table-scroll-x > table thead th:nth-child(1),
 .table-scroll-x > table tbody td:nth-child(1) {
   position: sticky;
