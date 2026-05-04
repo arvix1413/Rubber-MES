@@ -721,7 +721,8 @@ export default function CustomerOrdersPage() {
                               ) : items.length === 0 ? (
                                 <div className="expand-row-empty">尚無品項</div>
                               ) : (
-                                <table className="w-full text-xs">
+                                <div className="table-scroll-x">
+                                <table className="w-full text-xs" style={{ minWidth: 1420 }}>
                                   <thead><tr className="layer-head-l2">
                                     <th className="w-8" />
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">PO No</th>
@@ -779,9 +780,10 @@ export default function CustomerOrdersPage() {
                                                   {bomItems.length === 0 ? (
                                                     <div className="px-4 py-2 text-[11px] text-slate-500">{bomLoading ? 'BOM 輔料明細載入中...' : '此 BOM 尚無輔料明細'}</div>
                                                   ) : (
-                                                    <table className="w-full text-[11px]">
+                                                    <div className="table-scroll-x">
+                                                      <table className="w-full text-[11px]" style={{ minWidth: 1180 }}>
                                                       <thead>
-                                                        <tr className="bg-[#e7d4bc] border-b border-[#ccb08f]">
+                                                        <tr className="layer-head-l3">
                                                           {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
                                                             <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase whitespace-nowrap">{h}</th>
                                                           ))}
@@ -804,7 +806,8 @@ export default function CustomerOrdersPage() {
                                                           </tr>
                                                         ))}
                                                       </tbody>
-                                                    </table>
+                                                      </table>
+                                                    </div>
                                                   )}
                                                 </div>
                                               </td>
@@ -815,6 +818,7 @@ export default function CustomerOrdersPage() {
                                     })}
                                   </tbody>
                                 </table>
+                                </div>
                               )}
                             </div>
                           </td>
