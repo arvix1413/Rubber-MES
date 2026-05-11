@@ -348,7 +348,7 @@ export default function BomPage() {
                 <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
               </div>
             </div>
-            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4">
+            <div className="flex-1 min-h-0 overflow-hidden p-6 grid grid-cols-2 gap-4">
               <div>
                 <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
                   物料編號 *（唯一）

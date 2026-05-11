@@ -519,7 +519,7 @@ export default function QuotationsPage() {
             <button onClick={addItem} className="text-sm font-medium text-[#a0541f] transition hover:text-[#7a3d14] shrink-0">+ 新增品項</button>
           </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="flex-1 min-h-0 overflow-hidden px-6 py-4">
           <div className="h-full overflow-auto rounded-2xl border border-[#eadfce] bg-white">
             <table className="w-full text-xs oms-table" style={{ minWidth: 1320 }}>
               <thead><tr className="border-b border-[#eadfce] bg-[#fbf6f0]">

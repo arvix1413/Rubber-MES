@@ -534,7 +534,7 @@ export default function CustomerOrdersPage() {
             <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增品項</button>
           </div>
           </div>
-          <div className="flex-1 min-h-0 px-6 py-4">
+          <div className="flex-1 min-h-0 overflow-hidden px-6 py-4">
           <div className="table-scroll-x h-full overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
