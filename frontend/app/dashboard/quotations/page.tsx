@@ -479,7 +479,7 @@ export default function QuotationsPage() {
       </div>
 
       {mounted && (creating || editingId !== null) && (
-        <div className="rounded-3xl border border-[#e1d6c5] bg-white/90 shadow-sm mb-5 p-0 overflow-hidden max-h-[calc(100vh-7rem)] flex flex-col">
+        <div className="mb-5 grid max-h-[calc(100vh-7rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-3xl border border-[#e1d6c5] bg-white/90 p-0 shadow-sm">
           <div className="sticky top-0 z-20 bg-white border-b border-[#eadfce] px-6 pt-6 pb-4 shadow-sm">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>

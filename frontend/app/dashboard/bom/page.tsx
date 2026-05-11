@@ -338,7 +338,7 @@ export default function BomPage() {
       {/* Edit / Create Modal */}
       {editing && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+          <div className="grid w-full max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl max-h-[90vh]">
             <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-6 py-4 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
@@ -348,7 +348,7 @@ export default function BomPage() {
                 <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
               </div>
             </div>
-            <div className="flex-1 min-h-0 overflow-hidden p-6 grid grid-cols-2 gap-4">
+            <div className="min-h-0 overflow-auto p-6 grid grid-cols-2 gap-4">
               <div>
                 <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
                   物料編號 *（唯一）

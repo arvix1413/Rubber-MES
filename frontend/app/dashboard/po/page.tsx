@@ -472,7 +472,7 @@ export default function PoPage() {
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="rubber-card p-0 overflow-hidden max-h-[calc(100vh-7rem)] flex flex-col mb-5">
+        <div className="rubber-card mb-5 grid max-h-[calc(100vh-7rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0">
           <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 pt-6 pb-4 shadow-sm">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
