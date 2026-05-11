@@ -494,10 +494,10 @@ export default function BomPage() {
                 </div>
                 <div className="table-scroll-x border border-slate-200 rounded-lg">
                   <table className="w-full text-xs oms-table" style={{ minWidth: 1280 }}>
-                    <thead>
+                    <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm">
                       <tr className="border-b border-slate-200 bg-slate-50">
                         {['物料編號','材料名稱','規格','顏色','單位','供應商','供應商單價','銷售單價','幣別','Leadtime','MOQ','備註',''].map(h => (
-                          <th key={h} className="px-2 py-1.5 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                          <th key={h} className="bg-slate-50 px-2 py-1.5 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                         ))}
                       </tr>
                     </thead>

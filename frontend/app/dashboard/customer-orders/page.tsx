@@ -537,17 +537,17 @@ export default function CustomerOrdersPage() {
           <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="table-scroll-x rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table">
-              <thead><tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Supplier / LT / MOQ</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Unit</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Price</th>
-                <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Amount</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">RTA</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Remark</th>
+              <thead className="sticky top-0 z-10 bg-slate-50 shadow-sm"><tr className="bg-slate-50 border-b border-slate-200">
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Supplier / LT / MOQ</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Unit</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Price</th>
+                <th className="bg-slate-50 px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Amount</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">RTA</th>
+                <th className="bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Remark</th>
                 <th className="w-8" />
               </tr></thead>
               <tbody>
