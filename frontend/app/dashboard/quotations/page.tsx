@@ -479,10 +479,14 @@ export default function QuotationsPage() {
       </div>
 
       {mounted && (creating || editingId !== null) && (
-        <div className="rounded-3xl border border-[#e1d6c5] bg-white/90 p-6 shadow-sm mb-5">
-          <div className="mb-4 flex items-center justify-between">
-            <h2 className="text-sm font-semibold text-[#2d261d]">{editingId ? '編輯報價單' : '新增報價單'}</h2>
-            <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5]">返回列表</button>
+        <div className="rounded-3xl border border-[#e1d6c5] bg-white/90 shadow-sm mb-5 p-0 overflow-hidden max-h-[calc(100vh-7rem)] flex flex-col">
+          <div className="sticky top-0 z-20 bg-white border-b border-[#eadfce] px-6 pt-6 pb-4 shadow-sm">
+          <div className="mb-4 flex items-start justify-between gap-4">
+            <div>
+              <h2 className="text-sm font-semibold text-[#2d261d]">{editingId ? '編輯報價單' : '新增報價單'}</h2>
+              <p className="mt-1 text-[11px] text-[#9f8e7d]">報價資訊與新增品項固定顯示，長內容編輯更順手。</p>
+            </div>
+            <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5] shrink-0">返回列表</button>
           </div>
           <div className="mb-4 grid grid-cols-2 gap-3 md:grid-cols-4">
             <div>
@@ -510,12 +514,14 @@ export default function QuotationsPage() {
               </select>
             </div>
           </div>
-          <div className="mb-2 flex items-center justify-between">
+          <div className="mb-2 flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-[#6d5b49]">報價明細</span>
-            <button onClick={addItem} className="text-sm font-medium text-[#a0541f] transition hover:text-[#7a3d14]">+ 新增品項</button>
+            <button onClick={addItem} className="text-sm font-medium text-[#a0541f] transition hover:text-[#7a3d14] shrink-0">+ 新增品項</button>
           </div>
-          <div className="overflow-x-auto rounded-2xl border border-[#eadfce]">
-            <table className="w-full text-xs" style={{ minWidth: 1320 }}>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="overflow-x-auto rounded-2xl border border-[#eadfce] bg-white">
+            <table className="w-full text-xs oms-table" style={{ minWidth: 1320 }}>
               <thead><tr className="border-b border-[#eadfce] bg-[#fbf6f0]">
                 {['選擇BOM','品名','規格','單位','階梯報價（MOQ / 單價）','Remark',''].map(h=>(
                   <th key={h} className="px-1.5 py-2 text-left text-[10px] font-semibold uppercase whitespace-nowrap text-[#7d705f]">{h}</th>
@@ -541,9 +547,15 @@ export default function QuotationsPage() {
               </tbody>
             </table>
           </div>
-          <div className="mt-4 flex gap-2">
-            <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立報價單'}</button>
-            <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5]">取消</button>
+          </div>
+          <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border-t border-[#eadfce] px-6 py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-[#7d705f]">目前品項 <span className="font-semibold text-[#2d261d]">{form.items.length}</span></div>
+              <div className="flex gap-2">
+                <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立報價單'}</button>
+                <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5]">取消</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

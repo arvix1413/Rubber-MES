@@ -472,8 +472,15 @@ export default function PoPage() {
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="rubber-card p-6 mb-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
+        <div className="rubber-card p-0 overflow-hidden max-h-[calc(100vh-7rem)] flex flex-col mb-5">
+          <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 pt-6 pb-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
+              <p className="mt-1 text-[11px] text-slate-400">採購資訊與新增料號固定顯示，長單據操作不需再拉回頂部。</p>
+            </div>
+            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200 shrink-0">關閉</button>
+          </div>
           <div className="grid grid-cols-4 gap-3 mb-4">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">採購單號（選填）</label>
@@ -525,12 +532,14 @@ export default function PoPage() {
               </div>
             )}
           </div>
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-slate-600">採購明細</span>
-            <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增料號</button>
+            <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增料號</button>
           </div>
-          <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200">
-            <table className="w-full text-xs" style={{ minWidth: 1760 }}>
+          </div>
+          <div className="flex-1 overflow-y-auto px-6 py-4">
+          <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-xs oms-table" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
                 {['保留','Item','PO NO','MTL NO（Materials）','Products','Supplier','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
                   <th key={h} className="px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">{h}</th>
@@ -607,9 +616,19 @@ export default function PoPage() {
               </tfoot>
             </table>
           </div>
-          <div className="flex gap-2 mt-4">
-            <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
-            <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
+          </div>
+          <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-slate-500">
+                未稅合計 <span className="font-semibold text-slate-700">{formatDecimal(formTotal)}</span>
+                <span className="mx-2 text-slate-300">|</span>
+                含稅合計 <span className="font-semibold text-slate-700">{formatDecimal(formTotal * (1 + (form.tax_rate || 8) / 100))}</span>
+              </div>
+              <div className="flex gap-2">
+                <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
+                <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
+              </div>
+            </div>
           </div>
         </div>
       )}

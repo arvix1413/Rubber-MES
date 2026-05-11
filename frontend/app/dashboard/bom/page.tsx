@@ -338,12 +338,17 @@ export default function BomPage() {
       {/* Edit / Create Modal */}
       {editing && (
         <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-y-auto">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯材料' : '建立材料'}</h2>
-              <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">✕</button>
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-xl w-full max-w-2xl max-h-[90vh] overflow-hidden flex flex-col">
+            <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-6 py-4 shadow-sm">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯材料' : '建立材料'}</h2>
+                  <p className="mt-1 text-[11px] text-slate-400">BOM 主資料與新增列固定顯示，長材料明細可直接往下編輯。</p>
+                </div>
+                <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
+              </div>
             </div>
-            <div className="p-6 grid grid-cols-2 gap-4">
+            <div className="flex-1 overflow-y-auto p-6 grid grid-cols-2 gap-4">
               <div>
                 <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
                   物料編號 *（唯一）
@@ -483,12 +488,12 @@ export default function BomPage() {
                 <input className={`${inp} mt-2`} placeholder="或輸入圖片 URL" value={editing.image_url||''} onChange={e=>setEditing(p=>({...p,image_url:e.target.value}))} />
               </div>
               <div className="col-span-2">
-                <div className="flex items-center justify-between mb-2">
+                <div className="flex items-center justify-between mb-2 gap-3">
                   <label className="block text-[11px] text-slate-500">BOM 組合材料明細（可新增列）</label>
-                  <button type="button" className="btn-ghost text-blue-600" onClick={addItem}>+ 新增列</button>
+                  <button type="button" className="btn-ghost text-blue-600 shrink-0" onClick={addItem}>+ 新增列</button>
                 </div>
                 <div className="table-scroll-x border border-slate-200 rounded-lg">
-                  <table className="w-full text-xs" style={{ minWidth: 1280 }}>
+                  <table className="w-full text-xs oms-table" style={{ minWidth: 1280 }}>
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50">
                         {['物料編號','材料名稱','規格','顏色','單位','供應商','供應商單價','銷售單價','幣別','Leadtime','MOQ','備註',''].map(h => (
@@ -546,9 +551,12 @@ export default function BomPage() {
                 </div>
               </div>
             </div>
-            <div className="flex items-center justify-end gap-3 px-6 py-4 border-t border-slate-100 bg-slate-50 rounded-b-2xl">
+            <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-white/95 backdrop-blur rounded-b-2xl">
+              <div className="text-xs text-slate-500">明細列數 <span className="font-semibold text-slate-700">{(editing.items || []).length}</span></div>
+              <div className="flex items-center gap-3">
               <button onClick={()=>setEditing(null)} className="btn-ghost">取消</button>
               <button onClick={save} className="btn-primary">{editing.id ? '儲存修改' : '建立材料'}</button>
+              </div>
             </div>
           </div>
         </div>
