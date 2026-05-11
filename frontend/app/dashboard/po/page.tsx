@@ -472,8 +472,8 @@ export default function PoPage() {
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="rubber-card mb-5 grid max-h-[calc(100vh-7rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0">
-          <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 pt-6 pb-4 shadow-sm">
+        <div className="rubber-card mb-5 overflow-hidden p-0">
+          <div className="border-b border-slate-200 bg-white px-6 pt-6 pb-4 shadow-sm">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
@@ -537,8 +537,8 @@ export default function PoPage() {
             <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增料號</button>
           </div>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden px-6 py-4">
-          <div className="table-scroll-x h-full overflow-auto overscroll-x-contain rounded-lg border border-slate-200 bg-white">
+          <div className="px-6 py-4">
+          <div className="table-scroll-x h-[420px] overflow-auto overscroll-x-contain rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
                 {['保留','Item','PO NO','MTL NO（Materials）','Products','Supplier','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
@@ -617,7 +617,7 @@ export default function PoPage() {
             </table>
           </div>
           </div>
-          <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-4">
+          <div className="border-t border-slate-200 bg-white px-6 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-slate-500">
                 未稅合計 <span className="font-semibold text-slate-700">{formatDecimal(formTotal)}</span>

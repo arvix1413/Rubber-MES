@@ -337,9 +337,9 @@ export default function BomPage() {
 
       {/* Edit / Create Modal */}
       {editing && (
-        <div className="fixed inset-0 bg-black/40 z-50 flex items-center justify-center p-4">
-          <div className="grid w-full max-w-2xl grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl max-h-[90vh]">
-            <div className="sticky top-0 z-20 bg-white border-b border-slate-100 px-6 py-4 shadow-sm">
+        <div className="fixed inset-0 z-50 overflow-y-auto bg-black/40 p-4">
+          <div className="mx-auto w-full max-w-2xl overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-xl">
+            <div className="border-b border-slate-100 bg-white px-6 py-4 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
                   <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯材料' : '建立材料'}</h2>
@@ -348,7 +348,7 @@ export default function BomPage() {
                 <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
               </div>
             </div>
-            <div className="min-h-0 overflow-auto p-6 grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 gap-4 p-6">
               <div>
                 <label className="flex items-center gap-1.5 text-[11px] text-slate-500 mb-1.5">
                   物料編號 *（唯一）
@@ -551,7 +551,7 @@ export default function BomPage() {
                 </div>
               </div>
             </div>
-            <div className="sticky bottom-0 z-20 flex items-center justify-between gap-3 px-6 py-4 border-t border-slate-100 bg-white/95 backdrop-blur rounded-b-2xl">
+            <div className="flex items-center justify-between gap-3 rounded-b-2xl border-t border-slate-100 bg-white px-6 py-4">
               <div className="text-xs text-slate-500">明細列數 <span className="font-semibold text-slate-700">{(editing.items || []).length}</span></div>
               <div className="flex items-center gap-3">
               <button onClick={()=>setEditing(null)} className="btn-ghost">取消</button>

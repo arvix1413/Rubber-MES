@@ -467,8 +467,8 @@ export default function CustomerOrdersPage() {
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="rubber-card mb-5 grid max-h-[calc(100vh-3rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden p-0">
-          <div className="sticky top-0 z-20 bg-white border-b border-slate-200 px-6 pt-6 pb-4 shadow-sm">
+        <div className="rubber-card mb-5 overflow-hidden p-0">
+          <div className="border-b border-slate-200 bg-white px-6 pt-6 pb-4 shadow-sm">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
               <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯客戶訂單' : '新增客戶訂單'}</h2>
@@ -534,8 +534,8 @@ export default function CustomerOrdersPage() {
             <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增品項</button>
           </div>
           </div>
-          <div className="flex-1 min-h-[320px] overflow-hidden px-6 py-4">
-          <div className="table-scroll-x h-full min-h-[260px] overflow-auto rounded-lg border border-slate-200 bg-white">
+          <div className="px-6 py-4">
+          <div className="table-scroll-x h-[420px] overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
                 <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">PO No</th>
@@ -613,7 +613,7 @@ export default function CustomerOrdersPage() {
             )
           })()}
           </div>
-          <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border-t border-slate-200 px-6 py-4">
+          <div className="border-t border-slate-200 bg-white px-6 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-slate-500">目前品項 <span className="font-semibold text-slate-700">{form.items.length}</span></div>
               <div className="flex gap-2">

@@ -479,8 +479,8 @@ export default function QuotationsPage() {
       </div>
 
       {mounted && (creating || editingId !== null) && (
-        <div className="mb-5 grid max-h-[calc(100vh-7rem)] grid-rows-[auto_minmax(0,1fr)_auto] overflow-hidden rounded-3xl border border-[#e1d6c5] bg-white/90 p-0 shadow-sm">
-          <div className="sticky top-0 z-20 bg-white border-b border-[#eadfce] px-6 pt-6 pb-4 shadow-sm">
+        <div className="mb-5 overflow-hidden rounded-3xl border border-[#e1d6c5] bg-white/90 p-0 shadow-sm">
+          <div className="border-b border-[#eadfce] bg-white px-6 pt-6 pb-4 shadow-sm">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
               <h2 className="text-sm font-semibold text-[#2d261d]">{editingId ? '編輯報價單' : '新增報價單'}</h2>
@@ -519,8 +519,8 @@ export default function QuotationsPage() {
             <button onClick={addItem} className="text-sm font-medium text-[#a0541f] transition hover:text-[#7a3d14] shrink-0">+ 新增品項</button>
           </div>
           </div>
-          <div className="flex-1 min-h-0 overflow-hidden px-6 py-4">
-          <div className="h-full overflow-auto rounded-2xl border border-[#eadfce] bg-white">
+          <div className="px-6 py-4">
+          <div className="h-[420px] overflow-auto rounded-2xl border border-[#eadfce] bg-white">
             <table className="w-full text-xs oms-table" style={{ minWidth: 1320 }}>
               <thead><tr className="border-b border-[#eadfce] bg-[#fbf6f0]">
                 {['選擇BOM','品名','規格','單位','階梯報價（MOQ / 單價）','Remark',''].map(h=>(
@@ -548,7 +548,7 @@ export default function QuotationsPage() {
             </table>
           </div>
           </div>
-          <div className="sticky bottom-0 z-20 bg-white/95 backdrop-blur border-t border-[#eadfce] px-6 py-4">
+          <div className="border-t border-[#eadfce] bg-white px-6 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-[#7d705f]">目前品項 <span className="font-semibold text-[#2d261d]">{form.items.length}</span></div>
               <div className="flex gap-2">
