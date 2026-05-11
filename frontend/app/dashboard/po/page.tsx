@@ -537,8 +537,8 @@ export default function PoPage() {
             <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增料號</button>
           </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200 bg-white">
+          <div className="flex-1 min-h-0 px-6 py-4">
+          <div className="table-scroll-x h-full overflow-auto overscroll-x-contain rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table" style={{ minWidth: 1760 }}>
               <thead><tr className="border-b border-slate-200">
                 {['保留','Item','PO NO','MTL NO（Materials）','Products','Supplier','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(

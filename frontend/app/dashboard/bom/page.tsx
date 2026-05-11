@@ -492,7 +492,7 @@ export default function BomPage() {
                   <label className="block text-[11px] text-slate-500">BOM 組合材料明細（可新增列）</label>
                   <button type="button" className="btn-ghost text-blue-600 shrink-0" onClick={addItem}>+ 新增列</button>
                 </div>
-                <div className="table-scroll-x border border-slate-200 rounded-lg">
+                <div className="table-scroll-x max-h-[420px] overflow-auto rounded-lg border border-slate-200">
                   <table className="w-full text-xs oms-table" style={{ minWidth: 1280 }}>
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50">

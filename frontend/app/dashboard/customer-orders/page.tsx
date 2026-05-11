@@ -534,8 +534,8 @@ export default function CustomerOrdersPage() {
             <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增品項</button>
           </div>
           </div>
-          <div className="flex-1 overflow-y-auto px-6 py-4">
-          <div className="table-scroll-x rounded-lg border border-slate-200 bg-white">
+          <div className="flex-1 min-h-0 px-6 py-4">
+          <div className="table-scroll-x h-full overflow-auto rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
                 <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">PO No</th>
