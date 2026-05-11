@@ -540,9 +540,9 @@ export default function PoPage() {
           <div className="flex-1 overflow-y-auto px-6 py-4">
           <div className="table-scroll-x overscroll-x-contain rounded-lg border border-slate-200 bg-white">
             <table className="w-full text-xs oms-table" style={{ minWidth: 1760 }}>
-              <thead className="sticky top-0 z-10 bg-white shadow-sm"><tr className="border-b border-slate-200">
+              <thead><tr className="border-b border-slate-200">
                 {['保留','Item','PO NO','MTL NO（Materials）','Products','Supplier','Spec','Unit','QTY','Unit Price','Amount','Tax','Currency','Remark',''].map(h=>(
-                  <th key={h} className="bg-white px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
+                  <th key={h} className="sticky top-0 z-10 bg-white px-2 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap shadow-sm">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
