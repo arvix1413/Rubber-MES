@@ -51,6 +51,16 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     setConfirmState(p => ({ ...p, open: false }))
   }
 
+  const dismissAll = useCallback(() => {
+    if (confirmState.open) {
+      handleConfirm(false)
+      return
+    }
+    if (noticeState.open) {
+      setNoticeState((p) => ({ ...p, open: false }))
+    }
+  }, [confirmState.open, noticeState.open])
+
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Escape') return
@@ -125,6 +135,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {confirmState.open && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => handleConfirm(false)} />
+          <button
+            type="button"
+            onClick={dismissAll}
+            className="absolute right-4 top-4 z-[9999] rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-black/70"
+          >
+            關閉遮罩
+          </button>
           <div className="relative bg-white rounded-2xl shadow-2xl shadow-slate-300/50 w-full max-w-sm p-6 border border-slate-200">
             <div className="flex items-start gap-4 mb-5">
               <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -157,6 +174,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
             className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(29,78,216,0.16),transparent_45%),radial-gradient(circle_at_80%_90%,rgba(180,83,9,0.16),transparent_45%),rgba(15,23,42,0.35)] backdrop-blur-[3px]"
             onClick={() => setNoticeState((p) => ({ ...p, open: false }))}
           />
+          <button
+            type="button"
+            onClick={dismissAll}
+            className="absolute right-4 top-4 z-[9999] rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-black/70"
+          >
+            關閉遮罩
+          </button>
           <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[#d3c3b0] bg-[linear-gradient(160deg,#fffaf2_0%,#f5e8d6_65%,#ebd5bc_100%)] p-6 shadow-[0_28px_60px_rgba(63,35,8,0.28)]">
             <div className="mb-4 flex items-start gap-3">
               <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fce9d0] text-[#8b4d13] shadow-inner">
