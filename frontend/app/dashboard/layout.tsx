@@ -44,6 +44,7 @@ const NAV: NavEntry[] = [
     icon: <IconSetting />,
     children: [
       { href: '/dashboard/company', label: '公司設定', icon: <IconBuilding /> },
+      { href: '/dashboard/role-permissions', label: '權限設定', icon: <IconCheck /> },
       { href: '/dashboard/users', label: '使用者管理', icon: <IconUserCog /> },
     ],
   },
@@ -68,6 +69,7 @@ const BASE_DASHBOARD_ROUTES = new Set<string>([
 
 const MANAGER_ONLY_ROUTES = new Set<string>([
   '/dashboard/company',
+  '/dashboard/role-permissions',
   '/dashboard/users',
 ])
 
