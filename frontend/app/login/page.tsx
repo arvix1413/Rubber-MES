@@ -15,6 +15,7 @@ export default function LoginPage() {
       const data = await apiFetch<{ token: string; user: any; permissions: string[] }>('/api/auth/login', {
         method: 'POST', body: JSON.stringify(form)
       })
+      if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur()
       setToken(data.token)
       localStorage.setItem('rubber_user', JSON.stringify(data.user))
       localStorage.setItem('rubber_permissions', JSON.stringify(data.permissions || []))
@@ -59,12 +60,16 @@ export default function LoginPage() {
             </div>
           )}
 
-          <form onSubmit={handleSubmit} className="space-y-4">
+          <form onSubmit={handleSubmit} autoComplete="off" className="space-y-4">
             <div>
               <label className="mb-1.5 block text-xs font-semibold uppercase tracking-wider text-[#6f665b]">Email</label>
               <input
                 type="email"
                 required
+                name="rubber-login-email"
+                autoComplete="off"
+                autoCapitalize="none"
+                spellCheck={false}
                 value={form.email}
                 onChange={e => setForm(p => ({ ...p, email: e.target.value }))}
                 className="rubber-input"
@@ -77,6 +82,8 @@ export default function LoginPage() {
                 <input
                   type={showPw ? 'text' : 'password'}
                   required
+                  name="rubber-login-password"
+                  autoComplete="new-password"
                   value={form.password}
                   onChange={e => setForm(p => ({ ...p, password: e.target.value }))}
                   className="rubber-input pr-12"
