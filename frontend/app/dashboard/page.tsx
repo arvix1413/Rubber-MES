@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
 import { formatInteger } from '@/lib/numberFormat'
+import { useReviewBadge } from '@/lib/useReviewBadge'
 
 type ProcessHealth = {
   generated_at: string
@@ -20,6 +21,7 @@ const fmt = (n: number) => formatInteger(n || 0)
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
   const [health, setHealth] = useState<ProcessHealth | null>(null)
+  const { canApprovePo, poDraftCount } = useReviewBadge()
 
   useEffect(() => {
     apiFetch<any>('/api/stats').then(setStats).catch(() => {})
@@ -41,6 +43,32 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {canApprovePo && poDraftCount > 0 ? (
+        <Link
+          href="/dashboard/po"
+          className="block overflow-hidden rounded-3xl border border-[#f0b3a9] bg-[linear-gradient(135deg,#fff0ed_0%,#ffd7cf_52%,#ffc2b4_100%)] p-5 shadow-[0_18px_45px_rgba(163,48,25,0.18)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(163,48,25,0.24)]"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-white/70 px-3 py-1 text-[11px] font-black tracking-[0.14em] text-[#aa3722]">
+                REVIEW ALERT
+              </div>
+              <h2 className="mt-3 text-2xl font-extrabold text-[#6b2317]">你有 {fmt(poDraftCount)} 筆採購單待審核</h2>
+              <p className="mt-2 text-sm text-[#8f4330]">登入後優先處理尚未審核的 PO，避免後續送出與收貨流程卡住。</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white/70 bg-white/65 px-5 py-3 text-center">
+                <div className="text-[12px] font-semibold text-[#9b4b36]">尚未審核</div>
+                <div className="mt-1 text-4xl font-black leading-none text-[#c73622]">{fmt(poDraftCount)}</div>
+              </div>
+              <div className="inline-flex items-center rounded-2xl bg-[#c73622] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(199,54,34,0.28)]">
+                立即前往 →
+              </div>
+            </div>
+          </div>
+        </Link>
+      ) : null}
+
       <section className="overflow-hidden rounded-3xl border border-[#d7c8b4] bg-[linear-gradient(140deg,#fff7ec_0%,#f5e7d5_48%,#ecd6bd_100%)] p-6 shadow-[0_20px_50px_rgba(113,80,45,0.2)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>

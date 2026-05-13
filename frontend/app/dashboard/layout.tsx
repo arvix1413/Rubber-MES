@@ -4,6 +4,7 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
+import { useReviewBadge } from '@/lib/useReviewBadge'
 import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; exact?: boolean }
@@ -111,6 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { canApprovePo, poDraftCount } = useReviewBadge()
 
   useEffect(() => {
     if (!getToken()) {
@@ -183,6 +185,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return hit?.label || '流程總覽'
   }, [pathname])
 
+  const renderNavBadge = (href: string) => {
+    if (href !== '/dashboard/po' || !canApprovePo || poDraftCount <= 0) return null
+    return (
+      <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
+        {poDraftCount > 99 ? '99+' : poDraftCount}
+      </span>
+    )
+  }
+
   return (
     <div className="relative flex h-screen bg-[#f2ede4] text-[#2a241d]">
       {sidebarOpen && <button aria-label="close sidebar backdrop" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />}
@@ -221,7 +232,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       {n.children.map((c) => (
                         <Link key={c.href} href={c.href} className={linkClass(isActive(c.href))}>
                           <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
-                          {c.label}
+                          <span>{c.label}</span>
+                          {renderNavBadge(c.href)}
                         </Link>
                       ))}
                     </div>
@@ -265,6 +277,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {sidebarOpen ? '關閉' : '選單'}
             </button>
             <div className="brand-font text-[11px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
+            {canApprovePo && poDraftCount > 0 ? (
+              <Link href="/dashboard/po" className="inline-flex items-center rounded-full bg-[#d93d2f] px-2.5 py-1 text-[11px] font-bold text-white shadow-[0_10px_20px_rgba(217,61,47,0.28)]">
+                待審核 {poDraftCount > 99 ? '99+' : poDraftCount}
+              </Link>
+            ) : null}
           </div>
         </div>
         <StickyTableHeaderBridge />

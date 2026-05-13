@@ -74,6 +74,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 export default function InvoicesPage() {
   const { toast, confirm } = useDialog()
   const canWrite = can('customer_order.create')
+  const canApprove = can('invoice.approve')
 
   const [invoiceType, setInvoiceType] = useState<InvoiceType>('customer')
   const [creating, setCreating] = useState(false)
@@ -226,7 +227,7 @@ export default function InvoicesPage() {
   }
 
   const confirmInvoice = async (id: number) => {
-    if (!await confirm('確認發票？', '確認後將鎖定發票資料並回寫結算進度。', '確認發票')) return
+    if (!await confirm('審核發票？', '審核後將鎖定發票資料並回寫結算進度。', '審核發票')) return
     try {
       setSaving(id)
       await apiFetch(`/api/invoices/${id}/confirm`, { method: 'PATCH' })
@@ -235,9 +236,9 @@ export default function InvoicesPage() {
         const latest = await apiFetch<InvoiceDetail>(`/api/invoices/${id}`)
         setDetails((prev) => ({ ...prev, [id]: latest }))
       }
-      toast('發票已確認')
+      toast('發票已審核')
     } catch (e: any) {
-      toast(`確認失敗：${e.message}`, 'error')
+      toast(`審核失敗：${e.message}`, 'error')
     } finally {
       setSaving(null)
     }
@@ -463,7 +464,7 @@ export default function InvoicesPage() {
                         <button className="btn-ghost" onClick={() => printInvoice(h.id)}>列印</button>
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
                         <button className="btn-ghost" onClick={() => { setVerifyTargetId(h.id); setVerifyResult(null); setVerifyCodeInput('') }}>驗證</button>
-                        {h.status === 'draft' && canWrite && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>確認</button>}
+                        {h.status === 'draft' && canApprove && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>審核</button>}
                         {h.status === 'draft' && canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id)}>刪除</button>}
                       </td>
                     </tr>

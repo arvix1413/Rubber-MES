@@ -61,6 +61,7 @@ const STATUS_MAP: Record<string, { label: string; badge: string }> = {
 export default function ShipmentReconciliationPage() {
   const { toast, confirm } = useDialog()
   const canWrite = can('delivery.create')
+  const canApprove = can('reconciliation.approve')
 
   const [pending, setPending] = useState<PendingItem[]>([])
   const [headers, setHeaders] = useState<ReconciliationHeader[]>([])
@@ -176,18 +177,18 @@ export default function ShipmentReconciliationPage() {
   }
 
   const confirmReconciliation = async (id: number) => {
-    if (!await confirm('確認核對完成？', '確認後將回寫客戶訂單已核對數量。', '確認核對')) return
+    if (!await confirm('審核核對單？', '審核後將回寫客戶訂單已核對數量。', '審核核對單')) return
     try {
       setSaving(id)
       await apiFetch(`/api/reconciliations/${id}/confirm`, { method: 'PATCH' })
-      toast('核對單已確認')
+      toast('核對單已審核')
       await loadAll()
       if (expandedId === id) {
         const latest = await apiFetch<ReconciliationDetail>(`/api/reconciliations/${id}`)
         setDetails((prev) => ({ ...prev, [id]: latest }))
       }
     } catch (e: any) {
-      toast(`確認失敗：${e.message}`, 'error')
+      toast(`審核失敗：${e.message}`, 'error')
     } finally {
       setSaving(null)
     }
@@ -375,8 +376,8 @@ export default function ShipmentReconciliationPage() {
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
-                        {h.status === 'draft' && canWrite && (
-                          <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>確認</button>
+                        {h.status === 'draft' && canApprove && (
+                          <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>審核</button>
                         )}
                         {h.status === 'draft' && canWrite && (
                           <button className="btn-danger" disabled={saving === h.id} onClick={() => removeDraft(h.id)}>刪除</button>

@@ -145,7 +145,7 @@ export function getPOActions(status: string): StatusAction[] {
 }
 
 export function getDNActions(status: string): StatusAction[] {
-  if (status === 'draft')     return [{ label: '確認', toStatus: 'confirmed', icon: '✓' }]
+  if (status === 'draft')     return [{ label: '審核', toStatus: 'confirmed', icon: '✓' }]
   if (status === 'confirmed') return [{ label: '出貨', toStatus: 'shipped', icon: '�' }]
   return []
 }
@@ -168,6 +168,6 @@ export function getAdjActions(status: string): StatusAction[] {
 }
 
 export function getGRActions(status: string): StatusAction[] {
-  if (status === 'draft') return [{ label: '確認進貨', toStatus: 'confirmed', icon: '✓' }]
+  if (status === 'draft') return [{ label: '審核', toStatus: 'confirmed', icon: '✓' }]
   return []
 }

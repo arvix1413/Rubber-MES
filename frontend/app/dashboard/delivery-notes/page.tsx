@@ -37,6 +37,7 @@ export default function DeliveryNotesPage() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, DNItem[]>>({})
   const canWrite = can('delivery.create')
+  const canApprove = can('delivery.approve')
   const canDel = can('delivery.delete')
 
   const loadDnItems = async (id: number) => {
@@ -215,10 +216,10 @@ export default function DeliveryNotesPage() {
 
   const changeStatus = async (id: number, status: string) => {
     const labels: Record<string, string> = {
-      confirmed: '確認此出貨單？',
+      confirmed: '審核此出貨單？',
       shipped: '確認出貨？出貨後狀態不可撤銷',
     }
-    const btnLabels: Record<string, string> = { confirmed: '確認', shipped: '確認出貨' }
+    const btnLabels: Record<string, string> = { confirmed: '審核', shipped: '確認出貨' }
     if (!await confirmDialog(labels[status] || '確認變更狀態？', '', btnLabels[status] || '確認')) return
     setActionLoading(id)
     try {
@@ -452,7 +453,11 @@ export default function DeliveryNotesPage() {
                         <td className="px-3 py-2.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <div className="flex gap-1 items-center">
                             <StatusFlow compact steps={DN_STEPS} current={dn.status}
-                              actions={actionLoading === dn.id ? [] : getDNActions(dn.status)}
+                              actions={actionLoading === dn.id ? [] : getDNActions(dn.status).filter((a) => {
+                                if (a.toStatus === 'confirmed') return canApprove
+                                if (a.toStatus === 'shipped') return canWrite
+                                return true
+                              })}
                               onAction={(toStatus) => changeStatus(dn.id, toStatus)} />
                             {actionLoading === dn.id && <span className="text-xs text-slate-400 px-1">處理中...</span>}
                             <button onClick={e => { e.stopPropagation(); printDN(dn) }} className="btn-ghost" title="列印">🖨 列印</button>

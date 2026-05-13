@@ -56,16 +56,21 @@ const isAdmin = async (c: any, next: () => Promise<void>) => {
 }
 
 // Dynamic RBAC permission check — manager always pass, employee checks role_permissions
+async function hasPermission(user: any, permKey: string) {
+  if (!user) return false
+  if (user.role === 'manager') return true
+  const row = await queryOne<any>(
+    'SELECT allowed FROM role_permissions WHERE role=? AND permission=? AND allowed=1',
+    [normalizeUserRole(user.role), permKey]
+  )
+  return !!row
+}
+
 function requirePerm(permKey: string) {
   return async (c: any, next: () => Promise<void>) => {
     const user = c.get('user')
     if (!user) return c.json({ error: 'Unauthorized' }, 401)
-    if (user.role === 'manager') return next()
-    const row = await queryOne<any>(
-      'SELECT allowed FROM role_permissions WHERE role=? AND permission=? AND allowed=1',
-      [normalizeUserRole(user.role), permKey]
-    )
-    if (!row) return c.json({ error: `無此操作權限（${permKey}）` }, 403)
+    if (!await hasPermission(user, permKey)) return c.json({ error: `無此操作權限（${permKey}）` }, 403)
     return next()
   }
 }
@@ -1197,15 +1202,20 @@ const ALL_PERMISSIONS = [
   { key: 'bom.edit', label: '編輯BOM' },
   { key: 'bom.delete', label: '刪除BOM' },
   { key: 'po.create', label: '新增採購單' },
-  { key: 'po.approve', label: '核准採購單' },
+  { key: 'po.approve', label: '審核採購單' },
   { key: 'po.delete', label: '刪除採購單' },
   { key: 'production.create', label: '新增生產單' },
   { key: 'production.delete', label: '刪除生產單' },
   { key: 'delivery.create', label: '新增出貨單' },
+  { key: 'delivery.approve', label: '審核出貨單' },
   { key: 'delivery.delete', label: '刪除出貨單' },
+  { key: 'reconciliation.approve', label: '審核數量核對單' },
+  { key: 'invoice.approve', label: '審核發票' },
+  { key: 'goods_receipt.approve', label: '審核進貨單' },
   { key: 'customer.manage', label: '管理客戶' },
   { key: 'supplier.manage', label: '管理供應商' },
   { key: 'stock.adjust', label: '庫存調整' },
+  { key: 'stock.approve', label: '審核庫存調整' },
   { key: 'company.manage', label: '公司設定' },
   { key: 'user.manage', label: '使用者管理' },
   { key: 'audit.view', label: '檢視操作日誌' },
@@ -2037,7 +2047,7 @@ app.patch('/api/po/:id/approve', authMiddleware, requirePerm('po.approve'), asyn
     const id = c.req.param('id'); const u = c.get('user')
     const row = await queryOne<any>('SELECT po_number, status FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
-    if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的採購單才能核准' }, 400)
+    if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的採購單才能審核' }, 400)
     await execute('UPDATE purchase_orders SET status=?,approved_by=?,approved_at=? WHERE id=?', ['approved',u.userId,now8(),id])
     await audit(u, 'APPROVE', '採購單', id, row?.po_number)
     return c.json({ ok: true })
@@ -2072,7 +2082,7 @@ app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.approve'), asyn
     const po = await queryOne<any>('SELECT * FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!po) return c.json({ error: 'Not found' }, 404)
     if (po.status === 'received') return c.json({ error: '此採購單已收貨，不可重複操作' }, 400)
-    if (!['approved', 'sent'].includes(po.status)) return c.json({ error: '只有已核准或已送出的採購單才能收貨' }, 400)
+    if (!['approved', 'sent'].includes(po.status)) return c.json({ error: '只有已審核或已送出的採購單才能收貨' }, 400)
     const items = await query<any>('SELECT * FROM po_items WHERE po_id=?', [id])
     for (const item of items) {
       const qty = parseFloat(item.quantity) || 0
@@ -3611,7 +3621,7 @@ app.put('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create
   }
 })
 
-app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('delivery.create'), async c => {
+app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('reconciliation.approve'), async c => {
   try {
     const id = c.req.param('id')
     const u = c.get('user')
@@ -4125,7 +4135,7 @@ app.put('/api/invoices/:id', authMiddleware, requirePerm('customer_order.create'
   }
 })
 
-app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('customer_order.create'), async c => {
+app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('invoice.approve'), async c => {
   try {
     const id = c.req.param('id')
     const u = c.get('user')
@@ -4266,14 +4276,21 @@ app.put('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.create'
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.patch('/api/delivery-notes/:id/status', authMiddleware, requirePerm('delivery.create'), async c => {
+app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
   try {
     const id = c.req.param('id'); const { status } = await c.req.json()
     const u = c.get('user')
+    if (!status) return c.json({ error: 'Invalid status' }, 400)
+    const requiredPerm =
+      status === 'confirmed' ? 'delivery.approve'
+      : status === 'shipped' ? 'delivery.create'
+      : null
+    if (!requiredPerm) return c.json({ error: 'Invalid status' }, 400)
+    if (!await hasPermission(u, requiredPerm)) return c.json({ error: `無此操作權限（${requiredPerm}）` }, 403)
     const row = await queryOne<any>('SELECT dn_number,customer_name,status as current_status FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
     if (row.current_status === 'shipped') return c.json({ error: '此出貨單已出貨，不可重複操作' }, 400)
-    if (status === 'shipped' && row.current_status !== 'confirmed') return c.json({ error: '出貨前需先確認出貨單' }, 400)
+    if (status === 'shipped' && row.current_status !== 'confirmed') return c.json({ error: '出貨前需先審核出貨單' }, 400)
 
     await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
 
@@ -4904,7 +4921,7 @@ app.post('/api/goods-receipts', authMiddleware, requirePerm('po.create'), async 
     return c.json({ id: grId, gr_number: grNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.patch('/api/goods-receipts/:id/confirm', authMiddleware, requirePerm('po.approve'), async c => {
+app.patch('/api/goods-receipts/:id/confirm', authMiddleware, requirePerm('goods_receipt.approve'), async c => {
   try {
     const id = c.req.param('id'); const u = c.get('user')
     const gr = await queryOne<any>('SELECT * FROM goods_receipts WHERE id=? AND deleted_at IS NULL', [id])
@@ -5117,7 +5134,7 @@ app.post('/api/stock-adjustments', authMiddleware, requirePerm('stock.adjust'), 
     return c.json({ id: adjId, adj_number: adjNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.patch('/api/stock-adjustments/:id/approve', authMiddleware, requirePerm('stock.adjust'), async c => {
+app.patch('/api/stock-adjustments/:id/approve', authMiddleware, requirePerm('stock.approve'), async c => {
   try {
     const id = c.req.param('id'); const u = c.get('user')
     const adj = await queryOne<any>('SELECT * FROM stock_adjustments WHERE id=? AND deleted_at IS NULL', [id])
