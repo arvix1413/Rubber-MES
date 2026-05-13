@@ -8,6 +8,7 @@ type PoSummary = { status: string }
 
 export function useReviewBadge() {
   const [poDraftCount, setPoDraftCount] = useState(0)
+  const [poApprovedCount, setPoApprovedCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const canApprovePo = can('po.approve')
 
@@ -19,9 +20,12 @@ export function useReviewBadge() {
     setLoading(true)
     try {
       const rows = await apiFetch<PoSummary[]>('/api/po')
-      setPoDraftCount((rows || []).filter((row) => row.status === 'draft').length)
+      const list = rows || []
+      setPoDraftCount(list.filter((row) => row.status === 'draft').length)
+      setPoApprovedCount(list.filter((row) => row.status === 'approved').length)
     } catch {
       setPoDraftCount(0)
+      setPoApprovedCount(0)
     } finally {
       setLoading(false)
     }
@@ -48,6 +52,7 @@ export function useReviewBadge() {
   return {
     canApprovePo,
     poDraftCount,
+    poApprovedCount,
     loading,
     refresh: load,
   }

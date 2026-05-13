@@ -112,6 +112,12 @@ export default function PoPage() {
     void refreshAll(true)
   }, [])
 
+  useEffect(() => {
+    if (typeof window === 'undefined') return
+    const status = new URLSearchParams(window.location.search).get('status') || ''
+    setStatusFilter(status)
+  }, [])
+
   useRefreshOnFocus(() => refreshAll(false))
 
   const buildUnitPriceInputs = (items: PoItemExt[]) =>

@@ -112,7 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { canApprovePo, poDraftCount } = useReviewBadge()
+  const { canApprovePo, poDraftCount, poApprovedCount } = useReviewBadge()
 
   useEffect(() => {
     if (!getToken()) {
@@ -194,6 +194,41 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
+  const renderPoStatusPanel = () => {
+    if (!canApprovePo) return null
+    const rows = [
+      {
+        href: '/dashboard/po?status=draft',
+        label: '待審核',
+        count: poDraftCount,
+        tone: 'border-[#f0ad9a] bg-[linear-gradient(135deg,#5f2419_0%,#7d2a1c_100%)] text-[#ffe5db] hover:border-[#ffc0ad] hover:bg-[linear-gradient(135deg,#723024_0%,#923422_100%)]',
+        dot: 'bg-[#ff8b73]',
+      },
+      {
+        href: '/dashboard/po?status=approved',
+        label: '已審核',
+        count: poApprovedCount,
+        tone: 'border-[#5f5140] bg-[linear-gradient(135deg,#2f3e33_0%,#3f5643_100%)] text-[#e7f3e8] hover:border-[#7ca884] hover:bg-[linear-gradient(135deg,#385041_0%,#496751_100%)]',
+        dot: 'bg-[#86d39b]',
+      },
+    ]
+    return (
+      <div className="mt-1.5 space-y-1.5">
+        {rows.map((row) => (
+          <Link
+            key={row.href}
+            href={row.href}
+            className={`group flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-all ${row.tone}`}
+          >
+            <span className={`h-2 w-2 rounded-full ${row.dot} shadow-[0_0_0_3px_rgba(255,255,255,0.08)]`} />
+            <span className="tracking-[0.06em]">{row.label}</span>
+            <span className="ml-auto text-base font-black leading-none">{row.count > 99 ? '99+' : row.count}</span>
+          </Link>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="relative flex h-screen bg-[#f2ede4] text-[#2a241d]">
       {sidebarOpen && <button aria-label="close sidebar backdrop" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />}
@@ -230,11 +265,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {open && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l border-white/10 pl-3">
                       {n.children.map((c) => (
-                        <Link key={c.href} href={c.href} className={linkClass(isActive(c.href))}>
-                          <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
-                          <span>{c.label}</span>
-                          {renderNavBadge(c.href)}
-                        </Link>
+                        <div key={c.href}>
+                          <Link href={c.href} className={linkClass(isActive(c.href))}>
+                            <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
+                            <span>{c.label}</span>
+                            {renderNavBadge(c.href)}
+                          </Link>
+                          {c.href === '/dashboard/po' ? renderPoStatusPanel() : null}
+                        </div>
                       ))}
                     </div>
                   )}
