@@ -26,8 +26,8 @@ type PoItemExt = PoItem & {
 }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:     { label:'草稿',   badge:'badge-gray'   },
-  approved:  { label:'已核准', badge:'badge-green'  },
+  draft:     { label:'尚未審核', badge:'badge-gray'   },
+  approved:  { label:'已審核', badge:'badge-green'  },
   sent:      { label:'已送出', badge:'badge-blue'   },
   received:  { label:'已收貨', badge:'badge-purple' },
   cancelled: { label:'已取消', badge:'badge-red'    },
@@ -638,7 +638,7 @@ export default function PoPage() {
           <div className="list-controls">
             <input className="list-search" placeholder="搜尋 PO NO 或供應商..." value={search} onChange={e=>setSearch(e.target.value)} />
             <div className="flex gap-1">
-              {[['', '全部'], ['draft', '草稿'], ['approved', '已核准'], ['sent', '已送出'], ['received', '已收貨']].map(([val, label]) => (
+              {[['', '全部'], ['draft', '尚未審核'], ['approved', '已審核'], ['sent', '已送出'], ['received', '已收貨']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
                   className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
                   {label}
@@ -659,8 +659,8 @@ export default function PoPage() {
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">供應商</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">金額</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">幣別</th>
-                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">狀態</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">建立時間</th>
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">狀態</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider">操作</th>
                 </tr>
               </thead>
@@ -681,8 +681,8 @@ export default function PoPage() {
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[200px] truncate" title={p.supplier_name}>{p.supplier_name}</td>
                         <td className="px-4 py-3 text-right text-slate-600 font-medium">{formatDecimal(p.total_amount)}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs">{p.currency}</td>
-                        <td className="px-4 py-3"><span className={sm.badge}>{sm.label}</span></td>
                         <td className="px-4 py-3 text-slate-300 text-xs">{formatDateYMD(p.created_at) || '—'}</td>
+                        <td className="px-4 py-3"><span className={sm.badge}>{sm.label}</span></td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <StatusFlow compact steps={PO_STEPS} current={p.status}

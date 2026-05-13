@@ -67,8 +67,8 @@ type InvoiceDetail = InvoiceHeader & {
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: '草稿', badge: 'badge-gray' },
-  confirmed: { label: '已確認', badge: 'badge-green' },
+  draft: { label: '尚未審核', badge: 'badge-gray' },
+  confirmed: { label: '已審核', badge: 'badge-green' },
 }
 
 export default function InvoicesPage() {
@@ -336,8 +336,8 @@ export default function InvoicesPage() {
           <input className="rubber-input md:col-span-2" placeholder="搜尋發票號/對象/驗證碼" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="rubber-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">全部狀態</option>
-            <option value="draft">草稿</option>
-            <option value="confirmed">已確認</option>
+            <option value="draft">尚未審核</option>
+            <option value="confirmed">已審核</option>
           </select>
           <input type="date" className="rubber-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input type="date" className="rubber-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />

@@ -18,8 +18,8 @@ type PendingOrder = { id:number; po_number:string; po_date:string; items_summary
 type OrderItem = { id:number; bom_id:number|null; qty:number; unit_price:number; product_name:string; product_sku:string }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:     { label:'草稿',   badge:'badge-gray'  },
-  confirmed: { label:'已確認', badge:'badge-blue'  },
+  draft:     { label:'尚未審核', badge:'badge-gray'  },
+  confirmed: { label:'已審核', badge:'badge-blue'  },
   shipped:   { label:'已出貨', badge:'badge-green' },
 }
 

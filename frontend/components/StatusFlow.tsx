@@ -98,16 +98,16 @@ export function StatusFlow({ steps, current, actions, onAction, compact = false 
 }
 
 export const PO_STEPS: StatusStep[] = [
-  { key: 'draft',     label: '草稿',   color: 'gray'  },
-  { key: 'approved',  label: '已核准', color: 'blue'  },
+  { key: 'draft',     label: '尚未審核', color: 'gray'  },
+  { key: 'approved',  label: '已審核', color: 'blue'  },
   { key: 'sent',      label: '已送出', color: 'blue'  },
   { key: 'received',  label: '已收貨', color: 'green' },
   { key: 'cancelled', label: '已取消', color: 'red'   },
 ]
 
 export const DN_STEPS: StatusStep[] = [
-  { key: 'draft',     label: '草稿',   color: 'gray'  },
-  { key: 'confirmed', label: '已確認', color: 'blue'  },
+  { key: 'draft',     label: '尚未審核', color: 'gray'  },
+  { key: 'confirmed', label: '已審核', color: 'blue'  },
   { key: 'shipped',   label: '已出貨', color: 'green' },
 ]
 
@@ -121,13 +121,13 @@ export const PROD_STEPS: StatusStep[] = [
 ]
 
 export const ADJ_STEPS: StatusStep[] = [
-  { key: 'draft',    label: '草稿',   color: 'gray'  },
-  { key: 'approved', label: '已核准', color: 'green' },
+  { key: 'draft',    label: '尚未審核', color: 'gray'  },
+  { key: 'approved', label: '已審核', color: 'green' },
 ]
 
 export const GR_STEPS: StatusStep[] = [
-  { key: 'draft',     label: '草稿',   color: 'gray'  },
-  { key: 'confirmed', label: '已確認', color: 'green' },
+  { key: 'draft',     label: '尚未審核', color: 'gray'  },
+  { key: 'confirmed', label: '已審核', color: 'green' },
 ]
 
 export const CO_STEPS: StatusStep[] = [

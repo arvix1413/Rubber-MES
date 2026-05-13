@@ -35,7 +35,7 @@ const normalizeTiers = (tiers: any): MoqTier[] => {
   })
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:    { label:'草稿',   badge:'badge-gray'  },
+  draft:    { label:'尚未審核', badge:'badge-gray'  },
   sent:     { label:'已送出', badge:'badge-blue'  },
   accepted: { label:'已接受', badge:'badge-green' },
   rejected: { label:'已拒絕', badge:'badge-red'   },

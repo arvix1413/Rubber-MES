@@ -54,8 +54,8 @@ type ReconciliationDetail = ReconciliationHeader & {
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: '草稿', badge: 'badge-gray' },
-  confirmed: { label: '已確認', badge: 'badge-green' },
+  draft: { label: '尚未審核', badge: 'badge-gray' },
+  confirmed: { label: '已審核', badge: 'badge-green' },
 }
 
 export default function ShipmentReconciliationPage() {
