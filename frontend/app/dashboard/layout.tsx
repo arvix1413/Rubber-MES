@@ -186,12 +186,21 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [pathname])
 
   const renderNavBadge = (href: string) => {
-    if (href !== '/dashboard/po' || !canApprovePo || poDraftCount <= 0) return null
-    return (
-      <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
-        {poDraftCount > 99 ? '99+' : poDraftCount}
-      </span>
-    )
+    if (href === '/dashboard/po' && canApprovePo && poDraftCount > 0) {
+      return (
+        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
+          {poDraftCount > 99 ? '99+' : poDraftCount}
+        </span>
+      )
+    }
+    if (href === '/dashboard/quotations' && canReviewQuotation && quotationDraftCount > 0) {
+      return (
+        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#c46b1f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(196,107,31,0.35)] ring-2 ring-[#ffe2bf]">
+          {quotationDraftCount > 99 ? '99+' : quotationDraftCount}
+        </span>
+      )
+    }
+    return null
   }
 
   const renderTopReviewBadges = () => {
