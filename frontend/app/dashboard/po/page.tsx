@@ -198,9 +198,9 @@ export default function PoPage() {
     e.stopPropagation()
     try {
       await apiFetch(`/api/po/${id}/approve`, { method: 'PATCH' })
-      toast('已核准')
+      toast('已審核')
       await refreshAll(false)
-    } catch (e: any) { toast('核准失敗：' + e.message, 'error') }
+    } catch (e: any) { toast('審核失敗：' + e.message, 'error') }
   }
 
   const confirmReceipt = async (po: Po, e: React.MouseEvent) => {

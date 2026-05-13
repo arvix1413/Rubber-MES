@@ -138,7 +138,7 @@ export const CO_STEPS: StatusStep[] = [
 ]
 
 export function getPOActions(status: string): StatusAction[] {
-  if (status === 'draft')    return [{ label: '核准', toStatus: 'approved', icon: '✓' }]
+  if (status === 'draft')    return [{ label: '審核', toStatus: 'approved', icon: '✓' }]
   if (status === 'approved') return [{ label: '送出', toStatus: 'sent', icon: '📤' }]
   if (status === 'sent')     return [{ label: '確認收貨', toStatus: 'received', icon: '📦' }]
   return []
@@ -163,7 +163,7 @@ export function getProdActions(status: string): StatusAction[] {
 }
 
 export function getAdjActions(status: string): StatusAction[] {
-  if (status === 'draft') return [{ label: '核准', toStatus: 'approved', icon: '✓' }]
+  if (status === 'draft') return [{ label: '審核', toStatus: 'approved', icon: '✓' }]
   return []
 }
 
