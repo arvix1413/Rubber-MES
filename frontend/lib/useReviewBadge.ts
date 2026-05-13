@@ -12,7 +12,7 @@ export function useReviewBadge() {
   const [quotationDraftCount, setQuotationDraftCount] = useState(0)
   const [loading, setLoading] = useState(false)
   const canApprovePo = can('po.approve')
-  const canReviewQuotation = can('customer_order.create')
+  const canReviewQuotation = can('quotation.approve')
 
   const load = async () => {
     if (!canApprovePo) setPoDraftCount(0)
@@ -21,9 +21,6 @@ export function useReviewBadge() {
 
     setLoading(true)
     try {
-      const requests: Promise<any>[] = []
-      if (canApprovePo) requests.push(apiFetch<PoSummary[]>('/api/po'))
-      if (canReviewQuotation) requests.push(apiFetch<QuotationSummary[]>('/api/quotations'))
       const [poRows, quotationRows] = await Promise.all([
         canApprovePo ? apiFetch<PoSummary[]>('/api/po') : Promise.resolve([]),
         canReviewQuotation ? apiFetch<QuotationSummary[]>('/api/quotations') : Promise.resolve([]),

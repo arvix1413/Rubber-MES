@@ -1198,6 +1198,7 @@ app.get('/', c => c.json({ name: 'RUBBER MES Backend', version: '2.0.0' }))
 const ALL_PERMISSIONS = [
   { key: 'customer_order.create', label: '新增客戶訂單' },
   { key: 'customer_order.delete', label: '刪除客戶訂單' },
+  { key: 'quotation.approve', label: '審核報價單' },
   { key: 'bom.create', label: '新增BOM' },
   { key: 'bom.edit', label: '編輯BOM' },
   { key: 'bom.delete', label: '刪除BOM' },
@@ -2787,15 +2788,27 @@ app.put('/api/quotations/:id', authMiddleware, requirePerm('customer_order.creat
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
-app.patch('/api/quotations/:id/status', authMiddleware, requirePerm('customer_order.create'), async c => {
+app.patch('/api/quotations/:id/status', authMiddleware, async c => {
   try {
-    const id = c.req.param('id'); const { status } = await c.req.json()
-    const validStatuses = ['sent', 'accepted', 'rejected']
+    const id = c.req.param('id'); const { status } = await c.req.json(); const user = c.get('user')
+    const validStatuses = ['approved', 'sent', 'accepted', 'rejected']
     if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400)
-    const row = await queryOne<any>('SELECT quotation_number,customer_name FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
+    const row = await queryOne<any>('SELECT quotation_number,customer_name,status FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
+
+    if (status === 'approved') {
+      if (!await hasPermission(user, 'quotation.approve')) return c.json({ error: '無此操作權限（quotation.approve）' }, 403)
+      if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的報價單才能審核' }, 400)
+    } else if (status === 'sent') {
+      if (!await hasPermission(user, 'customer_order.create')) return c.json({ error: '無此操作權限（customer_order.create）' }, 403)
+      if (row.status !== 'approved') return c.json({ error: '只有已審核的報價單才能送出' }, 400)
+    } else {
+      if (!await hasPermission(user, 'customer_order.create')) return c.json({ error: '無此操作權限（customer_order.create）' }, 403)
+      if (row.status !== 'sent') return c.json({ error: '只有已送出的報價單才能更新結果' }, 400)
+    }
+
     await execute('UPDATE quotations SET status=? WHERE id=?', [status,id])
-    await audit(c.get('user'), 'STATUS_CHANGE', '報價單', id, `${row?.quotation_number} → ${status}`)
+    await audit(user, 'STATUS_CHANGE', '報價單', id, `${row?.quotation_number} ${row?.status} → ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })

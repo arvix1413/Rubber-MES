@@ -1,7 +1,8 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
-import { useEffect, useMemo, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { useSearchParams } from 'next/navigation'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, PO_STEPS, getPOActions } from '@/components/StatusFlow'
 import StatusCountChips from '@/components/StatusCountChips'
@@ -51,6 +52,16 @@ function ChevronIcon({ open }: { open: boolean }) {
       <polyline points="9 18 15 12 9 6" />
     </svg>
   )
+}
+
+function StatusFilterSync({ onChange }: { onChange: (value: string) => void }) {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    onChange(searchParams.get('status') || '')
+  }, [onChange, searchParams])
+
+  return null
 }
 
 export default function PoPage() {
@@ -485,6 +496,9 @@ export default function PoPage() {
 
   return (
     <div>
+      <Suspense fallback={null}>
+        <StatusFilterSync onChange={setStatusFilter} />
+      </Suspense>
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">採購單管理</h1>

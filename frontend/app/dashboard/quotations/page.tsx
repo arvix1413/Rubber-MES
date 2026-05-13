@@ -2,12 +2,15 @@
 import React from 'react'
 import DecimalInput from '@/components/DecimalInput'
 import { useDialog } from '@/components/Dialog'
-import { useEffect, useState } from 'react'
+import { Suspense, useEffect, useMemo, useState } from 'react'
 import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { useSearchParams } from 'next/navigation'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany } from '@/lib/useCompany'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
+import StatusCountChips from '@/components/StatusCountChips'
+import { can } from '@/lib/usePermissions'
 
 type MoqTier = { moq: number; price: number }
 type QItem = { bom_id?:number|null; item_name:string; material_code:string; spec:string; unit:string; qty:number; unit_price:number; total_price:number; remark:string; moq_tiers:MoqTier[]; image_url?:string }
@@ -36,10 +39,20 @@ const normalizeTiers = (tiers: any): MoqTier[] => {
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:    { label:'尚未審核', badge:'badge-gray'  },
+  approved: { label:'已審核', badge:'badge-green' },
   sent:     { label:'已送出', badge:'badge-blue'  },
   accepted: { label:'已接受', badge:'badge-green' },
   rejected: { label:'已拒絕', badge:'badge-red'   },
 }
+
+const STATUS_FILTERS = [
+  { value: '', label: '全部' },
+  { value: 'draft', label: '尚未審核' },
+  { value: 'approved', label: '已審核' },
+  { value: 'sent', label: '已送出' },
+  { value: 'accepted', label: '已接受' },
+  { value: 'rejected', label: '已拒絕' },
+] as const
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -48,6 +61,16 @@ function ChevronIcon({ open }: { open: boolean }) {
       <polyline points="9 18 15 12 9 6" />
     </svg>
   )
+}
+
+function StatusFilterSync({ onChange }: { onChange: (value: string) => void }) {
+  const searchParams = useSearchParams()
+
+  useEffect(() => {
+    onChange(searchParams.get('status') || '')
+  }, [onChange, searchParams])
+
+  return null
 }
 
 export default function QuotationsPage() {
@@ -64,6 +87,10 @@ export default function QuotationsPage() {
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
   const [search, setSearch] = useState('')
+  const [statusFilter, setStatusFilter] = useState('')
+  const canWrite = can('customer_order.create')
+  const canApprove = can('quotation.approve')
+  const canDelete = can('customer_order.delete')
 
   const loadQuotationItems = async (id: number) => {
     const d = await apiFetch<Q>(`/api/quotations/${id}`)
@@ -463,19 +490,39 @@ export default function QuotationsPage() {
     </div>
   )
 
-  const filtered = items.filter(q => !search || q.quotation_number.toLowerCase().includes(search.toLowerCase()) || q.customer_name.toLowerCase().includes(search.toLowerCase()))
+  const normalizedSearch = search.trim().toLowerCase()
+  const searchedItems = useMemo(() => items.filter((q) => (
+    !normalizedSearch ||
+    q.quotation_number.toLowerCase().includes(normalizedSearch) ||
+    q.customer_name.toLowerCase().includes(normalizedSearch)
+  )), [items, normalizedSearch])
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { '': searchedItems.length }
+    for (const row of searchedItems) {
+      counts[row.status] = (counts[row.status] || 0) + 1
+    }
+    return counts
+  }, [searchedItems])
+  const filtered = searchedItems.filter((q) => !statusFilter || q.status === statusFilter)
+  const statusFilterItems = useMemo(() => STATUS_FILTERS.map((item) => ({
+    ...item,
+    count: statusCounts[item.value] || 0,
+  })), [statusCounts])
   const { page, setPage, totalPages, paged, total: filteredTotal } = usePagination(filtered, 10)
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} opacity-80 bg-[#f4ede4] cursor-default`
 
   return (
     <div>
+      <Suspense fallback={null}>
+        <StatusFilterSync onChange={setStatusFilter} />
+      </Suspense>
       <div className="mb-6 flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-[#2d261d]">報價單</h1>
           <p className="mt-1 text-sm text-[#7c6f60]">點選報價單列展開檢視品項明細</p>
         </div>
-        <button onClick={startCreate} className="btn-primary">+ 新增報價單</button>
+        {canWrite ? <button onClick={startCreate} className="btn-primary">+ 新增報價單</button> : null}
       </div>
 
       {mounted && (creating || editingId !== null) && (
@@ -562,7 +609,10 @@ export default function QuotationsPage() {
 
       {!creating && editingId === null && (
       <>
-      <div className="mb-4"><input className="rubber-input w-64" placeholder="搜尋報價單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} /></div>
+      <div className="mb-4 space-y-4">
+        <input className="rubber-input w-64" placeholder="搜尋報價單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} />
+        <StatusCountChips items={statusFilterItems} value={statusFilter} onChange={setStatusFilter} />
+      </div>
 
       <div className="rounded-3xl border border-[#e1d6c5] bg-white/90 shadow-sm">
         {loading ? <div className="flex justify-center py-16"><div className="h-5 w-5 animate-spin rounded-full border-2 border-[#d8c3ac] border-t-[#9a5d2d]"/></div> : (
@@ -601,11 +651,12 @@ export default function QuotationsPage() {
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
                             <button onClick={e=>{ e.stopPropagation(); printQuotation(q.id, q) }} className="rounded-lg px-2 py-1 text-xs text-[#7f5b36] transition hover:bg-[#f3e6d7]" title="列印">🖨 列印</button>
-                            {q.status==='draft' && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
-                            {q.status==='draft' && <button onClick={e=>changeStatus(q.id,'sent',e)} className="rounded-lg px-2 py-1 text-xs text-[#6d5b49] transition hover:bg-[#f3e6d7]">送出</button>}
-                            {q.status==='sent' && <button onClick={e=>changeStatus(q.id,'accepted',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">接受</button>}
-                            {q.status==='sent' && <button onClick={e=>changeStatus(q.id,'rejected',e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">拒絕</button>}
-                            <button onClick={e=>del(q.id,e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">刪除</button>
+                            {q.status==='draft' && canWrite && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
+                            {q.status==='draft' && canApprove && <button onClick={e=>changeStatus(q.id,'approved',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">審核</button>}
+                            {q.status==='approved' && canWrite && <button onClick={e=>changeStatus(q.id,'sent',e)} className="rounded-lg px-2 py-1 text-xs text-[#6d5b49] transition hover:bg-[#f3e6d7]">送出</button>}
+                            {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'accepted',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">接受</button>}
+                            {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'rejected',e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">拒絕</button>}
+                            {canDelete && <button onClick={e=>del(q.id,e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">刪除</button>}
                           </div>
                         </td>
                       </tr>

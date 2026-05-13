@@ -197,10 +197,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const renderTopReviewBadges = () => {
     const badges = [
       canApprovePo && poDraftCount > 0
-        ? { href: '/dashboard/po', label: '採購單待審核', count: poDraftCount, tone: 'bg-[#d93d2f] text-white ring-[#ffd9cf]' }
+        ? { href: '/dashboard/po?status=draft', label: '採購單待審核', count: poDraftCount, tone: 'bg-[#d93d2f] text-white ring-[#ffd9cf]' }
         : null,
       canReviewQuotation && quotationDraftCount > 0
-        ? { href: '/dashboard/quotations', label: '報價單待審核', count: quotationDraftCount, tone: 'bg-[#c46b1f] text-white ring-[#ffe2bf]' }
+        ? { href: '/dashboard/quotations?status=draft', label: '報價單待審核', count: quotationDraftCount, tone: 'bg-[#c46b1f] text-white ring-[#ffe2bf]' }
         : null,
     ].filter(Boolean) as Array<{ href: string; label: string; count: number; tone: string }>
     if (!badges.length) return null
@@ -210,10 +210,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
           <Link
             key={badge.href}
             href={badge.href}
-            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-bold shadow-[0_10px_20px_rgba(41,30,20,0.12)] ring-2 ${badge.tone}`}
+            className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 text-[16px] font-black shadow-[0_10px_20px_rgba(41,30,20,0.12)] ring-2 ${badge.tone}`}
           >
             <span>{badge.label}</span>
-            <span className="rounded-full bg-white/18 px-2 py-0.5 text-[11px] font-black leading-none">
+            <span className="rounded-full bg-white/18 px-2.5 py-1 text-[14px] font-black leading-none">
               {badge.count > 99 ? '99+' : badge.count}
             </span>
           </Link>
