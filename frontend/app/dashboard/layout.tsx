@@ -112,7 +112,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [user, setUser] = useState<any>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { canApprovePo, poDraftCount, poApprovedCount } = useReviewBadge()
+  const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
 
   useEffect(() => {
     if (!getToken()) {
@@ -194,35 +194,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     )
   }
 
-  const renderPoStatusPanel = () => {
-    if (!canApprovePo) return null
-    const rows = [
-      {
-        href: '/dashboard/po?status=draft',
-        label: '待審核',
-        count: poDraftCount,
-        tone: 'border-[#f0ad9a] bg-[linear-gradient(135deg,#5f2419_0%,#7d2a1c_100%)] text-[#ffe5db] hover:border-[#ffc0ad] hover:bg-[linear-gradient(135deg,#723024_0%,#923422_100%)]',
-        dot: 'bg-[#ff8b73]',
-      },
-      {
-        href: '/dashboard/po?status=approved',
-        label: '已審核',
-        count: poApprovedCount,
-        tone: 'border-[#5f5140] bg-[linear-gradient(135deg,#2f3e33_0%,#3f5643_100%)] text-[#e7f3e8] hover:border-[#7ca884] hover:bg-[linear-gradient(135deg,#385041_0%,#496751_100%)]',
-        dot: 'bg-[#86d39b]',
-      },
-    ]
+  const renderTopReviewBadges = () => {
+    const badges = [
+      canApprovePo && poDraftCount > 0
+        ? { href: '/dashboard/po', label: '採購單待審核', count: poDraftCount, tone: 'bg-[#d93d2f] text-white ring-[#ffd9cf]' }
+        : null,
+      canReviewQuotation && quotationDraftCount > 0
+        ? { href: '/dashboard/quotations', label: '報價單待審核', count: quotationDraftCount, tone: 'bg-[#c46b1f] text-white ring-[#ffe2bf]' }
+        : null,
+    ].filter(Boolean) as Array<{ href: string; label: string; count: number; tone: string }>
+    if (!badges.length) return null
     return (
-      <div className="mt-1.5 space-y-1.5">
-        {rows.map((row) => (
+      <div className="flex flex-wrap items-center gap-2">
+        {badges.map((badge) => (
           <Link
-            key={row.href}
-            href={row.href}
-            className={`group flex items-center gap-2 rounded-xl border px-3 py-2 text-[12px] font-semibold transition-all ${row.tone}`}
+            key={badge.href}
+            href={badge.href}
+            className={`inline-flex items-center gap-2 rounded-full px-3 py-1.5 text-[12px] font-bold shadow-[0_10px_20px_rgba(41,30,20,0.12)] ring-2 ${badge.tone}`}
           >
-            <span className={`h-2 w-2 rounded-full ${row.dot} shadow-[0_0_0_3px_rgba(255,255,255,0.08)]`} />
-            <span className="tracking-[0.06em]">{row.label}</span>
-            <span className="ml-auto text-base font-black leading-none">{row.count > 99 ? '99+' : row.count}</span>
+            <span>{badge.label}</span>
+            <span className="rounded-full bg-white/18 px-2 py-0.5 text-[11px] font-black leading-none">
+              {badge.count > 99 ? '99+' : badge.count}
+            </span>
           </Link>
         ))}
       </div>
@@ -265,14 +258,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                   {open && (
                     <div className="ml-3 mt-1 space-y-0.5 border-l border-white/10 pl-3">
                       {n.children.map((c) => (
-                        <div key={c.href}>
-                          <Link href={c.href} className={linkClass(isActive(c.href))}>
-                            <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
-                            <span>{c.label}</span>
-                            {renderNavBadge(c.href)}
-                          </Link>
-                          {c.href === '/dashboard/po' ? renderPoStatusPanel() : null}
-                        </div>
+                        <Link key={c.href} href={c.href} className={linkClass(isActive(c.href))}>
+                          <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
+                          <span>{c.label}</span>
+                          {renderNavBadge(c.href)}
+                        </Link>
                       ))}
                     </div>
                   )}
@@ -308,6 +298,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className="flex-1 overflow-auto bg-transparent">
+        <div className="sticky top-0 z-20 hidden border-b border-[#ccbca8] bg-[#f7f0e6]/95 px-6 py-3 backdrop-blur md:block">
+          <div className="flex items-center justify-between gap-4">
+            <div className="brand-font text-[12px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
+            {renderTopReviewBadges()}
+          </div>
+        </div>
         <div className="sticky top-0 z-20 border-b border-[#ccbca8] bg-[#f7f0e6]/95 px-4 py-2.5 backdrop-blur md:hidden">
           <div className="flex items-center justify-between">
             <button onClick={() => setSidebarOpen((v) => !v)} className="btn-ghost px-2.5 py-1.5">
@@ -315,11 +311,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {sidebarOpen ? '關閉' : '選單'}
             </button>
             <div className="brand-font text-[11px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
-            {canApprovePo && poDraftCount > 0 ? (
-              <Link href="/dashboard/po" className="inline-flex items-center rounded-full bg-[#d93d2f] px-2.5 py-1 text-[11px] font-bold text-white shadow-[0_10px_20px_rgba(217,61,47,0.28)]">
-                待審核 {poDraftCount > 99 ? '99+' : poDraftCount}
-              </Link>
-            ) : null}
+            <div className="max-w-[46vw]">{renderTopReviewBadges()}</div>
           </div>
         </div>
         <StickyTableHeaderBridge />

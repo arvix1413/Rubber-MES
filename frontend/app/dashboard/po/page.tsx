@@ -1,9 +1,10 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { apiFetch, getSignatureUrl } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, PO_STEPS, getPOActions } from '@/components/StatusFlow'
+import StatusCountChips from '@/components/StatusCountChips'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { can } from '@/lib/usePermissions'
 import { getCompany } from '@/lib/useCompany'
@@ -32,6 +33,14 @@ const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   received:  { label:'已收貨', badge:'badge-purple' },
   cancelled: { label:'已取消', badge:'badge-red'    },
 }
+
+const STATUS_FILTERS = [
+  { value: '', label: '全部' },
+  { value: 'draft', label: '尚未審核' },
+  { value: 'approved', label: '已審核' },
+  { value: 'sent', label: '已送出' },
+  { value: 'received', label: '已收貨' },
+] as const
 
 const emptyItem = (): PoItemExt => ({ material_code:'', material_name:'', spec:'', unit:'', quantity:1, unit_price:0, total_price:0, currency:'VND', remark:'', po_ref:'', keep: true, supplier_id: null, supplier_name: '' })
 
@@ -110,12 +119,6 @@ export default function PoPage() {
 
   useEffect(() => {
     void refreshAll(true)
-  }, [])
-
-  useEffect(() => {
-    if (typeof window === 'undefined') return
-    const status = new URLSearchParams(window.location.search).get('status') || ''
-    setStatusFilter(status)
   }, [])
 
   useRefreshOnFocus(() => refreshAll(false))
@@ -458,11 +461,24 @@ export default function PoPage() {
   }
 
   const formTotal = form.items.filter(i => i.keep !== false).reduce((s, i) => s + (i.total_price || 0), 0)
-  const filteredPos = pos.filter(p => {
-    const matchSearch = !search || p.po_number.toLowerCase().includes(search.toLowerCase()) || p.supplier_name.toLowerCase().includes(search.toLowerCase())
-    const matchStatus = !statusFilter || p.status === statusFilter
-    return matchSearch && matchStatus
-  })
+  const normalizedSearch = search.trim().toLowerCase()
+  const searchedPos = useMemo(() => pos.filter((p) => (
+    !normalizedSearch ||
+    p.po_number.toLowerCase().includes(normalizedSearch) ||
+    p.supplier_name.toLowerCase().includes(normalizedSearch)
+  )), [pos, normalizedSearch])
+  const statusCounts = useMemo(() => {
+    const counts: Record<string, number> = { '': searchedPos.length }
+    for (const row of searchedPos) {
+      counts[row.status] = (counts[row.status] || 0) + 1
+    }
+    return counts
+  }, [searchedPos])
+  const filteredPos = searchedPos.filter((p) => !statusFilter || p.status === statusFilter)
+  const statusFilterItems = useMemo(() => STATUS_FILTERS.map((item) => ({
+    ...item,
+    count: statusCounts[item.value] || 0,
+  })), [statusCounts])
   const { page, setPage, totalPages, paged, total } = usePagination(filteredPos, 10)
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
@@ -643,14 +659,7 @@ export default function PoPage() {
         <>
           <div className="list-controls">
             <input className="list-search" placeholder="搜尋 PO NO 或供應商..." value={search} onChange={e=>setSearch(e.target.value)} />
-            <div className="flex gap-1">
-              {[['', '全部'], ['draft', '尚未審核'], ['approved', '已審核'], ['sent', '已送出'], ['received', '已收貨']].map(([val, label]) => (
-                <button key={val} onClick={() => setStatusFilter(val)}
-                  className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
-                  {label}
-                </button>
-              ))}
-            </div>
+            <StatusCountChips items={statusFilterItems} value={statusFilter} onChange={setStatusFilter} />
           </div>
 
           <div className="rubber-card overflow-hidden">
