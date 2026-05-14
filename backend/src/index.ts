@@ -3733,14 +3733,13 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('recon
 
 app.delete('/api/reconciliations/:id', authMiddleware, requirePerm('delivery.create'), async c => {
   try {
-    const id = c.req.param('id')
-    const header = await queryOne<any>('SELECT id, status, reconciliation_no FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
-    if (!header) return c.json({ error: 'Not found' }, 404)
-    if (header.status !== 'draft') return c.json({ error: 'only draft reconciliation can be deleted' }, 400)
-    await softDeleteById('shipment_reconciliations', id, c.get('user')?.userId)
-    await audit(c.get('user'), 'DELETE', '出貨核對單', id, header.reconciliation_no || `id=${id}`)
+    const id = Number(c.req.param('id') || 0)
+    await deleteReconciliationWithRollback(id, c.get('user'))
     return c.json({ ok: true })
   } catch (e: any) {
+    const msg = String(e.message || 'delete failed')
+    if (msg === 'Not found') return c.json({ error: 'Not found' }, 404)
+    if (msg.includes('請先刪除關聯發票')) return c.json({ error: msg }, 400)
     return c.json({ error: String(e.message) }, 500)
   }
 })
@@ -3765,6 +3764,120 @@ const getInvoicedQtyMapByReconciliationItems = async (reconciliationItemIds: num
     map.set(Number(row.reconciliation_item_id), toQty(row.qty))
   }
   return map
+}
+
+const markDeletedByWhere = async (table: string, whereSql: string, params: any[], userId?: number | null) => {
+  await execute(
+    `UPDATE ${table} SET deleted_at=?, deleted_by=? WHERE ${whereSql} AND deleted_at IS NULL`,
+    [now8(), userId || null, ...params]
+  )
+}
+
+const recalcCustomerOrderStatus = async (orderIds: number[]) => {
+  const normalized = Array.from(new Set(orderIds.map((id) => Number(id || 0)).filter((id) => id > 0)))
+  for (const orderId of normalized) {
+    const summary = await queryOne<any>(
+      'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=?',
+      [orderId]
+    )
+    const totalQty = toQty(summary?.total_qty || 0)
+    const arrivedQty = toQty(summary?.arrived_qty || 0)
+    const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
+    await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
+  }
+}
+
+const deleteInvoiceWithRollback = async (invoiceId: number, user: any) => {
+  const header = await queryOne<any>(
+    'SELECT id, invoice_no, status, invoice_type FROM invoice_headers WHERE id=? AND deleted_at IS NULL',
+    [invoiceId]
+  )
+  if (!header) throw new Error('Not found')
+
+  const items = await query<any>(
+    'SELECT id, order_item_id, qty FROM invoice_items WHERE invoice_id=? AND deleted_at IS NULL',
+    [invoiceId]
+  )
+
+  if (header.status === 'confirmed' && header.invoice_type === 'customer') {
+    const settleMap = new Map<number, number>()
+    for (const item of items) {
+      const orderItemId = Number(item.order_item_id || 0)
+      const qty = toQty(item.qty)
+      if (!orderItemId || qty <= 0) continue
+      settleMap.set(orderItemId, toQty((settleMap.get(orderItemId) || 0) + qty))
+    }
+
+    for (const [orderItemId, qty] of settleMap.entries()) {
+      await execute(
+        'UPDATE customer_order_items SET settled_qty = GREATEST(0, COALESCE(settled_qty, 0) - ?) WHERE id=?',
+        [qty, orderItemId]
+      )
+    }
+  }
+
+  await markDeletedByWhere('invoice_items', 'invoice_id=?', [invoiceId], user?.userId)
+  await softDeleteById('invoice_headers', invoiceId, user?.userId)
+  await audit(user, 'DELETE', header.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', invoiceId, header.invoice_no)
+}
+
+const deleteReconciliationWithRollback = async (reconciliationId: number, user: any) => {
+  const header = await queryOne<any>(
+    'SELECT id, status, reconciliation_no FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL',
+    [reconciliationId]
+  )
+  if (!header) throw new Error('Not found')
+
+  const linkedInvoices = await query<any>(`
+    SELECT DISTINCT ih.invoice_no
+    FROM invoice_items ii
+    JOIN invoice_headers ih ON ih.id = ii.invoice_id
+    WHERE ii.reconciliation_id=?
+      AND ii.deleted_at IS NULL
+      AND ih.deleted_at IS NULL
+    LIMIT 5
+  `, [reconciliationId])
+  if (linkedInvoices.length) {
+    throw new Error(`請先刪除關聯發票：${linkedInvoices.map((r: any) => r.invoice_no).join('、')}`)
+  }
+
+  const items = await query<any>(
+    'SELECT id, order_item_id, customer_order_id, accepted_qty FROM shipment_reconciliation_items WHERE reconciliation_id=? AND deleted_at IS NULL',
+    [reconciliationId]
+  )
+
+  if (header.status === 'confirmed') {
+    const rollbackMap = new Map<number, number>()
+    const touchedOrderIds = new Set<number>()
+    for (const item of items) {
+      const orderItemId = Number(item.order_item_id || 0)
+      const orderId = Number(item.customer_order_id || 0)
+      const qty = toQty(item.accepted_qty)
+      if (!orderItemId || qty <= 0) continue
+      rollbackMap.set(orderItemId, toQty((rollbackMap.get(orderItemId) || 0) + qty))
+      if (orderId > 0) touchedOrderIds.add(orderId)
+    }
+
+    for (const [orderItemId, qty] of rollbackMap.entries()) {
+      const row = await queryOne<any>('SELECT id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id=?', [orderItemId])
+      if (!row) continue
+      const totalQty = toQty(row.qty)
+      const nextArrived = toQty(Math.max(0, toQty(row.arrived_qty) - qty))
+      const nextReconciled = toQty(Math.max(0, toQty(row.reconciled_qty) - qty))
+      const nextBalance = toQty(Math.max(0, totalQty - nextArrived))
+      const nextStatus = nextArrived >= totalQty && totalQty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
+      await execute(
+        'UPDATE customer_order_items SET arrived_qty=?, reconciled_qty=?, balance=?, status=? WHERE id=?',
+        [nextArrived, nextReconciled, nextBalance, nextStatus, orderItemId]
+      )
+    }
+
+    await recalcCustomerOrderStatus(Array.from(touchedOrderIds))
+  }
+
+  await markDeletedByWhere('shipment_reconciliation_items', 'reconciliation_id=?', [reconciliationId], user?.userId)
+  await softDeleteById('shipment_reconciliations', reconciliationId, user?.userId)
+  await audit(user, 'DELETE', '出貨核對單', reconciliationId, header.reconciliation_no || `id=${reconciliationId}`)
 }
 
 app.get('/api/invoices/pending-items', authMiddleware, async c => {
@@ -4193,14 +4306,11 @@ app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('invoice.appr
 
 app.delete('/api/invoices/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
   try {
-    const id = c.req.param('id')
-    const row = await queryOne<any>('SELECT invoice_no, status, invoice_type FROM invoice_headers WHERE id=? AND deleted_at IS NULL', [id])
-    if (!row) return c.json({ error: 'Not found' }, 404)
-    if (row.status !== 'draft') return c.json({ error: 'only draft invoice can be deleted' }, 400)
-    await softDeleteById('invoice_headers', id, c.get('user')?.userId)
-    await audit(c.get('user'), 'DELETE', row.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', id, row.invoice_no)
+    const id = Number(c.req.param('id') || 0)
+    await deleteInvoiceWithRollback(id, c.get('user'))
     return c.json({ ok: true })
   } catch (e: any) {
+    if (String(e.message) === 'Not found') return c.json({ error: 'Not found' }, 404)
     return c.json({ error: String(e.message) }, 500)
   }
 })
@@ -4690,6 +4800,20 @@ app.patch('/api/payables/:id/payment', authMiddleware, async c => {
     await audit(c.get('user'), 'PAYMENT', '應付帳款', id, `${row?.invoice_no} ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+})
+app.delete('/api/payables/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
+  try {
+    const id = Number(c.req.param('id') || 0)
+    const row = await queryOne<any>(
+      'SELECT id FROM invoice_headers WHERE id=? AND invoice_type=\'supplier\' AND status=\'confirmed\' AND deleted_at IS NULL',
+      [id]
+    )
+    if (!row) return c.json({ error: 'Not found' }, 404)
+    await deleteInvoiceWithRollback(id, c.get('user'))
+    return c.json({ ok: true })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
 })
 
 app.get('/api/payables/export/csv', authMiddleware, async c => {

@@ -62,6 +62,18 @@ export default function PayablesPage() {
     } catch (e: any) { toast('錯誤：' + e.message) }
   }
 
+  const removePayable = async (item: AP) => {
+    if (!await confirmDialog(`確定刪除供應商付款「${item.po_number}」？`, '這會同步刪除對應的供應商發票與付款記錄。')) return
+    try {
+      await apiFetch(`/api/payables/${item.id}`, { method: 'DELETE' })
+      toast('供應商付款已刪除')
+      if (editing?.id === item.id) setEditing(null)
+      load()
+    } catch (e: any) {
+      toast('刪除失敗：' + e.message, 'error')
+    }
+  }
+
   const filtered = items.filter(i => {
     const matchSearch = !search ||
       i.po_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -194,7 +206,10 @@ export default function PayablesPage() {
                       <td className="text-slate-400 text-xs">{formatDateYMD(item.payment_date) || '—'}</td>
                       <td><span className={st.badge}>{st.label}</span></td>
                       <td>
-                        <button onClick={() => openEdit(item)} className="btn-ghost">付款</button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openEdit(item)} className="btn-ghost">付款</button>
+                          <button onClick={() => removePayable(item)} className="btn-danger">刪除</button>
+                        </div>
                       </td>
                     </tr>
                   )

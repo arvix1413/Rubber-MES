@@ -194,8 +194,10 @@ export default function ShipmentReconciliationPage() {
     }
   }
 
-  const removeDraft = async (id: number) => {
-    if (!await confirm('確定刪除草稿核對單？', '刪除後不可恢復。', '刪除')) return
+  const removeReconciliation = async (id: number, status: string) => {
+    const title = status === 'draft' ? '確定刪除草稿核對單？' : '確定刪除已審核核對單？'
+    const desc = status === 'draft' ? '刪除後不可恢復。' : '刪除後將回滾訂單已核對 / 到貨數量。若已開立發票，需先刪除發票。'
+    if (!await confirm(title, desc, '刪除')) return
     try {
       setSaving(id)
       await apiFetch(`/api/reconciliations/${id}`, { method: 'DELETE' })
@@ -379,8 +381,8 @@ export default function ShipmentReconciliationPage() {
                         {h.status === 'draft' && canApprove && (
                           <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>審核</button>
                         )}
-                        {h.status === 'draft' && canWrite && (
-                          <button className="btn-danger" disabled={saving === h.id} onClick={() => removeDraft(h.id)}>刪除</button>
+                        {canWrite && (
+                          <button className="btn-danger" disabled={saving === h.id} onClick={() => removeReconciliation(h.id, h.status)}>刪除</button>
                         )}
                       </td>
                     </tr>

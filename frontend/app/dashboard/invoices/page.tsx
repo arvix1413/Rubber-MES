@@ -284,12 +284,18 @@ export default function InvoicesPage() {
     }
   }
 
-  const removeInvoice = async (id: number) => {
-    if (!await confirm('確定刪除草稿發票？', '刪除後不可恢復。', '刪除')) return
+  const removeInvoice = async (id: number, status: string, type: InvoiceType) => {
+    const title = status === 'draft' ? '確定刪除草稿發票？' : '確定刪除已審核發票？'
+    const desc = status === 'draft'
+      ? '刪除後不可恢復。'
+      : type === 'supplier'
+        ? '刪除後將同步移除對應的供應商付款記錄。'
+        : '刪除後將回滾客戶訂單已結算數量。'
+    if (!await confirm(title, desc, '刪除')) return
     try {
       await apiFetch(`/api/invoices/${id}`, { method: 'DELETE' })
       if (expandedId === id) setExpandedId(null)
-      toast('草稿已刪除')
+      toast('發票已刪除')
       await Promise.all([loadHeaders(), loadPending()])
     } catch (e: any) {
       toast(`刪除失敗：${e.message}`, 'error')
@@ -465,7 +471,7 @@ export default function InvoicesPage() {
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
                         <button className="btn-ghost" onClick={() => { setVerifyTargetId(h.id); setVerifyResult(null); setVerifyCodeInput('') }}>驗證</button>
                         {h.status === 'draft' && canApprove && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>審核</button>}
-                        {h.status === 'draft' && canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id)}>刪除</button>}
+                        {canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id, h.status, h.invoice_type)}>刪除</button>}
                       </td>
                     </tr>
                     {expandedId === h.id && detail && (
