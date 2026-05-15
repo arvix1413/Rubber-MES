@@ -3,11 +3,11 @@ import React from 'react'
 import DecimalInput from '@/components/DecimalInput'
 import { useDialog } from '@/components/Dialog'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { useSearchParams } from 'next/navigation'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import { usePagination, Pagination } from '@/lib/usePagination'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
 import StatusCountChips from '@/components/StatusCountChips'
 import { can } from '@/lib/usePermissions'
@@ -286,7 +286,7 @@ export default function QuotationsPage() {
     ])
     const quotation = data as any
     const items = data.items || []
-    const signUrl = getSignatureUrl()
+    const signUrl = quotation.status !== 'draft' ? (getCompanySignatureUrl(company) || '') : ''
     const rawCustomerId = quotation.customer_id ?? q.customer_id
     const customerDetail = rawCustomerId
       ? customers.find(c => String(c.id) === String(rawCustomerId))

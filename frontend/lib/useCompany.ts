@@ -11,6 +11,7 @@ export type CompanySettings = {
   email: string
   tax_id: string
   logo_url: string | null
+  signature_url: string | null
 }
 
 const DEFAULT: CompanySettings = {
@@ -23,6 +24,7 @@ const DEFAULT: CompanySettings = {
   email: '',
   tax_id: '',
   logo_url: null,
+  signature_url: null,
 }
 
 let _cache: CompanySettings | null = null
@@ -44,4 +46,9 @@ export function clearCompanyCache() { _cache = null }
 export function getLogoUrl(company: CompanySettings): string | null {
   if (!company.logo_url) return null
   return company.logo_url.startsWith('http') ? company.logo_url : `${API}${company.logo_url}`
+}
+
+export function getCompanySignatureUrl(company: CompanySettings): string | null {
+  if (!company.signature_url) return null
+  return company.signature_url.startsWith('http') ? company.signature_url : `${API}${company.signature_url}`
 }

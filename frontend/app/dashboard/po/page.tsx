@@ -1,14 +1,14 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { Suspense, useEffect, useMemo, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { useSearchParams } from 'next/navigation'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, PO_STEPS, getPOActions } from '@/components/StatusFlow'
 import StatusCountChips from '@/components/StatusCountChips'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { can } from '@/lib/usePermissions'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { resolveTierPrice, type MoqTier } from '@/lib/moqPricing'
 import { generatePurchaseSheetHTML } from '@/lib/printPurchaseSheet'
 import { formatDateYMD } from '@/lib/datetime'
@@ -466,7 +466,8 @@ export default function PoPage() {
       apiFetch<Po>(`/api/po/${id}`),
       getCompany(),
     ])
-    const html = generatePurchaseSheetHTML(data, getSignatureUrl() || undefined, company)
+    const signatureUrl = data.status !== 'draft' ? (getCompanySignatureUrl(company) || undefined) : undefined
+    const html = generatePurchaseSheetHTML(data, signatureUrl, company)
     const w = window.open('', '_blank', 'width=900,height=1100')
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
   }

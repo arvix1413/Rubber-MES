@@ -1,11 +1,11 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { apiFetch, apiFetchRaw, getSignatureUrl } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { generateInvoiceHTML } from '@/lib/printInvoice'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
@@ -250,7 +250,8 @@ export default function InvoicesPage() {
         apiFetch<InvoiceDetail>(`/api/invoices/${id}`),
         getCompany(),
       ])
-      const html = generateInvoiceHTML(detail, getSignatureUrl() || undefined, company)
+      const signatureUrl = detail.status === 'confirmed' ? (getCompanySignatureUrl(company) || undefined) : undefined
+      const html = generateInvoiceHTML(detail, signatureUrl, company)
       const w = window.open('', '_blank', 'width=900,height=1100')
       if (!w) {
         toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')

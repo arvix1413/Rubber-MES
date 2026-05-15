@@ -2,11 +2,11 @@
 import { generateDeliveryNoteHTML } from '@/lib/printDeliveryNote'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, DN_STEPS, getDNActions } from '@/components/StatusFlow'
 import { can } from '@/lib/usePermissions'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { formatDateYMD } from '@/lib/datetime'
 import { formatQuantity } from '@/lib/numberFormat'
 import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
@@ -241,6 +241,9 @@ export default function DeliveryNotesPage() {
   const printDN = async (dn: DN) => {
     const detail = await apiFetch<DN & { po_ref?: string; address?: string }>(`/api/delivery-notes/${dn.id}`)
     const company = await getCompany()
+    const signatureUrl = (detail.status === 'confirmed' || detail.status === 'shipped')
+      ? (getCompanySignatureUrl(company) || undefined)
+      : undefined
     const html = generateDeliveryNoteHTML({
       dn_number: dn.dn_number,
       customer_name: dn.customer_name,
@@ -249,7 +252,7 @@ export default function DeliveryNotesPage() {
       address: detail.address || '',
       remark: dn.remark,
       items: detail.items || dn.items || []
-    }, getSignatureUrl() || undefined, company)
+    }, signatureUrl, company)
     const w = window.open('', '_blank', 'width=800,height=1000')
     if (!w) {
       toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')

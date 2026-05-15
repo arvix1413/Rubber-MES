@@ -216,6 +216,24 @@ const ensureCompanyProfitRatesColumns = async () => {
   await ensureCompanyProfitRatesPromise
 }
 
+let ensureCompanySignatureColumnPromise: Promise<void> | null = null
+const ensureCompanySignatureColumn = async () => {
+  if (!ensureCompanySignatureColumnPromise) {
+    ensureCompanySignatureColumnPromise = (async () => {
+      try {
+        await execute('ALTER TABLE company_settings ADD COLUMN signature_url TEXT NULL')
+      } catch (e: any) {
+        const msg = String(e?.message || '').toLowerCase()
+        if (!msg.includes('duplicate column')) throw e
+      }
+    })().catch((e) => {
+      ensureCompanySignatureColumnPromise = null
+      throw e
+    })
+  }
+  await ensureCompanySignatureColumnPromise
+}
+
 let ensureCustomerOrderTrackingColumnsPromise: Promise<void> | null = null
 const ensureCustomerOrderTrackingColumns = async () => {
   if (!ensureCustomerOrderTrackingColumnsPromise) {
@@ -5307,23 +5325,25 @@ app.delete('/api/stock-adjustments/:id', authMiddleware, requirePerm('stock.adju
 // ── Company Settings ──────────────────────────────────────────────────────────
 app.get('/api/company', authMiddleware, async c => {
   try {
+    await ensureCompanySignatureColumn()
     const row = await queryOne<any>('SELECT * FROM company_settings WHERE id=1')
     if (!row) {
       // Return defaults if not set
-      return c.json({ id: 1, company_name: 'FAN YONG CO., LTD', company_name_local: 'CÔNG TY TNHH FAN YONG VIỆT NAM', address: '', phone: '', contact_person: '', email: '', tax_id: '', logo_url: null })
+      return c.json({ id: 1, company_name: 'FAN YONG CO., LTD', company_name_local: 'CÔNG TY TNHH FAN YONG VIỆT NAM', address: '', phone: '', contact_person: '', email: '', tax_id: '', logo_url: null, signature_url: null })
     }
     return c.json(row)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 app.put('/api/company', authMiddleware, requireManager, async c => {
   try {
+    await ensureCompanySignatureColumn()
     const b = await c.req.json(); const u = c.get('user')
     // Upsert
-    await execute(`INSERT INTO company_settings (id,company_name,company_name_local,address,phone,contact_person,email,tax_id,logo_url)
-      VALUES (1,?,?,?,?,?,?,?,?)
-      ON DUPLICATE KEY UPDATE company_name=?,company_name_local=?,address=?,phone=?,contact_person=?,email=?,tax_id=?,logo_url=?`,
-      [b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,
-       b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null])
+    await execute(`INSERT INTO company_settings (id,company_name,company_name_local,address,phone,contact_person,email,tax_id,logo_url,signature_url)
+      VALUES (1,?,?,?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE company_name=?,company_name_local=?,address=?,phone=?,contact_person=?,email=?,tax_id=?,logo_url=?,signature_url=?`,
+      [b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null,
+       b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null])
     await audit(u, 'UPDATE', '公司設定', 1, b.company_name)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }

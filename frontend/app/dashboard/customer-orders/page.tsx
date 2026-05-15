@@ -1,14 +1,14 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { Fragment, useEffect, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, CO_STEPS } from '@/components/StatusFlow'
 import { generateOrderHTML } from '@/lib/printOrder'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
 import { formatDateYMD } from '@/lib/datetime'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
@@ -344,7 +344,7 @@ export default function CustomerOrdersPage() {
       apiFetch<any>(`/api/customer-orders/${orderId}`),
       getCompany(),
     ])
-    const html = generateOrderHTML(data, getSignatureUrl() || undefined, company)
+    const html = generateOrderHTML(data, getCompanySignatureUrl(company) || undefined, company)
     const w = window.open('', '_blank', 'width=800,height=1000')
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
   }
