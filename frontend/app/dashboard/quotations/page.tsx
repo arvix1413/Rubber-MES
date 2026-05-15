@@ -360,9 +360,12 @@ export default function QuotationsPage() {
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
-      .signature{margin-top:6mm;text-align:left}
-      .signature img{max-height:36px;max-width:140px;object-fit:contain}
-      .signature-name{margin-top:8px;font-size:10px;font-weight:600}
+      .footer{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
+      .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
+      .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
+      .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
+      .sign-area img{max-height:44px;max-width:150px;object-fit:contain}
+      .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
       @media print{body{-webkit-print-color-adjust:exact}@page{size:A4;margin:0}}
     </style></head><body>
     <div class="page">
@@ -408,9 +411,17 @@ export default function QuotationsPage() {
         <div class="notes-body">${escapeHtml(noteText)}</div>
       </div>
 
-      <div class="signature">
-        ${signUrl ? `<img src="${signUrl}" onerror="this.style.display='none'"/>` : ''}
-        <div class="signature-name">${escapeHtml(company.company_name)}</div>
+      <div class="footer">
+        <div class="sign-box">
+          <div class="sign-label">我方確認</div>
+          <div class="sign-area">${signUrl ? `<img src="${signUrl}" onerror="this.style.display='none'"/>` : ''}</div>
+          <div class="sign-line">${escapeHtml(company.company_name)}</div>
+        </div>
+        <div class="sign-box">
+          <div class="sign-label">客戶簽章</div>
+          <div class="sign-area"></div>
+          <div class="sign-line">${escapeHtml(q.customer_name)}</div>
+        </div>
       </div>
     </div>
     </body></html>`
