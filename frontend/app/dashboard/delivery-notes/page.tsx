@@ -39,6 +39,7 @@ export default function DeliveryNotesPage() {
   const canWrite = can('delivery.create')
   const canApprove = can('delivery.approve')
   const canDel = can('delivery.delete')
+  const canManualCreate = false
 
   const loadDnItems = async (id: number) => {
     const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
@@ -272,11 +273,14 @@ export default function DeliveryNotesPage() {
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-slate-800">出貨單</h1>
-        {canWrite && <button onClick={() => setCreating(true)} className="btn-primary">+ 新增出貨單</button>}
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">出貨單</h1>
+          <p className="mt-1 text-xs text-slate-500">出貨單改由交期進度自動生成，不再從客戶訂單直接建立。</p>
+        </div>
+        {canWrite && canManualCreate && <button onClick={() => setCreating(true)} className="btn-primary">+ 新增出貨單</button>}
       </div>
 
-      {creating && canWrite && (
+      {creating && canWrite && canManualCreate && (
         <div className="rubber-card p-6 mb-5">
           <h2 className="font-semibold text-slate-800 mb-5">新增出貨單</h2>
 

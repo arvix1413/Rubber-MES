@@ -536,6 +536,28 @@ const ensurePoItemProgressItemIdColumn = async () => {
   await ensurePoItemProgressItemIdColumnPromise
 }
 
+let ensureDeliveryNoteProgressIdColumnPromise: Promise<void> | null = null
+const ensureDeliveryNoteProgressIdColumn = async () => {
+  if (!ensureDeliveryNoteProgressIdColumnPromise) {
+    ensureDeliveryNoteProgressIdColumnPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (!msg.includes('duplicate column') && !msg.includes('duplicate key name') && !msg.includes('duplicate index')) throw e
+        }
+      }
+      await alterSafe('ALTER TABLE delivery_notes ADD COLUMN progress_id INT NULL AFTER customer_order_id')
+      await alterSafe('ALTER TABLE delivery_notes ADD INDEX idx_delivery_notes_progress_id (progress_id)')
+    })().catch((e) => {
+      ensureDeliveryNoteProgressIdColumnPromise = null
+      throw e
+    })
+  }
+  await ensureDeliveryNoteProgressIdColumnPromise
+}
+
 let ensureDeliveryProgressTablePromise: Promise<void> | null = null
 const ensureDeliveryProgressTable = async () => {
   if (!ensureDeliveryProgressTablePromise) {
@@ -926,16 +948,25 @@ const SOFT_DELETE_TABLES = [
   'customers',
   'materials',
   'bom',
+  'bom_items',
   'purchase_orders',
+  'po_items',
   'customer_orders',
+  'customer_order_items',
   'quotations',
+  'quotation_items',
   'delivery_notes',
+  'delivery_note_items',
   'delivery_sheets',
+  'delivery_sheet_items',
   'inventory',
   'users',
   'goods_receipts',
+  'goods_receipt_items',
   'production_orders',
+  'production_materials',
   'stock_adjustments',
+  'stock_adjustment_items',
   'order_profit_entries',
   'delivery_progress',
   'delivery_progress_po_links',
@@ -995,6 +1026,13 @@ const ensureSoftDeleteColumns = async () => {
 
 const softDeleteById = async (table: string, id: any, userId: any) => {
   await execute(`UPDATE ${table} SET deleted_at=?, deleted_by=? WHERE id=? AND deleted_at IS NULL`, [now8(), userId || null, id])
+}
+
+const softDeleteByWhere = async (table: string, whereSql: string, params: any[], userId?: number | null) => {
+  await execute(
+    `UPDATE ${table} SET deleted_at=?, deleted_by=? WHERE ${whereSql} AND deleted_at IS NULL`,
+    [now8(), userId || null, ...params]
+  )
 }
 
 const toQty = (value: any): number => {
@@ -1123,6 +1161,96 @@ const syncDeliveryProgressItems = async (
   }
 }
 
+const syncDeliveryNoteFromProgress = async (
+  progressId: number,
+  user: { userId?: number | null } | null | undefined,
+) => {
+  await ensureDeliveryProgressTable()
+  await ensureDeliveryNoteProgressIdColumn()
+
+  const progress = await queryOne<any>(`
+    SELECT
+      dp.*,
+      COALESCE(po_links.po_numbers, dp.order_po_number, '') as linked_po_numbers,
+      po_links.first_customer_order_id
+    FROM delivery_progress dp
+    LEFT JOIN (
+      SELECT
+        progress_id,
+        GROUP_CONCAT(DISTINCT order_po_number ORDER BY order_po_number SEPARATOR ', ') as po_numbers,
+        MIN(customer_order_id) as first_customer_order_id
+      FROM delivery_progress_po_links
+      WHERE deleted_at IS NULL
+      GROUP BY progress_id
+    ) po_links ON po_links.progress_id = dp.id
+    WHERE dp.id=? AND dp.deleted_at IS NULL
+  `, [progressId])
+  if (!progress) return null
+
+  const items = await query<any>(`
+    SELECT *
+    FROM delivery_progress_items
+    WHERE progress_id=? AND deleted_at IS NULL
+    ORDER BY id ASC
+  `, [progressId])
+  if (!items.length) return null
+
+  const customerName = String(progress.customer_name || '').trim()
+  const progressPoRef = String(progress.linked_po_numbers || progress.order_po_number || '').trim()
+  const deliveryDate = progress.due_date ? toDateStr(progress.due_date) : null
+  const customerOrderId = Number(progress.first_customer_order_id || progress.customer_order_id || 0) || null
+  const existing = await queryOne<any>(
+    'SELECT id, dn_number, status FROM delivery_notes WHERE progress_id=? AND deleted_at IS NULL ORDER BY id DESC LIMIT 1',
+    [progressId],
+  )
+
+  let dnId = Number(existing?.id || 0)
+  let dnNumber = String(existing?.dn_number || '')
+  const canRewrite = !existing || String(existing.status || '') === 'draft'
+  if (!canRewrite) return { id: dnId, dn_number: dnNumber, skipped: true }
+
+  if (existing) {
+    await execute(
+      'UPDATE delivery_notes SET customer_id=?, customer_name=?, customer_order_id=?, delivery_date=?, remark=? WHERE id=?',
+      [progress.customer_id || null, customerName, customerOrderId, deliveryDate, progress.remark || '', dnId],
+    )
+    await softDeleteByWhere('delivery_note_items', 'dn_id=?', [dnId], user?.userId || null)
+  } else {
+    dnNumber = `DN${Date.now()}`
+    const created = await execute(
+      'INSERT INTO delivery_notes (dn_number,customer_id,customer_name,customer_order_id,progress_id,delivery_date,status,remark,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [dnNumber, progress.customer_id || null, customerName, customerOrderId, progressId, deliveryDate, 'draft', progress.remark || '', user?.userId || null, now8()],
+    )
+    dnId = Number(created.insertId || 0)
+  }
+
+  for (const item of items) {
+    const materialCode = String(item.material_code || '').trim()
+    const materialId = await resolveMaterialId(null, materialCode)
+    await execute(
+      'INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      [
+        dnId,
+        materialId,
+        item.material_name || '',
+        materialCode,
+        item.spec || '',
+        item.unit || 'PCS',
+        toQty(item.planned_qty),
+        item.remark || '',
+        item.order_po_number || progressPoRef,
+        null,
+      ],
+    )
+  }
+
+  if (!existing) {
+    await audit(user, 'CREATE', '出貨單(自動)', dnId, `${dnNumber} ← ${progress.progress_no}`)
+  }
+
+  return { id: dnId, dn_number: dnNumber, skipped: false }
+}
+
 const toDateStr = (value: any): string => {
   const raw = String(value || '').trim()
   if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw
@@ -1184,6 +1312,7 @@ const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; mat
     FROM customer_order_items ci
     LEFT JOIN bom b ON b.id = ci.bom_id
     WHERE ci.order_id IN (${orderPlaceholders})
+      AND ci.deleted_at IS NULL
       AND (
         ci.material_code IN (${codePlaceholders})
         OR b.product_sku IN (${codePlaceholders})
@@ -1467,14 +1596,14 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
 app.delete('/api/materials/:id', authMiddleware, requirePerm('bom.delete'), async c => {
   const id = c.req.param('id')
   const blockedBy = await blockIfReferenced(id, [
-    { label: 'BOM 用料', sql: 'SELECT COUNT(*) as cnt FROM bom_items bi JOIN bom b ON b.id = bi.bom_id WHERE bi.material_id=? AND b.deleted_at IS NULL' },
-    { label: '採購單', sql: 'SELECT COUNT(*) as cnt FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE pi.material_id=? AND po.deleted_at IS NULL' },
-    { label: '報價單', sql: 'SELECT COUNT(*) as cnt FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.material_id=? AND q.deleted_at IS NULL' },
-    { label: '出貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id WHERE dni.material_id=? AND dn.deleted_at IS NULL' },
-    { label: '送貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id WHERE dsi.material_id=? AND ds.deleted_at IS NULL' },
-    { label: '進貨單', sql: 'SELECT COUNT(*) as cnt FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE gri.material_id=? AND gr.deleted_at IS NULL' },
-    { label: '生產領料', sql: 'SELECT COUNT(*) as cnt FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id WHERE pm.material_id=? AND po.deleted_at IS NULL' },
-    { label: '庫存調整', sql: 'SELECT COUNT(*) as cnt FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id WHERE sai.material_id=? AND sa.deleted_at IS NULL' },
+    { label: 'BOM 用料', sql: 'SELECT COUNT(*) as cnt FROM bom_items bi JOIN bom b ON b.id = bi.bom_id WHERE bi.material_id=? AND bi.deleted_at IS NULL AND b.deleted_at IS NULL' },
+    { label: '採購單', sql: 'SELECT COUNT(*) as cnt FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE pi.material_id=? AND pi.deleted_at IS NULL AND po.deleted_at IS NULL' },
+    { label: '報價單', sql: 'SELECT COUNT(*) as cnt FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE qi.material_id=? AND qi.deleted_at IS NULL AND q.deleted_at IS NULL' },
+    { label: '出貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id WHERE dni.material_id=? AND dni.deleted_at IS NULL AND dn.deleted_at IS NULL' },
+    { label: '送貨單', sql: 'SELECT COUNT(*) as cnt FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id WHERE dsi.material_id=? AND dsi.deleted_at IS NULL AND ds.deleted_at IS NULL' },
+    { label: '進貨單', sql: 'SELECT COUNT(*) as cnt FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE gri.material_id=? AND gri.deleted_at IS NULL AND gr.deleted_at IS NULL' },
+    { label: '生產領料', sql: 'SELECT COUNT(*) as cnt FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id WHERE pm.material_id=? AND pm.deleted_at IS NULL AND po.deleted_at IS NULL' },
+    { label: '庫存調整', sql: 'SELECT COUNT(*) as cnt FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id WHERE sai.material_id=? AND sai.deleted_at IS NULL AND sa.deleted_at IS NULL' },
   ])
   if (blockedBy) return c.json({ error: blockedBy }, 400)
   const row = await queryOne<any>('SELECT material_code, material_name FROM materials WHERE id=? AND deleted_at IS NULL', [id])
@@ -1575,6 +1704,7 @@ app.get('/api/bom', authMiddleware, async c => {
         (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
         OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
       ) AND m2.deleted_at IS NULL
+      WHERE bi.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
     WHERE b.deleted_at IS NULL
@@ -1644,6 +1774,7 @@ app.get('/api/bom/:id', authMiddleware, async c => {
         (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
         OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
       ) AND m2.deleted_at IS NULL
+      WHERE bi.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
     WHERE b.id=? AND b.deleted_at IS NULL`, [c.req.param('id')])
@@ -1670,7 +1801,7 @@ app.get('/api/bom/:id', authMiddleware, async c => {
       OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m.material_code = bi.material_code)
     ) AND m.deleted_at IS NULL
     LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
-    WHERE bi.bom_id=?`, [c.req.param('id')])
+    WHERE bi.bom_id=? AND bi.deleted_at IS NULL`, [c.req.param('id')])
   const itemCount = Number(bom.item_count || 0)
   const baseSupplierPrice = toAmount(bom.live_base_supplier_price || 0)
   const baseCompanyPrice = toAmount(bom.live_base_company_price || 0)
@@ -1800,7 +1931,7 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
        currency, b.category||'', b.color||'', b.lt||'', b.moq||null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
        moqTiers.length ? JSON.stringify(moqTiers) : null,
        id])
-    await execute('DELETE FROM bom_items WHERE bom_id=?', [id])
+    await softDeleteByWhere('bom_items', 'bom_id=?', [id], c.get('user')?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, item.material_code)
@@ -1831,7 +1962,7 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
 app.delete('/api/bom/:id', authMiddleware, requirePerm('bom.delete'), async c => {
   const id = c.req.param('id')
   const blockedBy = await blockIfReferenced(id, [
-    { label: '客戶訂單', sql: 'SELECT COUNT(*) as cnt FROM customer_order_items coi JOIN customer_orders co ON co.id = coi.order_id WHERE coi.bom_id=? AND co.deleted_at IS NULL' },
+    { label: '客戶訂單', sql: 'SELECT COUNT(*) as cnt FROM customer_order_items coi JOIN customer_orders co ON co.id = coi.order_id WHERE coi.bom_id=? AND coi.deleted_at IS NULL AND co.deleted_at IS NULL' },
     { label: '生產單', sql: 'SELECT COUNT(*) as cnt FROM production_orders WHERE bom_id=? AND deleted_at IS NULL' },
   ])
   if (blockedBy) return c.json({ error: blockedBy }, 400)
@@ -1875,7 +2006,7 @@ app.get('/api/po/:id', authMiddleware, async c => {
       OR ((pi.material_id IS NULL OR pi.material_id = 0) AND pi.material_code = m.material_code)
     ) AND m.deleted_at IS NULL
     LEFT JOIN bom b ON pi.material_code = b.product_sku AND b.deleted_at IS NULL
-    WHERE pi.po_id=?`, [c.req.param('id')])
+    WHERE pi.po_id=? AND pi.deleted_at IS NULL`, [c.req.param('id')])
   return c.json({ ...po, items })
 })
 app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm('po.create'), async c => {
@@ -1899,7 +2030,7 @@ app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm
              b.supplier_price as bom_supplier_price, b.currency as bom_currency
       FROM customer_order_items ci
       LEFT JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
-      WHERE ci.order_id=?
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
       ORDER BY ci.id ASC
     `, [order.id])
 
@@ -1932,7 +2063,7 @@ app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm
           OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
         ) AND m.deleted_at IS NULL
         LEFT JOIN suppliers s ON m.supplier_id = s.id AND s.deleted_at IS NULL
-        WHERE bi.bom_id=?
+        WHERE bi.bom_id=? AND bi.deleted_at IS NULL
         ORDER BY bi.id ASC
       `, [oi.bom_id]) : []
 
@@ -2049,7 +2180,7 @@ app.put('/api/po/:id', authMiddleware, requirePerm('po.create'), async c => {
     const total = Math.round(subTotal * (1 + taxRate / 100) * 100) / 100
     await execute('UPDATE purchase_orders SET supplier_id=?,supplier_name=?,total_amount=?,tax_rate=?,currency=?,remark=? WHERE id=?',
       [b.supplier_id||null, b.supplier_name, total, taxRate, b.currency||'VND', b.remark||'', id])
-    await execute('DELETE FROM po_items WHERE po_id=?', [id])
+    await softDeleteByWhere('po_items', 'po_id=?', [id], u?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         const tp = (item.quantity||0)*(item.unit_price||0)
@@ -2102,7 +2233,7 @@ app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.approve'), asyn
     if (!po) return c.json({ error: 'Not found' }, 404)
     if (po.status === 'received') return c.json({ error: '此採購單已收貨，不可重複操作' }, 400)
     if (!['approved', 'sent'].includes(po.status)) return c.json({ error: '只有已審核或已送出的採購單才能收貨' }, 400)
-    const items = await query<any>('SELECT * FROM po_items WHERE po_id=?', [id])
+    const items = await query<any>('SELECT * FROM po_items WHERE po_id=? AND deleted_at IS NULL', [id])
     for (const item of items) {
       const qty = parseFloat(item.quantity) || 0
       const bom = await queryOne<any>('SELECT id, current_stock FROM bom WHERE product_sku=?', [item.material_code])
@@ -2159,7 +2290,7 @@ app.get('/api/customer-orders', authMiddleware, async c => {
              COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
-      LEFT JOIN customer_order_items ci ON ci.order_id = co.id
+      LEFT JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
       ${whereClause}
       GROUP BY co.id
       ORDER BY co.created_at DESC
@@ -2193,8 +2324,8 @@ app.get('/api/customer-orders/pending', authMiddleware, async c => {
            GROUP_CONCAT(b.product_name ORDER BY ci.id SEPARATOR ', ') as items_summary
     FROM customer_orders co
     LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
-    LEFT JOIN customer_order_items ci ON ci.order_id = co.id
-    LEFT JOIN bom b ON ci.bom_id = b.id
+    LEFT JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
+    LEFT JOIN bom b ON ci.bom_id = b.id AND b.deleted_at IS NULL
     WHERE co.status = 'pending' AND co.deleted_at IS NULL
   `
   const params: any[] = []
@@ -2225,7 +2356,7 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
     FROM customer_order_items ci
     JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
     JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
-    JOIN bom_items bi ON bi.bom_id = b.id
+    JOIN bom_items bi ON bi.bom_id = b.id AND bi.deleted_at IS NULL
     LEFT JOIN materials m ON (
       (bi.material_id IS NOT NULL AND bi.material_id > 0 AND bi.material_id = m.id)
       OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
@@ -2272,7 +2403,7 @@ app.get('/api/customer-orders/:id', authMiddleware, async c => {
            b.product_sku, COALESCE(b.product_name, '') as product_name, b.version, COALESCE(b.spec, '') as spec, COALESCE(b.unit, 'PCS') as unit
     FROM customer_order_items ci
     LEFT JOIN bom b ON ci.bom_id = b.id AND b.deleted_at IS NULL
-    WHERE ci.order_id=?`, [c.req.param('id')])
+    WHERE ci.order_id=? AND ci.deleted_at IS NULL`, [c.req.param('id')])
   return c.json({ ...order, items })
 })
 app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.create'), async c => {
@@ -2303,29 +2434,7 @@ app.post('/api/customer-orders', authMiddleware, requirePerm('customer_order.cre
       }
     }
     await audit(c.get('user'), 'CREATE', '客戶訂單', orderId, `${b.po_number} / ${cust?.customer_name||b.customer_id}`)
-
-    // Auto-create a draft delivery note with same items
-    const dnNum = `DN${Date.now()}`
-    const dnR = await execute(
-      'INSERT INTO delivery_notes (dn_number,customer_id,customer_name,customer_order_id,delivery_date,status,remark,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?)',
-      [dnNum, b.customer_id, customerName, orderId, b.po_date||null, 'draft', b.remark||'', c.get('user').userId, now8()]
-    )
-    const dnId = dnR.insertId
-    if (b.items?.length) {
-      for (const item of b.items) {
-        if (!item.bom_id) continue
-        // Get BOM info for item_name, material_code, spec, unit
-        const bom = await queryOne<any>('SELECT product_sku, product_name, spec, unit FROM bom WHERE id=? AND deleted_at IS NULL', [item.bom_id])
-        const materialId = await resolveMaterialId(null, bom?.product_sku || '')
-        await execute(
-          'INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [dnId, materialId, bom?.product_name||'', bom?.product_sku||'', bom?.spec||'', bom?.unit||'PCS', item.qty||0, '', item.po_no||b.po_number||'', null]
-        )
-      }
-    }
-    await audit(c.get('user'), 'CREATE', '出貨單(自動)', dnId, `${dnNum} ← ${b.po_number}`)
-
-    return c.json({ id: orderId, dn_id: dnId, dn_number: dnNum }, 201)
+    return c.json({ id: orderId }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 app.patch('/api/customer-orders/:id/status', authMiddleware, requirePerm('customer_order.create'), async c => {
@@ -2358,7 +2467,7 @@ app.put('/api/customer-orders/:id', authMiddleware, requirePerm('customer_order.
     await execute('UPDATE customer_orders SET po_date=?,po_number=?,customer_id=?,customer_name=?,remark=?,tax_rate=?,tax_amount=?,total_amount=?,currency=?,delivery_date=?,delivery_address=?,person_in_charge=?,payment_terms=? WHERE id=?',
       [b.po_date||null, existing.po_number, b.customer_id, customerName, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'', id])
     // Replace items
-    await execute('DELETE FROM customer_order_items WHERE order_id=?', [id])
+    await softDeleteByWhere('customer_order_items', 'order_id=?', [id], u?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         if (!item.bom_id) continue
@@ -2424,7 +2533,7 @@ app.get('/api/profit-tracking/orders', authMiddleware, requireManager, async c =
              COALESCE(SUM(ci.qty * COALESCE(b.company_price, b.supplier_price, 0)), 0) as cogs
       FROM customer_order_items ci
       LEFT JOIN bom b ON b.id = ci.bom_id
-      WHERE ci.order_id IN (${idPlaceholders})
+      WHERE ci.order_id IN (${idPlaceholders}) AND ci.deleted_at IS NULL
       GROUP BY ci.order_id
     `, orderIds)
     const entrySums = await query<any>(`
@@ -2494,7 +2603,7 @@ app.get('/api/profit-tracking/orders/:id', authMiddleware, requireManager, async
              COALESCE(b.company_price, b.supplier_price, 0) as standard_cost
       FROM customer_order_items ci
       LEFT JOIN bom b ON b.id = ci.bom_id
-      WHERE ci.order_id=?
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
       ORDER BY ci.id ASC
     `, [orderId])
 
@@ -2617,7 +2726,7 @@ app.post('/api/profit-tracking/orders/:id/apply-rates', authMiddleware, requireM
         COALESCE(SUM(ci.qty * COALESCE(b.company_price, b.supplier_price, 0)), 0) as cogs
       FROM customer_order_items ci
       LEFT JOIN bom b ON b.id = ci.bom_id
-      WHERE ci.order_id=?
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
     `, [orderId])
     const revenue = toAmount(row?.revenue)
     const cogs = toAmount(row?.cogs)
@@ -2751,7 +2860,7 @@ app.get('/api/quotations/:id', authMiddleware, async c => {
       (qi.material_id IS NOT NULL AND qi.material_id > 0 AND qi.material_id = m.id)
       OR ((qi.material_id IS NULL OR qi.material_id = 0) AND qi.material_code = m.material_code)
     ) AND m.deleted_at IS NULL
-    WHERE qi.quotation_id=?
+    WHERE qi.quotation_id=? AND qi.deleted_at IS NULL
   `, [c.req.param('id')])
   // Parse moq JSON into moq_tiers array
   const items = rawItems.map((item: any) => {
@@ -2794,7 +2903,7 @@ app.put('/api/quotations/:id', authMiddleware, requirePerm('customer_order.creat
     const total = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     await execute('UPDATE quotations SET customer_id=?,customer_name=?,currency=?,valid_until=?,remark=?,total_amount=? WHERE id=?',
       [b.customer_id||null, b.customer_name, b.currency||'VND', b.valid_until||null, b.remark||'', total, id])
-    await execute('DELETE FROM quotation_items WHERE quotation_id=?', [id])
+    await softDeleteByWhere('quotation_items', 'quotation_id=?', [id], u?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
@@ -2913,6 +3022,7 @@ app.get('/api/order-intake', authMiddleware, async c => {
           FROM po_items pi
           JOIN purchase_orders po ON po.id = pi.po_id
           WHERE po.deleted_at IS NULL
+            AND pi.deleted_at IS NULL
             AND po.status <> 'cancelled'
             AND pi.progress_item_id IS NOT NULL
           GROUP BY pi.progress_item_id
@@ -2974,6 +3084,7 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
       FROM po_items pi
       JOIN purchase_orders po ON po.id = pi.po_id
       WHERE po.deleted_at IS NULL
+        AND pi.deleted_at IS NULL
         AND po.status <> 'cancelled'
         AND pi.progress_item_id IS NOT NULL
       GROUP BY pi.progress_item_id
@@ -3012,6 +3123,7 @@ app.get('/api/order-intake/:id', authMiddleware, async c => {
 
 app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create'), async c => {
   try {
+    await ensureDeliveryNoteProgressIdColumn()
     const b = await c.req.json()
     const u = c.get('user')
     const customerOrderIds: number[] = Array.isArray(b?.customer_order_ids)
@@ -3091,8 +3203,9 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
       u?.userId || null,
     )
     await syncDeliveryProgressItems(r.insertId, items, u?.userId || null)
+    const deliveryNote = await syncDeliveryNoteFromProgress(r.insertId, u)
     await audit(u, 'CREATE', '交期進度', r.insertId, `${progressNo} / ${customerName}`)
-    return c.json({ id: r.insertId, progress_no: progressNo }, 201)
+    return c.json({ id: r.insertId, progress_no: progressNo, dn_id: deliveryNote?.id || null, dn_number: deliveryNote?.dn_number || null }, 201)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }
@@ -3100,6 +3213,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
 
 app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.create'), async c => {
   try {
+    await ensureDeliveryNoteProgressIdColumn()
     const id = c.req.param('id')
     const b = await c.req.json()
     const row = await queryOne<any>('SELECT id FROM delivery_progress WHERE id=? AND deleted_at IS NULL', [id])
@@ -3142,6 +3256,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     ])
     await syncDeliveryProgressPoLinks(Number(id), customerOrderIds, poNumbers, c.get('user')?.userId || null)
     await syncDeliveryProgressItems(Number(id), items, c.get('user')?.userId || null)
+    await syncDeliveryNoteFromProgress(Number(id), c.get('user'))
     await audit(c.get('user'), 'UPDATE', '交期進度', id, `id=${id}`)
     return c.json({ ok: true })
   } catch (e: any) {
@@ -3150,6 +3265,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
 })
 
 app.delete('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.delete'), async c => {
+  await ensureDeliveryNoteProgressIdColumn()
   const id = c.req.param('id')
   const userId = c.get('user')?.userId || null
   const row = await queryOne<any>('SELECT progress_no, customer_name FROM delivery_progress WHERE id=? AND deleted_at IS NULL', [id])
@@ -3157,6 +3273,12 @@ app.delete('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.
   await softDeleteById('delivery_progress', id, userId)
   await execute('UPDATE delivery_progress_po_links SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId, id])
   await execute('UPDATE delivery_progress_items SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId, id])
+  await execute(
+    `UPDATE delivery_notes
+     SET deleted_at=?, deleted_by=?
+     WHERE progress_id=? AND status='draft' AND deleted_at IS NULL`,
+    [now8(), userId, id],
+  )
   await audit(c.get('user'), 'DELETE', '交期進度', id, `${row?.progress_no} / ${row?.customer_name}`)
   return c.json({ ok: true })
 })
@@ -3184,6 +3306,7 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
         FROM po_items pi
         JOIN purchase_orders po ON po.id = pi.po_id
         WHERE po.deleted_at IS NULL
+          AND pi.deleted_at IS NULL
           AND po.status <> 'cancelled'
           AND pi.progress_item_id IS NOT NULL
         GROUP BY pi.progress_item_id
@@ -3364,6 +3487,7 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
       ) AND m.deleted_at IS NULL
       WHERE dn.status = 'shipped'
         AND dn.deleted_at IS NULL
+        AND dni.deleted_at IS NULL
         AND sri.id IS NULL
       ORDER BY dn.delivery_date DESC, dn.id DESC, dni.id ASC
       LIMIT ${pageSize} OFFSET ${offset}
@@ -3558,6 +3682,7 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
       WHERE dni.id IN (${placeholders})
         AND dn.status = 'shipped'
         AND dn.deleted_at IS NULL
+        AND dni.deleted_at IS NULL
         AND sri.id IS NULL
     `, deliveryNoteItemIds)
     const sourceMap = new Map<number, any>()
@@ -3681,7 +3806,7 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('recon
     if (orderItemIds.length) {
       const inClause = orderItemIds.map(() => '?').join(',')
       const orderItems = await query<any>(
-        `SELECT id, order_id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id IN (${inClause})`,
+        `SELECT id, order_id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id IN (${inClause}) AND deleted_at IS NULL`,
         [...orderItemIds]
       )
 
@@ -3728,7 +3853,7 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('recon
 
       for (const orderId of Array.from(touchedOrderIds)) {
         const summary = await queryOne<any>(
-          'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=?',
+          'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
           [orderId]
         )
         const totalQty = toQty(summary?.total_qty || 0)
@@ -3784,18 +3909,14 @@ const getInvoicedQtyMapByReconciliationItems = async (reconciliationItemIds: num
   return map
 }
 
-const markDeletedByWhere = async (table: string, whereSql: string, params: any[], userId?: number | null) => {
-  await execute(
-    `UPDATE ${table} SET deleted_at=?, deleted_by=? WHERE ${whereSql} AND deleted_at IS NULL`,
-    [now8(), userId || null, ...params]
-  )
-}
+const markDeletedByWhere = async (table: string, whereSql: string, params: any[], userId?: number | null) =>
+  softDeleteByWhere(table, whereSql, params, userId)
 
 const recalcCustomerOrderStatus = async (orderIds: number[]) => {
   const normalized = Array.from(new Set(orderIds.map((id) => Number(id || 0)).filter((id) => id > 0)))
   for (const orderId of normalized) {
     const summary = await queryOne<any>(
-      'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=?',
+      'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
       [orderId]
     )
     const totalQty = toQty(summary?.total_qty || 0)
@@ -3877,7 +3998,7 @@ const deleteReconciliationWithRollback = async (reconciliationId: number, user: 
     }
 
     for (const [orderItemId, qty] of rollbackMap.entries()) {
-      const row = await queryOne<any>('SELECT id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id=?', [orderItemId])
+      const row = await queryOne<any>('SELECT id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id=? AND deleted_at IS NULL', [orderItemId])
       if (!row) continue
       const totalQty = toQty(row.qty)
       const nextArrived = toQty(Math.max(0, toQty(row.arrived_qty) - qty))
@@ -3926,7 +4047,7 @@ app.get('/api/invoices/pending-items', authMiddleware, async c => {
       FROM shipment_reconciliation_items sri
       JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
       LEFT JOIN customer_orders co ON co.id = sri.customer_order_id AND co.deleted_at IS NULL
-      LEFT JOIN customer_order_items ci ON ci.id = sri.order_item_id
+      LEFT JOIN customer_order_items ci ON ci.id = sri.order_item_id AND ci.deleted_at IS NULL
       LEFT JOIN materials m ON sri.material_code = m.material_code AND m.deleted_at IS NULL
       LEFT JOIN bom b ON b.product_sku = sri.material_code AND b.deleted_at IS NULL
       WHERE sr.status = 'confirmed'
@@ -4334,22 +4455,38 @@ app.delete('/api/invoices/:id', authMiddleware, requirePerm('customer_order.crea
 })
 
 // ── Delivery Notes ────────────────────────────────────────────────────────────
-app.get('/api/delivery-notes', authMiddleware, async c => c.json(await query(`
-  SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code,
-         co.po_number as order_po_number
-  FROM delivery_notes dn 
-  LEFT JOIN customers c ON dn.customer_id = c.id AND c.deleted_at IS NULL
-  LEFT JOIN customer_orders co ON dn.customer_order_id = co.id AND co.deleted_at IS NULL
-  WHERE dn.deleted_at IS NULL
-  ORDER BY dn.created_at DESC
-`)))
-app.get('/api/delivery-notes/:id', authMiddleware, async c => {
-  const dn = await queryOne<any>(`
-    SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code, c.address,
-           co.po_number as po_ref
+app.get('/api/delivery-notes', authMiddleware, async c => {
+  await ensureDeliveryNoteProgressIdColumn()
+  return c.json(await query(`
+    SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code,
+           COALESCE(progress_links.po_numbers, co.po_number, '') as order_po_number
     FROM delivery_notes dn 
     LEFT JOIN customers c ON dn.customer_id = c.id AND c.deleted_at IS NULL
     LEFT JOIN customer_orders co ON dn.customer_order_id = co.id AND co.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT progress_id, GROUP_CONCAT(DISTINCT order_po_number ORDER BY order_po_number SEPARATOR ', ') as po_numbers
+      FROM delivery_progress_po_links
+      WHERE deleted_at IS NULL
+      GROUP BY progress_id
+    ) progress_links ON progress_links.progress_id = dn.progress_id
+    WHERE dn.deleted_at IS NULL
+    ORDER BY dn.created_at DESC
+  `))
+})
+app.get('/api/delivery-notes/:id', authMiddleware, async c => {
+  await ensureDeliveryNoteProgressIdColumn()
+  const dn = await queryOne<any>(`
+    SELECT dn.*, COALESCE(c.customer_name, dn.customer_name) as customer_name, c.customer_code, c.address,
+           COALESCE(progress_links.po_numbers, co.po_number, '') as po_ref
+    FROM delivery_notes dn 
+    LEFT JOIN customers c ON dn.customer_id = c.id AND c.deleted_at IS NULL
+    LEFT JOIN customer_orders co ON dn.customer_order_id = co.id AND co.deleted_at IS NULL
+    LEFT JOIN (
+      SELECT progress_id, GROUP_CONCAT(DISTINCT order_po_number ORDER BY order_po_number SEPARATOR ', ') as po_numbers
+      FROM delivery_progress_po_links
+      WHERE deleted_at IS NULL
+      GROUP BY progress_id
+    ) progress_links ON progress_links.progress_id = dn.progress_id
     WHERE dn.id=? AND dn.deleted_at IS NULL`, [c.req.param('id')])
   if (!dn) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
@@ -4368,9 +4505,10 @@ app.get('/api/delivery-notes/:id', authMiddleware, async c => {
              COALESCE(bom.unit, MAX(bi.unit)) as unit
       FROM bom
       LEFT JOIN bom_items bi ON bom.id = bi.bom_id
+      WHERE bi.deleted_at IS NULL
       GROUP BY bom.id, bom.product_sku, bom.product_name
     ) b ON dni.material_code = b.product_sku
-    WHERE dni.dn_id=?`, [c.req.param('id')])
+    WHERE dni.dn_id=? AND dni.deleted_at IS NULL`, [c.req.param('id')])
   return c.json({ ...dn, items })
 })
 app.post('/api/delivery-notes', authMiddleware, requirePerm('delivery.create'), async c => {
@@ -4405,7 +4543,7 @@ app.put('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.create'
     if (existing.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的出貨單' }, 400)
     await execute('UPDATE delivery_notes SET delivery_date=?,remark=? WHERE id=?',
       [b.delivery_date||null, b.remark||'', id])
-    await execute('DELETE FROM delivery_note_items WHERE dn_id=?', [id])
+    await softDeleteByWhere('delivery_note_items', 'dn_id=?', [id], u?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
@@ -4485,9 +4623,10 @@ app.get('/api/delivery-sheets/:id', authMiddleware, async c => {
              COALESCE(bom.unit, MAX(bi.unit)) as unit
       FROM bom
       LEFT JOIN bom_items bi ON bom.id = bi.bom_id
+      WHERE bi.deleted_at IS NULL
       GROUP BY bom.id, bom.product_sku, bom.product_name
     ) b ON dsi.material_code = b.product_sku
-    WHERE dsi.ds_id=?`, [c.req.param('id')])
+    WHERE dsi.ds_id=? AND dsi.deleted_at IS NULL`, [c.req.param('id')])
   return c.json({ ...ds, items })
 })
 app.post('/api/delivery-sheets', authMiddleware, requirePerm('delivery.create'), async c => {
@@ -4521,7 +4660,7 @@ app.put('/api/delivery-sheets/:id', authMiddleware, requirePerm('delivery.create
     if (existing.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的送貨單' }, 400)
     await execute('UPDATE delivery_sheets SET delivery_date=?,remark=? WHERE id=?',
       [b.delivery_date||null, b.remark||'', id])
-    await execute('DELETE FROM delivery_sheet_items WHERE ds_id=?', [id])
+    await softDeleteByWhere('delivery_sheet_items', 'ds_id=?', [id], u?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
@@ -4928,6 +5067,7 @@ app.get('/api/process-health', authMiddleware, async c => {
         LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
         WHERE dn.status = 'shipped'
           AND dn.deleted_at IS NULL
+          AND dni.deleted_at IS NULL
           AND sri.id IS NULL
       `),
       queryOne<any>(`
@@ -5082,7 +5222,7 @@ app.patch('/api/goods-receipts/:id/confirm', authMiddleware, requirePerm('goods_
     const gr = await queryOne<any>('SELECT * FROM goods_receipts WHERE id=? AND deleted_at IS NULL', [id])
     if (!gr) return c.json({ error: 'Not found' }, 404)
     if (gr.status === 'confirmed') return c.json({ error: 'Already confirmed' }, 400)
-    const items = await query<any>('SELECT * FROM goods_receipt_items WHERE gr_id=?', [id])
+    const items = await query<any>('SELECT * FROM goods_receipt_items WHERE gr_id=? AND deleted_at IS NULL', [id])
     // Update stock for each item
     for (const item of items) {
       const bom = await queryOne<any>('SELECT id, current_stock FROM bom WHERE product_sku=?', [item.material_code])
@@ -5126,7 +5266,7 @@ app.post('/api/production/check-stock', authMiddleware, async c => {
     const { bom_id, planned_qty } = await c.req.json()
     if (!bom_id) return c.json({ error: 'bom_id required' }, 400)
     const qty = planned_qty || 1
-    const bomItems = await query<any>('SELECT * FROM bom_items WHERE bom_id=?', [bom_id])
+    const bomItems = await query<any>('SELECT * FROM bom_items WHERE bom_id=? AND deleted_at IS NULL', [bom_id])
     const result = []
     let hasShortage = false
     for (const item of bomItems) {
@@ -5152,7 +5292,7 @@ app.post('/api/production/check-stock', authMiddleware, async c => {
 app.get('/api/production/:id', authMiddleware, async c => {
   const prod = await queryOne<any>('SELECT * FROM production_orders WHERE id=? AND deleted_at IS NULL', [c.req.param('id')])
   if (!prod) return c.json({ error: 'Not found' }, 404)
-  const materials = await query('SELECT * FROM production_materials WHERE prod_id=?', [c.req.param('id')])
+  const materials = await query('SELECT * FROM production_materials WHERE prod_id=? AND deleted_at IS NULL', [c.req.param('id')])
   return c.json({ ...prod, materials })
 })
 app.post('/api/production', authMiddleware, requirePerm('production.create'), async c => {
@@ -5186,7 +5326,7 @@ app.put('/api/production/:id', authMiddleware, requirePerm('production.create'),
     await execute('UPDATE production_orders SET bom_id=?,product_sku=?,product_name=?,planned_qty=?,planned_start=?,planned_end=?,remark=? WHERE id=?',
       [b.bom_id||null, b.product_sku||'', b.product_name, b.planned_qty, b.planned_start||null, b.planned_end||null, b.remark||'', id])
     if (b.materials?.length) {
-      await execute('DELETE FROM production_materials WHERE prod_id=?', [id])
+      await softDeleteByWhere('production_materials', 'prod_id=?', [id], u?.userId)
       for (const mat of b.materials) {
         const materialId = await resolveMaterialId(mat.material_id, mat.material_code)
         await execute('INSERT INTO production_materials (prod_id,material_id,material_code,material_name,spec,unit,planned_qty,issued_qty,batch_no,remark) VALUES (?,?,?,?,?,?,?,?,?,?)',
@@ -5211,7 +5351,7 @@ app.patch('/api/production/:id/status', authMiddleware, requirePerm('production.
       updates.actual_end = now8().slice(0,10)
       if (produced_qty) updates.produced_qty = produced_qty
       // Issue materials from stock only on completion
-      const mats = await query<any>('SELECT * FROM production_materials WHERE prod_id=?', [id])
+      const mats = await query<any>('SELECT * FROM production_materials WHERE prod_id=? AND deleted_at IS NULL', [id])
       for (const mat of mats) {
         const qty = parseFloat(mat.issued_qty) > 0 ? parseFloat(mat.issued_qty) : parseFloat(mat.planned_qty) || 0
         const bom = await queryOne<any>('SELECT current_stock FROM bom WHERE product_sku=?', [mat.material_code])
@@ -5261,7 +5401,7 @@ app.get('/api/stock-adjustments', authMiddleware, async c => {
 app.get('/api/stock-adjustments/:id', authMiddleware, async c => {
   const adj = await queryOne<any>('SELECT * FROM stock_adjustments WHERE id=? AND deleted_at IS NULL', [c.req.param('id')])
   if (!adj) return c.json({ error: 'Not found' }, 404)
-  const items = await query('SELECT * FROM stock_adjustment_items WHERE adj_id=?', [c.req.param('id')])
+  const items = await query('SELECT * FROM stock_adjustment_items WHERE adj_id=? AND deleted_at IS NULL', [c.req.param('id')])
   return c.json({ ...adj, items })
 })
 app.post('/api/stock-adjustments', authMiddleware, requirePerm('stock.adjust'), async c => {
@@ -5295,7 +5435,7 @@ app.patch('/api/stock-adjustments/:id/approve', authMiddleware, requirePerm('sto
     const adj = await queryOne<any>('SELECT * FROM stock_adjustments WHERE id=? AND deleted_at IS NULL', [id])
     if (!adj) return c.json({ error: 'Not found' }, 404)
     if (adj.status === 'approved') return c.json({ error: 'Already approved' }, 400)
-    const items = await query<any>('SELECT * FROM stock_adjustment_items WHERE adj_id=?', [id])
+    const items = await query<any>('SELECT * FROM stock_adjustment_items WHERE adj_id=? AND deleted_at IS NULL', [id])
     for (const item of items) {
       if (item.diff_qty === 0) continue
       const bom = await queryOne<any>('SELECT current_stock FROM bom WHERE product_sku=?', [item.material_code])
@@ -5360,8 +5500,8 @@ app.get('/api/stats', authMiddleware, async c => {
       queryOne<any>('SELECT COUNT(*) as cnt FROM customers WHERE deleted_at IS NULL'),
       queryOne<any>("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as total FROM purchase_orders WHERE status='received' AND deleted_at IS NULL"),
       queryOne<any>('SELECT COUNT(*) as cnt FROM customer_orders WHERE deleted_at IS NULL'),
-      queryOne<any>('SELECT COUNT(*) as cnt, COALESCE(SUM(ci.qty*ci.unit_price),0) as total FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND co.po_date>=?', [monthStart]),
-      queryOne<any>('SELECT COALESCE(SUM(ci.qty*ci.unit_price),0) as total, MIN(co.po_date) as earliest, MAX(co.po_date) as latest FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL'),
+      queryOne<any>('SELECT COUNT(*) as cnt, COALESCE(SUM(ci.qty*ci.unit_price),0) as total FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND ci.deleted_at IS NULL AND co.po_date>=?', [monthStart]),
+      queryOne<any>('SELECT COALESCE(SUM(ci.qty*ci.unit_price),0) as total, MIN(co.po_date) as earliest, MAX(co.po_date) as latest FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND ci.deleted_at IS NULL'),
       queryOne<any>('SELECT COUNT(*) as cnt FROM bom WHERE deleted_at IS NULL AND COALESCE(current_stock,0) <= 0'),
     ])
     return c.json({

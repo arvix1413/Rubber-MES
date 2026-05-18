@@ -482,7 +482,7 @@ export default function OrderIntakePage() {
     }
 
     try {
-      const created = await apiFetch<{ id: number; progress_no: string }>('/api/order-intake', {
+      const created = await apiFetch<{ id: number; progress_no: string; dn_id?: number | null; dn_number?: string | null }>('/api/order-intake', {
         method: 'POST',
         body: JSON.stringify({
           customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
@@ -493,7 +493,8 @@ export default function OrderIntakePage() {
         }),
       })
       const { res, lines: poLines } = await generatePoForProgress(created.id)
-      toast(`交期進度已建立，並生成 ${res.count || poLines.length} 張採購單`)
+      const deliveryNoteText = created.dn_number ? `，並自動建立出貨單 ${created.dn_number}` : ''
+      toast(`交期進度已建立${deliveryNoteText}，並生成 ${res.count || poLines.length} 張採購單`)
       if (poLines.length) {
         notice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
       }
