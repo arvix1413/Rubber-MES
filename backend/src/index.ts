@@ -2257,14 +2257,18 @@ app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.approve'), asyn
 // ── Customer Orders ───────────────────────────────────────────────────────────
 app.get('/api/customer-orders', authMiddleware, async c => {
   try {
+    await ensureDeliveryProgressTable()
     const url = new URL(c.req.url)
     const status = url.searchParams.get('status') || ''
+    const scheduleStatus = url.searchParams.get('schedule_status') || ''
     const customerId = url.searchParams.get('customer_id') || ''
     const dateFrom = url.searchParams.get('date_from') || ''
     const dateTo = url.searchParams.get('date_to') || ''
     const where: string[] = []
     const params: any[] = []
     if (status) { where.push('co.status=?'); params.push(status) }
+    if (scheduleStatus === 'scheduled') where.push('COALESCE(progress_links.has_delivery_progress, 0) = 1')
+    if (scheduleStatus === 'unscheduled') where.push('COALESCE(progress_links.has_delivery_progress, 0) = 0')
     if (customerId) { where.push('co.customer_id=?'); params.push(customerId) }
     if (dateFrom) { where.push('co.po_date>=?'); params.push(dateFrom) }
     if (dateTo) { where.push('co.po_date<=?'); params.push(dateTo) }
@@ -2287,10 +2291,22 @@ app.get('/api/customer-orders', authMiddleware, async c => {
                WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
                ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
              END as completion_rate,
+             COALESCE(progress_links.has_delivery_progress, 0) as has_delivery_progress,
+             CASE
+               WHEN COALESCE(progress_links.has_delivery_progress, 0) = 1 THEN 'scheduled'
+               ELSE 'unscheduled'
+             END as schedule_status,
              COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
       LEFT JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
+      LEFT JOIN (
+        SELECT customer_order_id, 1 as has_delivery_progress
+        FROM delivery_progress_po_links
+        WHERE deleted_at IS NULL
+          AND customer_order_id IS NOT NULL
+        GROUP BY customer_order_id
+      ) progress_links ON progress_links.customer_order_id = co.id
       ${whereClause}
       GROUP BY co.id
       ORDER BY co.created_at DESC

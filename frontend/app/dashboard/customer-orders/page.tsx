@@ -29,7 +29,7 @@ function getCOActions(status: string) {
 }
 
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
+type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Customer = {
   id:number
@@ -68,6 +68,7 @@ const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, po_no:''
 
 const STATUS_BADGE: Record<string,string> = { pending:'badge-yellow', completed:'badge-green', delay:'badge-red', partial:'badge-blue' }
 const STATUS_LABEL: Record<string,string> = { pending:'待出貨', completed:'已完成', delay:'延遲', partial:'部分到貨' }
+const SCHEDULE_LABEL: Record<'scheduled' | 'unscheduled', string> = { scheduled: '已排交期', unscheduled: '未排交期' }
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -103,6 +104,7 @@ export default function CustomerOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [scheduleFilter, setScheduleFilter] = useState<'all' | 'scheduled' | 'unscheduled'>('all')
   const [unitPriceInputs, setUnitPriceInputs] = useState<Record<number, string>>({})
   const canWrite = can('customer_order.create')
   const canDel = can('customer_order.delete')
@@ -446,7 +448,9 @@ export default function CustomerOrdersPage() {
       o.po_number.toLowerCase().includes(search.toLowerCase()) ||
       (o.customer_name||'').toLowerCase().includes(search.toLowerCase())
     const matchStatus = !statusFilter || o.status === statusFilter
-    return matchSearch && matchStatus
+    const scheduleStatus = o.schedule_status || (o.has_delivery_progress ? 'scheduled' : 'unscheduled')
+    const matchSchedule = scheduleFilter === 'all' || scheduleStatus === scheduleFilter
+    return matchSearch && matchStatus && matchSchedule
   })
   
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
@@ -629,10 +633,23 @@ export default function CustomerOrdersPage() {
         <>
           <div className="list-controls">
             <input className="list-search" placeholder="搜尋客戶訂單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} />
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-2">
               {[['', '全部'], ['pending', '待出貨'], ['partial', '部分'], ['delay', '延遲'], ['completed', '已完成']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
                   className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
+                  {label}
+                </button>
+              ))}
+              {[
+                ['all', '交期全部'],
+                ['unscheduled', '未排交期'],
+                ['scheduled', '已排交期'],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setScheduleFilter(val as 'all' | 'scheduled' | 'unscheduled')}
+                  className={`filter-chip ${scheduleFilter === val ? 'filter-chip-active' : ''}`}
+                >
                   {label}
                 </button>
               ))}
@@ -656,6 +673,7 @@ export default function CustomerOrdersPage() {
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">總計</th>
                   {canViewProfit && <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">淨利</th>}
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交期</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[200px]">狀態</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[250px]">操作</th>
                 </tr>
@@ -665,6 +683,7 @@ export default function CustomerOrdersPage() {
                   const isOpen = expanded.has(o.id)
                   const items = loadedItems[o.id]
                   const profit = profitByOrderId[o.id]
+                  const scheduleStatus = o.schedule_status || (o.has_delivery_progress ? 'scheduled' : 'unscheduled')
                   return (
                     <Fragment key={o.id}>
                       <tr key={o.id}
@@ -688,6 +707,11 @@ export default function CustomerOrdersPage() {
                             {profit ? money(profit.net_profit) : '—'}
                           </td>
                         )}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${scheduleStatus === 'scheduled' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {SCHEDULE_LABEL[scheduleStatus]}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 min-w-[200px] whitespace-nowrap">
                           <StatusFlow compact steps={CO_STEPS} current={o.status}
                             actions={getCOActions(o.status)}
@@ -707,7 +731,7 @@ export default function CustomerOrdersPage() {
                       </tr>
                       {isOpen && (
                         <tr key={`${o.id}-items`} className="border-b border-slate-100">
-                          <td colSpan={canViewProfit ? 12 : 11} className="px-0 py-0">
+                          <td colSpan={canViewProfit ? 13 : 12} className="px-0 py-0">
                             <div className="expand-row-wrap layer-panel-l2">
                               {canViewProfit && profit && (
                                 <div className="px-4 py-3 border-b" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
