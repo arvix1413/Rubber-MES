@@ -610,6 +610,7 @@ const ensureDeliveryProgressTable = async () => {
           id INT AUTO_INCREMENT PRIMARY KEY,
           progress_id INT NOT NULL,
           order_po_number VARCHAR(100) DEFAULT '',
+          material_id INT NULL,
           material_code VARCHAR(255) DEFAULT '',
           material_name VARCHAR(255) DEFAULT '',
           spec VARCHAR(255) DEFAULT '',
@@ -633,11 +634,14 @@ const ensureDeliveryProgressTable = async () => {
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_progress ON delivery_progress_items (progress_id)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_status ON delivery_progress_items (status)')
       await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN order_po_number VARCHAR(100) DEFAULT '' AFTER progress_id")
+      await alterSafe('ALTER TABLE delivery_progress_items ADD COLUMN material_id INT NULL AFTER order_po_number')
+      await addIndexSafe('CREATE INDEX idx_delivery_progress_items_material_id ON delivery_progress_items (material_id)')
       await execute(`
-        INSERT INTO delivery_progress_items (progress_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
+        INSERT INTO delivery_progress_items (progress_id, order_po_number, material_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
         SELECT
           dp.id,
           COALESCE(dp.order_po_number, ''),
+          NULL,
           COALESCE(dp.material_code, ''),
           COALESCE(dp.material_name, ''),
           COALESCE(dp.spec, ''),
@@ -659,6 +663,13 @@ const ensureDeliveryProgressTable = async () => {
             FROM delivery_progress_items dpi
             WHERE dpi.progress_id = dp.id
           )
+      `)
+      await execute(`
+        UPDATE delivery_progress_items dpi
+        JOIN materials m ON m.material_code = dpi.material_code AND m.deleted_at IS NULL
+        SET dpi.material_id = m.id
+        WHERE dpi.material_id IS NULL
+          AND COALESCE(dpi.material_code, '') <> ''
       `)
     })().catch((e) => {
       ensureDeliveryProgressTablePromise = null
@@ -1122,6 +1133,7 @@ const syncDeliveryProgressItems = async (
   progressId: number,
   items: Array<{
     order_po_number?: any
+    material_id?: any
     material_code?: any
     material_name?: any
     spec?: any
@@ -1136,17 +1148,19 @@ const syncDeliveryProgressItems = async (
   await execute('UPDATE delivery_progress_items SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId || null, progressId])
   for (const item of items) {
     const orderPoNumber = String(item?.order_po_number || '').trim()
+    const materialId = await resolveMaterialId(item?.material_id, item?.material_code)
     const materialCode = String(item?.material_code || '').trim()
     const materialName = String(item?.material_name || '').trim()
     const plannedQty = toQty(item?.planned_qty)
     if (!materialName || plannedQty <= 0) continue
     await execute(
       `INSERT INTO delivery_progress_items
-        (progress_id, order_po_number, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+        (progress_id, order_po_number, material_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         progressId,
         orderPoNumber,
+        materialId,
         materialCode || materialName,
         materialName,
         String(item?.spec || '').trim(),
@@ -3151,6 +3165,7 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
     const items = itemsInput
       .map((item: any) => ({
         order_po_number: String(item?.order_po_number || '').trim(),
+        material_id: item?.material_id == null ? null : Number(item.material_id) || null,
         material_code: String(item?.material_code || item?.material_name || '').trim(),
         material_name: String(item?.material_name || '').trim(),
         spec: String(item?.spec || '').trim(),
@@ -3241,6 +3256,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     const items = itemsInput
       .map((item: any) => ({
         order_po_number: String(item?.order_po_number || '').trim(),
+        material_id: item?.material_id == null ? null : Number(item.material_id) || null,
         material_code: String(item?.material_code || item?.material_name || '').trim(),
         material_name: String(item?.material_name || '').trim(),
         spec: String(item?.spec || '').trim(),
@@ -3348,26 +3364,27 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
       const remainingQty = toQty(Math.max(0, plannedQty - purchasedQty))
       if (remainingQty <= 0) continue
 
-      const bom = await queryOne<any>(`
+      const materialId = await resolveMaterialId(item.material_id, item.material_code)
+      const material = materialId ? await queryOne<any>(`
         SELECT
-          COALESCE(m.supplier_id, b.supplier_id) as supplier_id,
-          COALESCE(ms.name, b.supplier_name, '') as supplier_name,
-          COALESCE(m.supplier_price, b.supplier_price, 0) as supplier_price,
-          COALESCE(m.company_price, b.company_price, 0) as company_price
-        FROM bom b
-        LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+          m.id,
+          m.supplier_id,
+          COALESCE(ms.name, m.supplier_name, '') as supplier_name,
+          m.supplier_price,
+          m.company_price
+        FROM materials m
         LEFT JOIN suppliers ms ON ms.id = m.supplier_id AND ms.deleted_at IS NULL
-        WHERE b.product_sku=? AND b.deleted_at IS NULL
+        WHERE m.id=? AND m.deleted_at IS NULL
         LIMIT 1
-      `, [item.material_code])
-      const supplierId = bom?.supplier_id ? Number(bom.supplier_id) : null
-      const supplierName = String(bom?.supplier_name || '待分配供應商')
-      const unitPrice = toMoney(bom?.supplier_price || bom?.company_price || 0)
+      `, [materialId]) : null
+      const supplierId = material?.supplier_id ? Number(material.supplier_id) : null
+      const supplierName = String(material?.supplier_name || '待分配供應商')
+      const unitPrice = toMoney(material?.supplier_price || material?.company_price || 0)
       const key = `${supplierId || 0}::${supplierName}`
       const group = grouped.get(key) || { supplierId, supplierName, items: [] }
       group.items.push({
         progressItemId: Number(item.id),
-        materialId: await resolveMaterialId(null, item.material_code),
+        materialId,
         materialCode: String(item.material_code || ''),
         materialName: String(item.material_name || ''),
         spec: String(item.spec || ''),

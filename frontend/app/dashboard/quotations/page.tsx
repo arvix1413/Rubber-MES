@@ -306,7 +306,7 @@ export default function QuotationsPage() {
       const thickness = extractThickness()
       const moqTiers = normalizeMoqTiers(item.moq_tiers)
       const moqDisplay = moqTiers.length
-        ? moqTiers.map((tier) => `MOQ ${formatInteger(tier.moq)}: ${formatDecimal(tier.price)}`).join('\n')
+        ? moqTiers.map((tier) => `${formatInteger(tier.moq)}:${formatDecimal(tier.price)}`).join('\n')
         : ''
       const unitPrice = num(item.unit_price)
       const usdPrice = txt(q.currency).toUpperCase() === 'USD' ? fmt(unitPrice) : ''
@@ -756,9 +756,9 @@ export default function QuotationsPage() {
                                               <div className="flex flex-wrap gap-2">
                                                 {tiers.map((t, ti) => (
                                                   <span key={ti} className="inline-flex items-center gap-1 rounded border border-[#eadfce] bg-[#fff] px-2 py-0.5 text-[10px]">
-                                                    <span className="text-[#7d705f]">{t.moq > 0 ? formatInteger(t.moq) : '—'}</span>
-                                                    <span className="text-[#c4b39f]">→</span>
-                                                    <span className="font-semibold text-[#8d4a1d]">{t.price > 0 ? formatDecimal(t.price) : '—'}</span>
+                                                    <span className="font-semibold text-[#8d4a1d]">
+                                                      {(t.moq > 0 ? formatInteger(t.moq) : '—') + ':' + (t.price > 0 ? formatDecimal(t.price) : '—')}
+                                                    </span>
                                                   </span>
                                                 ))}
                                               </div>

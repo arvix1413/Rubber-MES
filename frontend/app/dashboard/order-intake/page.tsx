@@ -29,6 +29,7 @@ type IntakeItem = {
 type ProgressItem = {
   id?: number
   order_po_number?: string
+  material_id?: number | null
   material_code?: string
   material_name: string
   spec?: string
@@ -53,6 +54,7 @@ type OrderSummary = { id: number; po_number: string; customer_id: number; custom
 type LineForm = {
   key: string
   materialOptionId: string
+  material_id: number | null
   orderPoNumber: string
   material_code: string
   material_name: string
@@ -104,6 +106,7 @@ const STATUS_LABEL: Record<string, string> = {
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
   materialOptionId: '',
+  material_id: null,
   orderPoNumber: '',
   material_code: '',
   material_name: '',
@@ -281,10 +284,13 @@ export default function OrderIntakePage() {
     const nextLines = editForm.lines.map((line) => {
       if (line.materialOptionId) return line
       const matched = editMaterialOptions.find((option) =>
-        option.material_code === line.material_code &&
-        option.material_name === line.material_name &&
-        option.spec === line.spec &&
-        option.unit === line.unit,
+        (option.material_id && line.material_id && option.material_id === line.material_id) ||
+        (
+          option.material_code === line.material_code &&
+          option.material_name === line.material_name &&
+          option.spec === line.spec &&
+          option.unit === line.unit
+        ),
       )
       return matched ? { ...line, materialOptionId: matched.id } : line
     })
@@ -402,13 +408,14 @@ export default function OrderIntakePage() {
 
   const applyMaterialOption = (option: OrderMaterialOption, line: LineForm): Partial<LineForm> => ({
     materialOptionId: option.id,
+    material_id: option.material_id || null,
     orderPoNumber: option.customer_po_numbers[0] || option.order_po_numbers[0] || line.orderPoNumber,
-  material_code: option.material_code,
-  material_name: option.material_name,
-  spec: option.spec,
-  unit: option.unit || 'PCS',
-  planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
-})
+    material_code: option.material_code,
+    material_name: option.material_name,
+    spec: option.spec,
+    unit: option.unit || 'PCS',
+    planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
+  })
 
   const addCreateLine = () => {
     setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
@@ -456,6 +463,7 @@ export default function OrderIntakePage() {
     const lines = createForm.lines
       .map((line) => ({
         order_po_number: line.orderPoNumber.trim(),
+        material_id: line.material_id,
         material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
         spec: line.spec.trim(),
@@ -529,6 +537,7 @@ export default function OrderIntakePage() {
         lines: (detail.items || []).map((item, index) => ({
           key: `edit-${item.id || index}`,
           materialOptionId: '',
+          material_id: item.material_id || null,
           orderPoNumber: item.order_po_number || '',
           material_code: item.material_code || '',
           material_name: item.material_name || '',
@@ -609,6 +618,7 @@ export default function OrderIntakePage() {
     const items = editForm.lines
       .map((line) => ({
         order_po_number: line.orderPoNumber.trim(),
+        material_id: line.material_id,
         material_code: line.material_code.trim(),
         material_name: line.material_name.trim(),
         spec: line.spec.trim(),
