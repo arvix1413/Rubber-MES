@@ -25,17 +25,15 @@ type Customer = {
 }
 type BOM = { id:number; product_sku:string; product_name:string; spec:string; unit:string; company_price:number; image_url?:string; moq_tiers?: MoqTier[]; color?: string }
 
-const emptyTiers = (): MoqTier[] => Array.from({length:5}, () => ({ moq: 0, price: 0 }))
+const emptyTier = (): MoqTier => ({ moq: 0, price: 0 })
+const emptyTiers = (count = 1): MoqTier[] => Array.from({ length: Math.min(5, Math.max(1, count)) }, emptyTier)
+const ensureTierList = (tiers: any): MoqTier[] => {
+  const normalized = normalizeMoqTiers(tiers)
+  return normalized.length ? normalized.slice(0, 5) : emptyTiers()
+}
 const emptyItem = (): QItem => ({ bom_id:null, item_name:'', material_code:'', spec:'', unit:'', qty:0, unit_price:0, total_price:0, remark:'', moq_tiers:emptyTiers(), image_url:'' })
 const normalizeTiers = (tiers: any): MoqTier[] => {
-  const src = Array.isArray(tiers) ? tiers : []
-  return Array.from({ length: 5 }, (_, i) => {
-    const t = src[i] || {}
-    return {
-      moq: Number(t.moq) || 0,
-      price: Number(t.price) || 0,
-    }
-  })
+  return ensureTierList(tiers)
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:    { label:'尚未審核', badge:'badge-gray'  },
@@ -270,14 +268,15 @@ export default function QuotationsPage() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-    const extractThickness = (spec: string) => {
-      const source = txt(spec)
-      if (!source) return ''
-      const match = source.match(/(\d+(?:\.\d+)?)\s*mm/i)
-      if (match) return `${match[1]} MM`
-      const leading = source.match(/^(\d+(?:\.\d+)?)(?=\D|$)/)
-      if (leading) return `${leading[1]} MM`
-      return ''
+    const extractThickness = () => '1 MM'
+    const addMonths = (dateText: string, months: number) => {
+      const normalized = txt(dateText).replace(/\//g, '-')
+      if (!normalized) return ''
+      const base = new Date(normalized)
+      if (Number.isNaN(base.getTime())) return txt(dateText)
+      const next = new Date(base)
+      next.setMonth(next.getMonth() + months)
+      return next.toISOString().slice(0, 10).replace(/-/g, '/')
     }
 
     const [data, company] = await Promise.all([
@@ -295,14 +294,20 @@ export default function QuotationsPage() {
     const customerPhone = txt(customerDetail?.phone)
     const customerContact = txt(customerDetail?.contact)
     const issueDate = String(q.created_at || '').slice(0,10).replace(/-/g, '/')
-    const expireDate = q.valid_until ? String(q.valid_until).slice(0,10).replace(/-/g, '/') : ''
+    const expireDate = q.valid_until
+      ? String(q.valid_until).slice(0,10).replace(/-/g, '/')
+      : addMonths(issueDate, 6)
     const todayRateLine = txt(q.currency) === 'USD' ? '匯率: 1 USD = 26,500 VND' : ''
 
     const itemRows = items.map((item: any, idx: number) => {
       const matchedBom = boms.find(b => b.product_sku === item.material_code)
       const spec = txt(item.spec || matchedBom?.spec)
       const color = txt((matchedBom as any)?.color)
-      const thickness = extractThickness(spec)
+      const thickness = extractThickness()
+      const moqTiers = normalizeMoqTiers(item.moq_tiers)
+      const moqDisplay = moqTiers.length
+        ? moqTiers.map((tier) => `MOQ ${formatInteger(tier.moq)}: ${formatDecimal(tier.price)}`).join('\n')
+        : ''
       const unitPrice = num(item.unit_price)
       const usdPrice = txt(q.currency).toUpperCase() === 'USD' ? fmt(unitPrice) : ''
       const vndPrice = txt(q.currency).toUpperCase() === 'VND' ? fmt(unitPrice) : ''
@@ -317,6 +322,7 @@ export default function QuotationsPage() {
         <td class="thin">${escapeHtml(thickness)}</td>
         <td class="color">${escapeHtml(color)}</td>
         <td class="unit">${escapeHtml(txt(item.unit) || 'PCS')}</td>
+        <td class="moq">${escapeHtml(moqDisplay)}</td>
         <td class="money">${usdPrice}</td>
         <td class="money">${vndPrice}</td>
         <td class="remark">${escapeHtml(displayRemark)}</td>
@@ -325,7 +331,7 @@ export default function QuotationsPage() {
 
     const noteText = txt(q.remark) || [
       '付款條件 / Payment: according to sales contract.',
-      '交貨日期 / Lead time: Samples 3~5 days, production 5~8 days after PO confirmed.',
+      '交貨日期 / Lead time: to be confirmed by each product and final order arrangement.',
       '交貨方式 / Delivery: Vietnam local door to door.',
       '單價不含 VAT / Price excluding VAT.',
       '任何問題根據合同內容討論 / Any concern according to sales contract.',
@@ -346,17 +352,18 @@ export default function QuotationsPage() {
       .block strong{font-weight:700}
       .meta{margin-top:2mm;margin-bottom:4mm}
       table.quote{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}
-      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle}
+      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;word-break:break-word;overflow-wrap:anywhere}
       table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
       table.quote td{height:30px}
       .seq{width:6%;text-align:center}
-      .product{width:24%}
-      .spec{width:18%}
-      .thin{width:10%;text-align:center}
-      .color{width:10%;text-align:center}
+      .product{width:22%;text-align:center}
+      .spec{width:12%;text-align:center}
+      .thin{width:9%;text-align:center}
+      .color{width:11%;text-align:center;white-space:normal}
       .unit{width:8%;text-align:center}
-      .money{width:10%;text-align:right;font-variant-numeric:tabular-nums}
-      .remark{width:14%}
+      .moq{width:13%;text-align:center;white-space:pre-line;line-height:1.45}
+      .money{width:9%;text-align:center;font-variant-numeric:tabular-nums}
+      .remark{width:10%;text-align:center}
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
@@ -399,6 +406,7 @@ export default function QuotationsPage() {
           <th>厚度 MM</th>
           <th>顏色\nColor</th>
           <th>單位\nUnit</th>
+          <th>MOQ / 單價</th>
           <th>美金價\nPrice USD</th>
           <th>越盾價\nVND</th>
           <th>備註</th>
@@ -445,9 +453,29 @@ export default function QuotationsPage() {
       ...p,
       items: p.items.map((item, idx) => {
         if (idx !== itemIdx) return item
-        const tiers = [...item.moq_tiers]
+        const tiers = item.moq_tiers.length ? [...item.moq_tiers] : emptyTiers()
         tiers[tierIdx] = { ...tiers[tierIdx], [field]: val }
         return { ...item, moq_tiers: tiers }
+      })
+    }))
+  }
+  const addItemTier = (itemIdx:number) => {
+    setForm(p => ({
+      ...p,
+      items: p.items.map((item, idx) => {
+        if (idx !== itemIdx) return item
+        if (item.moq_tiers.length >= 5) return item
+        return { ...item, moq_tiers: [...(item.moq_tiers.length ? item.moq_tiers : emptyTiers()), emptyTier()] }
+      })
+    }))
+  }
+  const removeItemTier = (itemIdx:number, tierIdx:number) => {
+    setForm(p => ({
+      ...p,
+      items: p.items.map((item, idx) => {
+        if (idx !== itemIdx) return item
+        if (item.moq_tiers.length <= 1) return item
+        return { ...item, moq_tiers: item.moq_tiers.filter((_, currentIdx) => currentIdx !== tierIdx) }
       })
     }))
   }
@@ -461,7 +489,7 @@ export default function QuotationsPage() {
           return { ...item, bom_id: null, material_code: '', item_name: '', spec: '', unit: '', unit_price: 0, image_url: '' }
         }
         const bomTiers = normalizeMoqTiers(bom.moq_tiers)
-        const tiers = normalizeTiers(bomTiers.length ? bomTiers : item.moq_tiers)
+        const tiers = ensureTierList(bomTiers.length ? bomTiers : item.moq_tiers)
         const matchedPrice = resolveTierPrice(tiers, Number(item.qty) || 0, bom.company_price || 0)
         return {
           ...item,
@@ -480,8 +508,19 @@ export default function QuotationsPage() {
   }
   const renderTierEditor = (item: QItem, itemIndex: number, inputClass: string) => (
     <div className="min-w-[260px] space-y-1">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[10px] text-slate-400">最多 5 組，至少 1 組</span>
+        <button
+          type="button"
+          className="text-[11px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300"
+          onClick={() => addItemTier(itemIndex)}
+          disabled={item.moq_tiers.length >= 5}
+        >
+          + 新增 MOQ
+        </button>
+      </div>
       {item.moq_tiers.map((tier, t) => (
-        <div key={t} className="grid grid-cols-[26px_1fr_1fr] gap-1 items-center">
+        <div key={t} className="grid grid-cols-[26px_1fr_1fr_auto] gap-1 items-center">
           <span className="text-[10px] text-slate-400 text-center">#{t + 1}</span>
           <DecimalInput
             className={inputClass}
@@ -496,6 +535,14 @@ export default function QuotationsPage() {
             placeholder="單價"
             onValueChange={value => updateTier(itemIndex, t, 'price', value ?? 0)}
           />
+          <button
+            type="button"
+            className="text-[11px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
+            onClick={() => removeItemTier(itemIndex, t)}
+            disabled={item.moq_tiers.length <= 1}
+          >
+            刪除
+          </button>
         </div>
       ))}
     </div>

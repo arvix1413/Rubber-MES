@@ -37,7 +37,12 @@ type Material = {
 
 type Supplier = { id: number; name: string; currency: string }
 
-const emptyTiers = (): MoqTier[] => Array.from({ length: 5 }, () => ({ moq: 0, price: 0 }))
+const emptyTier = (): MoqTier => ({ moq: 0, price: 0 })
+const emptyTiers = (count = 1): MoqTier[] => Array.from({ length: Math.min(5, Math.max(1, count)) }, emptyTier)
+const ensureTierList = (tiers: any): MoqTier[] => {
+  const normalized = normalizeMoqTiers(tiers)
+  return normalized.length ? normalized.slice(0, 5) : emptyTiers()
+}
 const empty = (): Partial<Material> => ({
   material_code: '',
   material_name: '',
@@ -208,9 +213,23 @@ export default function MaterialsPage() {
   }
   const updateTier = (tierIdx:number, field:'moq'|'price', val:number) => {
     setEditing((p) => {
-      const tiers = Array.isArray(p?.moq_tiers) ? [...p.moq_tiers] : emptyTiers()
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
       tiers[tierIdx] = { ...(tiers[tierIdx] || { moq: 0, price: 0 }), [field]: Math.max(0, Number(val) || 0) }
       return { ...p, moq_tiers: tiers }
+    })
+  }
+  const addTier = () => {
+    setEditing((p) => {
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
+      if (tiers.length >= 5) return p
+      return { ...p, moq_tiers: [...tiers, emptyTier()] }
+    })
+  }
+  const removeTier = (tierIdx:number) => {
+    setEditing((p) => {
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
+      if (tiers.length <= 1) return p
+      return { ...p, moq_tiers: tiers.filter((_, idx) => idx !== tierIdx) }
     })
   }
   const tierSummary = (r: Material) => {
@@ -293,10 +312,13 @@ export default function MaterialsPage() {
                 <input className="rubber-input" placeholder="例如：25~30 或 15-20" value={editing.leadtime ?? (editing.leadtime_days != null ? String(editing.leadtime_days) : '')} onChange={(e) => setEditing((p) => ({ ...p, leadtime: e.target.value, leadtime_days: null }))} />
               </div>
               <div className="col-span-2">
-                <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label className="block text-[11px] text-slate-500">MOQ 階梯價格（數量 / 單價）</label>
+                  <button type="button" className="btn-ghost text-blue-600 shrink-0" onClick={addTier} disabled={(editing.moq_tiers || []).length >= 5}>+ 新增 MOQ</button>
+                </div>
                 <div className="rounded-xl border border-slate-200 p-3 space-y-1.5 bg-slate-50/50">
                   {(editing.moq_tiers || emptyTiers()).map((tier, i) => (
-                    <div key={i} className="grid grid-cols-[26px_1fr_1fr] gap-2 items-center">
+                    <div key={i} className="grid grid-cols-[26px_1fr_1fr_auto] gap-2 items-center">
                       <span className="text-[10px] text-slate-400 text-center">#{i + 1}</span>
                       <input
                         type="number"
@@ -311,10 +333,18 @@ export default function MaterialsPage() {
                         value={tier.price}
                         onValueChange={(value) => updateTier(i, 'price', value ?? 0)}
                       />
+                      <button
+                        type="button"
+                        className="text-xs text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
+                        onClick={() => removeTier(i)}
+                        disabled={(editing.moq_tiers || []).length <= 1}
+                      >
+                        刪除
+                      </button>
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">同一材料可設定最多 5 組 MOQ 階梯</p>
+                <p className="text-[10px] text-slate-400 mt-1">同一材料可設定最多 5 組 MOQ 階梯，至少保留 1 組</p>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">幣別</label>
@@ -399,10 +429,7 @@ export default function MaterialsPage() {
                       <td className="min-w-[240px] text-slate-500 max-w-[240px] truncate" title={r.remark || ''}>{r.remark || '—'}</td>
                       <td className="min-w-[140px] whitespace-nowrap">
                         <div className="flex gap-1">
-                          {canEdit && <button onClick={() => setEditing({ ...r, leadtime: r.leadtime || (r.leadtime_days != null ? String(r.leadtime_days) : ''), moq_tiers: (() => {
-                            const parsed = normalizeMoqTiers((r as any).moq_tiers)
-                            return [...parsed, ...emptyTiers()].slice(0, 5)
-                          })() })} className="btn-ghost text-blue-600">編輯</button>}
+                          {canEdit && <button onClick={() => setEditing({ ...r, leadtime: r.leadtime || (r.leadtime_days != null ? String(r.leadtime_days) : ''), moq_tiers: ensureTierList((r as any).moq_tiers) })} className="btn-ghost text-blue-600">編輯</button>}
                           {canDel && <button onClick={() => del(r.id)} className="btn-danger">刪除</button>}
                         </div>
                       </td>

@@ -52,7 +52,12 @@ type Material = {
   moq?: number | null
   remark?: string
 }
-const emptyTiers = (): MoqTier[] => Array.from({ length: 5 }, () => ({ moq: 0, price: 0 }))
+const emptyTier = (): MoqTier => ({ moq: 0, price: 0 })
+const emptyTiers = (count = 1): MoqTier[] => Array.from({ length: Math.min(5, Math.max(1, count)) }, emptyTier)
+const ensureTierList = (tiers: any): MoqTier[] => {
+  const normalized = normalizeMoqTiers(tiers)
+  return normalized.length ? normalized.slice(0, 5) : emptyTiers()
+}
 const empty = (): Partial<Bom> => ({
   product_sku:'', product_name:'', material_name:'', spec:'', unit:'PCS',
   supplier_id:null, supplier_name:'', supplier_price:undefined, company_price:undefined,
@@ -216,9 +221,23 @@ export default function BomPage() {
   }
   const updateTier = (tierIdx:number, field:'moq'|'price', val:number) => {
     setEditing(p => {
-      const tiers = Array.isArray(p?.moq_tiers) ? [...p.moq_tiers] : emptyTiers()
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
       tiers[tierIdx] = { ...(tiers[tierIdx] || { moq: 0, price: 0 }), [field]: Math.max(0, Number(val) || 0) }
       return { ...p, moq_tiers: tiers }
+    })
+  }
+  const addTier = () => {
+    setEditing(p => {
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
+      if (tiers.length >= 5) return p
+      return { ...p, moq_tiers: [...tiers, emptyTier()] }
+    })
+  }
+  const removeTier = (tierIdx:number) => {
+    setEditing(p => {
+      const tiers = Array.isArray(p?.moq_tiers) && p.moq_tiers.length ? [...p.moq_tiers] : emptyTiers()
+      if (tiers.length <= 1) return p
+      return { ...p, moq_tiers: tiers.filter((_, idx) => idx !== tierIdx) }
     })
   }
   const calcItemTotals = (items: BomItem[]) => {
@@ -447,10 +466,13 @@ export default function BomPage() {
                 />
               </div>
               <div className="col-span-2">
-                <label className="block text-[11px] text-slate-500 mb-1.5">MOQ 階梯價格（數量 / 單價）</label>
+                <div className="mb-1.5 flex items-center justify-between gap-3">
+                  <label className="block text-[11px] text-slate-500">MOQ 階梯價格（數量 / 單價）</label>
+                  <button type="button" className="btn-ghost text-blue-600 shrink-0" onClick={addTier} disabled={(editing.moq_tiers || []).length >= 5}>+ 新增 MOQ</button>
+                </div>
                 <div className="rounded-xl border border-slate-200 p-3 space-y-1.5 bg-slate-50/50">
                   {(editing.moq_tiers || emptyTiers()).map((tier, i) => (
-                    <div key={i} className="grid grid-cols-[26px_1fr_1fr] gap-2 items-center">
+                    <div key={i} className="grid grid-cols-[26px_1fr_1fr_auto] gap-2 items-center">
                       <span className="text-[10px] text-slate-400 text-center">#{i + 1}</span>
                       <input
                         type="number"
@@ -465,10 +487,18 @@ export default function BomPage() {
                         value={tier.price}
                         onValueChange={(value) => updateTier(i, 'price', value ?? 0)}
                       />
+                      <button
+                        type="button"
+                        className="text-xs text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
+                        onClick={() => removeTier(i)}
+                        disabled={(editing.moq_tiers || []).length <= 1}
+                      >
+                        刪除
+                      </button>
                     </div>
                   ))}
                 </div>
-                <p className="text-[10px] text-slate-400 mt-1">同一物料編號可在此設定不同 MOQ 對應價格</p>
+                <p className="text-[10px] text-slate-400 mt-1">同一物料編號可設定 1 到 5 組 MOQ 對應價格</p>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">認證機構代碼</label>
@@ -640,10 +670,7 @@ export default function BomPage() {
                                 setEditing({
                                   ...detail,
                                   unit: normalizeUnit(detail.unit),
-                                  moq_tiers: (() => {
-                                    const parsed = normalizeMoqTiers((detail as any).moq_tiers)
-                                    return [...parsed, ...emptyTiers()].slice(0, 5)
-                                  })(),
+                                  moq_tiers: ensureTierList((detail as any).moq_tiers),
                                   items: detail.items || [],
                                 })
                               }} className="btn-ghost text-blue-600">編輯</button>}
