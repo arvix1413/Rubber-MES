@@ -362,6 +362,11 @@ export default function OrderIntakePage() {
     return customerId > 0 ? customerId : 0
   }, [createLinkedOrders])
 
+  const createSelectedBomIds = useMemo(
+    () => createForm.lines.map((line) => line.bomNodeId).filter(Boolean),
+    [createForm.lines],
+  )
+
   const createOrderOptions = useMemo(() => {
     const selectedId = createLockedCustomerId || (createForm.customerId ? Number(createForm.customerId) : 0)
     const filtered = orders.filter((order) => {
@@ -490,6 +495,32 @@ export default function OrderIntakePage() {
     setCreateLineSeed((prev) => prev + 1)
   }
 
+  const addBomToCreateLines = (node: OrderBomNode) => {
+    setCreateForm((prev) => {
+      if (prev.lines.some((line) => line.bomNodeId === node.id)) return prev
+      const emptyLineIndex = prev.lines.findIndex((line) => !line.bomNodeId && !line.orderPoNumber && !line.remark)
+      if (emptyLineIndex >= 0) {
+        const nextLines = [...prev.lines]
+        nextLines[emptyLineIndex] = { ...nextLines[emptyLineIndex], ...applyCreateBomNode(node) }
+        return { ...prev, lines: nextLines }
+      }
+      return {
+        ...prev,
+        lines: [
+          ...prev.lines,
+          {
+            ...createEmptyLine(createLineSeed),
+            ...applyCreateBomNode(node),
+          },
+        ],
+      }
+    })
+    setCreateLineSeed((prev) => prev + 1)
+    if (!createForm.dueDate && node.due_date) {
+      updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(node.due_date) || '') })
+    }
+  }
+
   const removeCreateLine = (key: string) => {
     setCreateForm((prev) => ({
       ...prev,
@@ -528,6 +559,16 @@ export default function OrderIntakePage() {
         }),
       }
     })
+  }
+
+  const createBomOptionsForLine = (lineKey: string) => {
+    const selectedByOthers = new Set(
+      createForm.lines
+        .filter((line) => line.key !== lineKey)
+        .map((line) => line.bomNodeId)
+        .filter(Boolean),
+    )
+    return createBomNodes.filter((node) => !selectedByOthers.has(node.id))
   }
 
   const createProgress = async () => {
@@ -977,10 +1018,29 @@ export default function OrderIntakePage() {
                   <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
                 </div>
                 {createForm.linkedOrderIds.length > 0 && (
-                  <p className="mb-2 text-xs text-slate-500">
-                    這裡改成直接選 BOM；建立時系統會按 BOM 的二層材料自動生成交期明細與採購單。
-                    {createBomLoading ? ' BOM 載入中...' : ` 共 ${createBomNodes.length} 個 BOM 候選`}
-                  </p>
+                  <>
+                    <p className="mb-2 text-xs text-slate-500">
+                      這裡改成直接選 BOM；建立時系統會按 BOM 的二層材料自動生成交期明細與採購單。
+                      {createBomLoading ? ' BOM 載入中...' : ` 共 ${createBomNodes.length} 個 BOM 候選，已選 ${createSelectedBomIds.length} 個`}
+                    </p>
+                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="mb-1 block text-xs text-slate-500">快速新增 BOM</label>
+                      <SearchableSelect
+                        options={createBomNodes.filter((node) => !createSelectedBomIds.includes(node.id))}
+                        value=""
+                        onChange={(value) => {
+                          const node = createBomNodes.find((it) => it.id === value)
+                          if (!node) return
+                          addBomToCreateLines(node)
+                        }}
+                        placeholder={createBomLoading ? '-- BOM 載入中 --' : '-- 選一個 BOM，立即新增一條明細 --'}
+                        renderOption={formatCreateBomNode}
+                        filterFn={filterCreateBomNode}
+                        disabled={createBomLoading || createForm.linkedOrderIds.length === 0}
+                        className="h-9"
+                      />
+                    </div>
+                  </>
                 )}
                 <div className="overflow-hidden rounded-lg border border-slate-200">
                   <table className="w-full text-xs">
@@ -996,12 +1056,13 @@ export default function OrderIntakePage() {
                     <tbody>
                       {createForm.lines.map((line) => {
                         const selectedNode = createBomNodes.find((node) => node.id === line.bomNodeId)
+                        const lineBomOptions = createBomOptionsForLine(line.key)
                         return (
                           <tr key={line.key} className="border-b border-slate-100 last:border-0">
                             <td className="px-3 py-2 align-top">
                               <div className="space-y-1">
                                 <SearchableSelect
-                                  options={createBomNodes}
+                                  options={lineBomOptions}
                                   value={line.bomNodeId}
                                   onChange={(value) => {
                                     const node = createBomNodes.find((it) => it.id === value)
