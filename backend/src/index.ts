@@ -1140,6 +1140,7 @@ const syncDeliveryProgressPoLinks = async (
 const syncDeliveryProgressItems = async (
   progressId: number,
   items: Array<{
+    id?: any
     order_po_number?: any
     material_id?: any
     material_code?: any
@@ -1153,15 +1154,49 @@ const syncDeliveryProgressItems = async (
   }>,
   userId: number | null,
 ) => {
-  await execute('UPDATE delivery_progress_items SET deleted_at=?, deleted_by=? WHERE progress_id=? AND deleted_at IS NULL', [now8(), userId || null, progressId])
+  const existingItems = await query<any>(
+    'SELECT id FROM delivery_progress_items WHERE progress_id=? AND deleted_at IS NULL ORDER BY id ASC',
+    [progressId],
+  )
+  const existingIds = new Set(existingItems.map((item) => Number(item.id)).filter((id) => Number.isFinite(id) && id > 0))
+  const keptIds = new Set<number>()
   for (const item of items) {
+    const itemId = Number(item?.id || 0)
     const orderPoNumber = String(item?.order_po_number || '').trim()
     const materialId = await resolveMaterialId(item?.material_id, item?.material_code)
     const materialCode = String(item?.material_code || '').trim()
     const materialName = String(item?.material_name || '').trim()
     const plannedQty = toQty(item?.planned_qty)
     if (!materialName || plannedQty <= 0) continue
-    await execute(
+    const spec = String(item?.spec || '').trim()
+    const unit = String(item?.unit || 'PCS').trim() || 'PCS'
+    const dueDate = item?.due_date ? toDateStr(item.due_date) : null
+    const status = ['pending', 'partial', 'completed'].includes(String(item?.status || '')) ? String(item?.status) : 'pending'
+    const remark = String(item?.remark || '').trim()
+    if (existingIds.has(itemId) && !keptIds.has(itemId)) {
+      await execute(
+        `UPDATE delivery_progress_items
+         SET order_po_number=?, material_id=?, material_code=?, material_name=?, spec=?, unit=?, planned_qty=?, due_date=?, status=?, remark=?, deleted_at=NULL, deleted_by=NULL
+         WHERE id=? AND progress_id=? AND deleted_at IS NULL`,
+        [
+          orderPoNumber,
+          materialId,
+          materialCode || materialName,
+          materialName,
+          spec,
+          unit,
+          plannedQty,
+          dueDate,
+          status,
+          remark,
+          itemId,
+          progressId,
+        ],
+      )
+      keptIds.add(itemId)
+      continue
+    }
+    const created = await execute(
       `INSERT INTO delivery_progress_items
         (progress_id, order_po_number, material_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
        VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
@@ -1171,14 +1206,27 @@ const syncDeliveryProgressItems = async (
         materialId,
         materialCode || materialName,
         materialName,
-        String(item?.spec || '').trim(),
-        String(item?.unit || 'PCS').trim() || 'PCS',
+        spec,
+        unit,
         plannedQty,
-        item?.due_date ? toDateStr(item.due_date) : null,
-        ['pending', 'partial', 'completed'].includes(String(item?.status || '')) ? String(item?.status) : 'pending',
-        String(item?.remark || '').trim(),
+        dueDate,
+        status,
+        remark,
         now8(),
       ]
+    )
+    const createdId = Number(created.insertId || 0)
+    if (createdId > 0) keptIds.add(createdId)
+  }
+  const removedIds = existingItems
+    .map((item) => Number(item.id))
+    .filter((existingId) => Number.isFinite(existingId) && existingId > 0 && !keptIds.has(existingId))
+  if (removedIds.length) {
+    await execute(
+      `UPDATE delivery_progress_items
+       SET deleted_at=?, deleted_by=?
+       WHERE progress_id=? AND deleted_at IS NULL AND id IN (${removedIds.map(() => '?').join(',')})`,
+      [now8(), userId || null, progressId, ...removedIds],
     )
   }
 }
@@ -3288,6 +3336,7 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     const itemsInput = Array.isArray(b?.items) ? b.items : []
     const items = itemsInput
       .map((item: any) => ({
+        id: item?.id == null ? null : Number(item.id) || null,
         order_po_number: String(item?.order_po_number || '').trim(),
         material_id: item?.material_id == null ? null : Number(item.material_id) || null,
         material_code: String(item?.material_code || item?.material_name || '').trim(),

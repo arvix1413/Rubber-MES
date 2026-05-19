@@ -53,6 +53,7 @@ type OrderSummary = { id: number; po_number: string; customer_id: number; custom
 
 type LineForm = {
   key: string
+  id?: number
   materialOptionId: string
   material_id: number | null
   orderPoNumber: string
@@ -536,6 +537,7 @@ export default function OrderIntakePage() {
         status: detail.status || 'pending',
         lines: (detail.items || []).map((item, index) => ({
           key: `edit-${item.id || index}`,
+          id: item.id,
           materialOptionId: '',
           material_id: item.material_id || null,
           orderPoNumber: item.order_po_number || '',
@@ -617,6 +619,7 @@ export default function OrderIntakePage() {
     if (!editing || !editForm) return
     const items = editForm.lines
       .map((line) => ({
+        id: line.id,
         order_po_number: line.orderPoNumber.trim(),
         material_id: line.material_id,
         material_code: line.material_code.trim(),
@@ -1078,7 +1081,7 @@ export default function OrderIntakePage() {
                       </thead>
                       <tbody>
                         {editForm.lines.map((line, idx) => {
-                          const source = editing.items[idx]
+                          const source = editing.items.find((item) => item.id === line.id) || editing.items[idx]
                           return (
                             <tr key={line.key} className="border-b border-slate-100 last:border-0">
                               <td className="px-3 py-2">

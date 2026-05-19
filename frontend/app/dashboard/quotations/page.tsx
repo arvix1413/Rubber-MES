@@ -270,7 +270,6 @@ export default function QuotationsPage() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-    const extractThickness = () => '1 MM'
     const addMonths = (dateText: string, months: number) => {
       const normalized = txt(dateText).replace(/\//g, '-')
       if (!normalized) return ''
@@ -307,7 +306,6 @@ export default function QuotationsPage() {
         : undefined
       const spec = txt(item.spec || matchedBom?.spec)
       const color = txt((matchedBom as any)?.color)
-      const thickness = extractThickness()
       const moqTiers = normalizeMoqTiers(item.moq_tiers)
       const moqDisplay = moqTiers.length
         ? moqTiers.map((tier) => `${formatInteger(tier.moq)}:${formatDecimal(tier.price)}`).join('\n')
@@ -323,7 +321,6 @@ export default function QuotationsPage() {
         <td class="seq">${idx + 1}</td>
         <td class="product">${escapeHtml(item.item_name)}</td>
         <td class="spec">${escapeHtml(spec)}</td>
-        <td class="thin">${escapeHtml(thickness)}</td>
         <td class="color">${escapeHtml(color)}</td>
         <td class="unit">${escapeHtml(txt(item.unit) || 'PCS')}</td>
         <td class="moq">${escapeHtml(moqDisplay)}</td>
@@ -360,14 +357,13 @@ export default function QuotationsPage() {
       table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
       table.quote td{height:30px}
       .seq{width:6%;text-align:center}
-      .product{width:22%;text-align:center}
+      .product{width:33%;text-align:center}
       .spec{width:12%;text-align:center}
-      .thin{width:9%;text-align:center}
-      .color{width:11%;text-align:center;white-space:normal}
-      .unit{width:8%;text-align:center}
+      .color{width:10%;text-align:center;white-space:normal}
+      .unit{width:6%;text-align:center}
       .moq{width:13%;text-align:center;white-space:pre-line;line-height:1.45}
-      .money{width:9%;text-align:center;font-variant-numeric:tabular-nums}
-      .remark{width:10%;text-align:center}
+      .money{width:8%;text-align:center;font-variant-numeric:tabular-nums}
+      .remark{width:8%;text-align:center}
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
@@ -407,7 +403,6 @@ export default function QuotationsPage() {
           <th>項目\nItem</th>
           <th>產品 Products</th>
           <th>規格\nSpec</th>
-          <th>厚度 MM</th>
           <th>顏色\nColor</th>
           <th>單位\nUnit</th>
           <th>MOQ / 單價</th>
