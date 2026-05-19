@@ -1,6 +1,7 @@
 import { type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { formatQuantity } from './numberFormat'
+import { getPrintSignatureConfig } from './printSignature'
 
 export function generateDeliverySheetHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -26,6 +27,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
   }
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
+  const signatureConfig = getPrintSignatureConfig(co)
   const items: any[] = Array.isArray(data.items) ? data.items : []
   const totalQty = items.reduce((s, i) => s + num(i.qty), 0)
 
@@ -66,7 +68,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
     .footer{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
     .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
     .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-    .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
+    .sign-area{flex:1;min-height:${signatureConfig.areaMinHeight}px;display:flex;align-items:center;justify-content:center}
     .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
     @media print{@page{size:A4;margin:4mm}}
   </style></head><body><div class="wrap">
@@ -116,7 +118,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
 
     <div class="footer">
       <div class="sign-box"><div class="sign-label">收貨方簽章</div><div class="sign-area"></div><div class="sign-line">${txt(data.customer_name)}</div></div>
-      <div class="sign-box"><div class="sign-label">交貨方簽章</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:44px;max-width:150px;object-fit:contain"/>` : ''}</div><div class="sign-line">${txt(co.contact_person || co.company_name)}</div></div>
+      <div class="sign-box"><div class="sign-label">交貨方簽章</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="${signatureConfig.imgStyle}"/>` : ''}</div><div class="sign-line">${txt(co.contact_person || co.company_name)}</div></div>
     </div>
   </div></body></html>`
 

@@ -18,6 +18,8 @@ const DEFAULT: CompanySettings = {
   tax_id: '',
   logo_url: null,
   signature_url: null,
+  signature_print_width: 220,
+  signature_print_height: 72,
 }
 
 export default function CompanyPage() {
@@ -134,11 +136,25 @@ export default function CompanyPage() {
           <label className="block text-xs font-semibold text-slate-600 mb-2">統一主管簽名</label>
           <div className="flex items-center gap-4">
             {signatureFullUrl ? (
-              <div className="w-36 h-20 border border-slate-200 rounded-lg flex items-center justify-center bg-slate-50 overflow-hidden">
+              <div
+                className="border border-slate-200 rounded-lg flex items-center justify-center bg-slate-50 overflow-hidden"
+                style={{
+                  width: `${Math.min(Math.max(Number(form.signature_print_width) || 220, 120), 320)}px`,
+                  height: `${Math.min(Math.max(Number(form.signature_print_height) || 72, 48), 140)}px`,
+                }}
+              >
                 <img src={signatureFullUrl} alt="Manager Signature" className="max-w-full max-h-full object-contain" />
               </div>
             ) : (
-              <div className="w-36 h-20 border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-300 text-xs">無主管簽名</div>
+              <div
+                className="border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-300 text-xs"
+                style={{
+                  width: `${Math.min(Math.max(Number(form.signature_print_width) || 220, 120), 320)}px`,
+                  height: `${Math.min(Math.max(Number(form.signature_print_height) || 72, 48), 140)}px`,
+                }}
+              >
+                無主管簽名
+              </div>
             )}
             <div className="flex flex-col gap-2">
               <button onClick={() => signatureFileRef.current?.click()} disabled={uploadingSignature} className="btn-ghost border border-slate-200 text-xs">
@@ -148,6 +164,33 @@ export default function CompanyPage() {
             </div>
           </div>
           <input ref={signatureFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSignature(f) }} />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">列印簽名寬度</label>
+            <input
+              type="number"
+              min={120}
+              max={320}
+              className="rubber-input"
+              value={form.signature_print_width || 220}
+              onChange={(e) => setForm((p) => ({ ...p, signature_print_width: Number(e.target.value || 220) }))}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">單位 px，建議 180 到 240</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">列印簽名高度</label>
+            <input
+              type="number"
+              min={48}
+              max={140}
+              className="rubber-input"
+              value={form.signature_print_height || 72}
+              onChange={(e) => setForm((p) => ({ ...p, signature_print_height: Number(e.target.value || 72) }))}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">單位 px，建議 64 到 88</p>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">

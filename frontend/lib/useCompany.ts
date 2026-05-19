@@ -12,6 +12,8 @@ export type CompanySettings = {
   tax_id: string
   logo_url: string | null
   signature_url: string | null
+  signature_print_width: number
+  signature_print_height: number
 }
 
 const DEFAULT: CompanySettings = {
@@ -25,6 +27,8 @@ const DEFAULT: CompanySettings = {
   tax_id: '',
   logo_url: null,
   signature_url: null,
+  signature_print_width: 220,
+  signature_print_height: 72,
 }
 
 let _cache: CompanySettings | null = null

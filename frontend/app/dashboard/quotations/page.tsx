@@ -8,6 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
+import { getPrintSignatureConfig } from '@/lib/printSignature'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
 import StatusCountChips from '@/components/StatusCountChips'
 import { can } from '@/lib/usePermissions'
@@ -286,6 +287,7 @@ export default function QuotationsPage() {
     ])
     const quotation = data as any
     const items = data.items || []
+    const signatureConfig = getPrintSignatureConfig(company)
     const signUrl = quotation.status !== 'draft' ? (getCompanySignatureUrl(company) || '') : ''
     const rawCustomerId = quotation.customer_id ?? q.customer_id
     const customerDetail = rawCustomerId
@@ -382,8 +384,8 @@ export default function QuotationsPage() {
       .footer{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
       .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
       .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-      .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
-      .sign-area img{max-height:44px;max-width:150px;object-fit:contain}
+      .sign-area{flex:1;min-height:${signatureConfig.areaMinHeight}px;display:flex;align-items:center;justify-content:center}
+      .sign-area img{${signatureConfig.imgStyle}}
       .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
       @media print{body{-webkit-print-color-adjust:exact}@page{size:A4;margin:0}}
     </style></head><body>

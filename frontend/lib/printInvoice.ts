@@ -3,6 +3,7 @@ import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
 import { formatDateYMD } from './datetime'
 import { formatDecimal, formatQuantity } from './numberFormat'
+import { getPrintSignatureConfig } from './printSignature'
 
 export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -29,6 +30,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
   }
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
+  const signatureConfig = getPrintSignatureConfig(co)
 
   const items: any[] = Array.isArray(data.items) ? data.items : []
   const invoiceType = txt(data.invoice_type) === 'supplier' ? 'supplier' : 'customer'
@@ -71,7 +73,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
     .sign-row{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
     .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
     .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-    .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
+    .sign-area{flex:1;min-height:${signatureConfig.areaMinHeight}px;display:flex;align-items:center;justify-content:center}
     .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
     @media print{@page{size:A4;margin:0}}
   `
@@ -121,7 +123,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
 
       <div class="sign-row">
         <div class="sign-box"><div class="sign-label">${invoiceType === 'supplier' ? '供應商簽章' : '客戶簽章'}</div><div class="sign-area"></div><div class="sign-line">${txt(data.party_name)}</div></div>
-        <div class="sign-box"><div class="sign-label">我方確認</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:44px;max-width:150px;object-fit:contain"/>` : ''}</div><div class="sign-line">${txt(co.company_name)}</div></div>
+        <div class="sign-box"><div class="sign-label">我方確認</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="${signatureConfig.imgStyle}"/>` : ''}</div><div class="sign-line">${txt(co.company_name)}</div></div>
       </div>
     </div>
   </body></html>`
