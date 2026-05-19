@@ -602,10 +602,14 @@ export default function OrderIntakePage() {
           items: lines,
         }),
       })
-      const { res, lines: poLines } = await generatePoForProgress(created.id)
       const deliveryNoteText = created.dn_number ? `，並自動建立出貨單 ${created.dn_number}` : ''
-      toast(`交期進度已建立${deliveryNoteText}，並生成 ${res.count || poLines.length} 張採購單`)
-      if (poLines.length) showResultNotice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
+      try {
+        const { res, lines: poLines } = await generatePoForProgress(created.id)
+        toast(`交期進度已建立${deliveryNoteText}，並生成 ${res.count || poLines.length} 張採購單`)
+        if (poLines.length) showResultNotice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
+      } catch (e: any) {
+        toast(`交期進度已建立${deliveryNoteText}，但自動生成採購單失敗：${String(e?.message || '請稍後再試')}。可回列表手動點擊「生成採購單」`, 'error')
+      }
       closeCreate()
       await refreshAll(status, false)
     } catch (e: any) {
