@@ -221,7 +221,9 @@ export default function QuotationsPage() {
       valid_until: q.valid_until ? String(q.valid_until).slice(0,10) : '',
       remark: q.remark || '',
       items: (data.items || []).map((i: any) => {
-        const matchedBom = boms.find(b => b.product_sku === i.material_code)
+        const matchedBom = i.bom_id
+          ? boms.find(b => b.id === i.bom_id)
+          : undefined
         let moq_tiers = emptyTiers()
         if (i.moq_tiers) {
           moq_tiers = normalizeTiers(i.moq_tiers)
@@ -232,7 +234,7 @@ export default function QuotationsPage() {
           } catch {}
         }
         return {
-          bom_id: i.bom_id ?? matchedBom?.id ?? null,
+          bom_id: i.bom_id ?? null,
           item_name: i.item_name || '',
           material_code: i.material_code || '',
           spec: i.spec || '',
@@ -300,7 +302,9 @@ export default function QuotationsPage() {
     const todayRateLine = txt(q.currency) === 'USD' ? '匯率: 1 USD = 26,500 VND' : ''
 
     const itemRows = items.map((item: any, idx: number) => {
-      const matchedBom = boms.find(b => b.product_sku === item.material_code)
+      const matchedBom = item.bom_id
+        ? boms.find(b => b.id === item.bom_id)
+        : undefined
       const spec = txt(item.spec || matchedBom?.spec)
       const color = txt((matchedBom as any)?.color)
       const thickness = extractThickness()

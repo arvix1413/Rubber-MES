@@ -201,7 +201,14 @@ cd ../backend && npm run build
 ## 9. Deployment
 
 ### Source Of Truth
-发布以 GitHub Actions 为准，手工 `deploy-local.sh` 只是辅助脚本。
+发布以 GitHub Actions 为准。
+
+### Release Rule
+- 需要发布时，只做 `git push`
+- 不要手工跑 `deploy-local.sh`
+- 不要手工 SSH 到服务器执行部署
+- `push stg` 会自动发 STG
+- `push prd` 会自动发 PRD
 
 ### Workflow
 - 文件: [/.github/workflows/deploy-rubber.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/deploy-rubber.yml)
@@ -228,7 +235,7 @@ cd ../backend && npm run build
 - [deploy-local.sh](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/deploy-local.sh)
 - [verify-deployment.sh](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/verify-deployment.sh)
 
-它们有参考价值，但不是团队的唯一真相来源。
+它们只保留作排障/历史参考，不是正常发布流程的一部分。
 
 ## 10. Validation After Changes
 

@@ -696,6 +696,8 @@ const ensureMaterialReferenceColumns = async () => {
           ) throw e
         }
       }
+      await alterSafe('ALTER TABLE bom ADD COLUMN material_id INT NULL AFTER product_name')
+      await alterSafe('ALTER TABLE bom ADD INDEX idx_bom_material_id (material_id)')
       await alterSafe('ALTER TABLE bom_items ADD COLUMN material_id INT NULL AFTER bom_id')
       await alterSafe('ALTER TABLE bom_items ADD INDEX idx_bom_items_material_id (material_id)')
       await alterSafe('ALTER TABLE quotation_items ADD COLUMN material_id INT NULL AFTER quotation_id')
@@ -719,6 +721,12 @@ const ensureMaterialReferenceColumns = async () => {
           if (!msg.includes("doesn't exist")) throw e
         }
       }
+      await backfillSafe(`
+        UPDATE bom b
+        JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+        SET b.material_id = m.id
+        WHERE b.material_id IS NULL AND COALESCE(b.product_sku, '') <> ''
+      `)
       await backfillSafe(`
         UPDATE po_items pi
         JOIN materials m ON m.material_code = pi.material_code AND m.deleted_at IS NULL
@@ -1705,7 +1713,7 @@ app.get('/api/bom', authMiddleware, async c => {
       COALESCE(bs.agg_company_price, 0) as agg_company_price
     FROM bom b
     LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
-    LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+    LEFT JOIN materials m ON b.material_id IS NOT NULL AND b.material_id > 0 AND m.id = b.material_id AND m.deleted_at IS NULL
     LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     LEFT JOIN (
       SELECT
@@ -1714,10 +1722,11 @@ app.get('/api/bom', authMiddleware, async c => {
         COALESCE(SUM(COALESCE(m2.supplier_price, bi.supplier_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_supplier_price,
         COALESCE(SUM(COALESCE(m2.company_price, bi.company_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_company_price
       FROM bom_items bi
-      LEFT JOIN materials m2 ON (
-        (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
-        OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
-      ) AND m2.deleted_at IS NULL
+      LEFT JOIN materials m2
+        ON bi.material_id IS NOT NULL
+        AND bi.material_id > 0
+        AND m2.id = bi.material_id
+        AND m2.deleted_at IS NULL
       WHERE bi.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
@@ -1775,7 +1784,7 @@ app.get('/api/bom/:id', authMiddleware, async c => {
       COALESCE(bs.agg_company_price, 0) as agg_company_price
     FROM bom b
     LEFT JOIN suppliers s ON b.supplier_id = s.id AND s.deleted_at IS NULL
-    LEFT JOIN materials m ON m.material_code = b.product_sku AND m.deleted_at IS NULL
+    LEFT JOIN materials m ON b.material_id IS NOT NULL AND b.material_id > 0 AND m.id = b.material_id AND m.deleted_at IS NULL
     LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     LEFT JOIN (
       SELECT
@@ -1784,10 +1793,11 @@ app.get('/api/bom/:id', authMiddleware, async c => {
         COALESCE(SUM(COALESCE(m2.supplier_price, bi.supplier_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_supplier_price,
         COALESCE(SUM(COALESCE(m2.company_price, bi.company_price, 0) * COALESCE(NULLIF(bi.quantity, 0), 1)), 0) as agg_company_price
       FROM bom_items bi
-      LEFT JOIN materials m2 ON (
-        (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m2.id = bi.material_id)
-        OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m2.material_code = bi.material_code)
-      ) AND m2.deleted_at IS NULL
+      LEFT JOIN materials m2
+        ON bi.material_id IS NOT NULL
+        AND bi.material_id > 0
+        AND m2.id = bi.material_id
+        AND m2.deleted_at IS NULL
       WHERE bi.deleted_at IS NULL
       GROUP BY bom_id
     ) bs ON bs.bom_id = b.id
@@ -1810,10 +1820,11 @@ app.get('/api/bom/:id', authMiddleware, async c => {
       bi.spec as mat_spec,
       bi.unit as mat_unit
     FROM bom_items bi
-    LEFT JOIN materials m ON (
-      (bi.material_id IS NOT NULL AND bi.material_id > 0 AND m.id = bi.material_id)
-      OR ((bi.material_id IS NULL OR bi.material_id = 0) AND m.material_code = bi.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON bi.material_id IS NOT NULL
+      AND bi.material_id > 0
+      AND m.id = bi.material_id
+      AND m.deleted_at IS NULL
     LEFT JOIN suppliers ms ON m.supplier_id = ms.id AND ms.deleted_at IS NULL
     WHERE bi.bom_id=? AND bi.deleted_at IS NULL`, [c.req.param('id')])
   const itemCount = Number(bom.item_count || 0)
@@ -1868,9 +1879,11 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
   try {
     await ensureBomMoqTiersColumn()
     await ensureBomExtraColumns()
+    await ensureMaterialReferenceColumns()
     const b = await c.req.json()
     const productSku = normalizeRequiredText(b.product_sku)
     const productName = normalizeRequiredText(b.product_name)
+    const headerMaterial = await resolveMaterialSnapshot(b.material_id, null)
     const unit = normalizeRequiredText(b.unit)
     const currency = normalizeRequiredText(b.currency)
     const totals = calcBomTotals(b.items)
@@ -1878,6 +1891,7 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
     const companyPrice = totals.hasItems ? totals.companyTotal : parseRequiredMoney(b.company_price)
     if (!productSku) return c.json({ error: 'product_sku required' }, 400)
     if (!productName) return c.json({ error: 'product_name required' }, 400)
+    if (!headerMaterial.resolvedId || !headerMaterial.material) return c.json({ error: 'material_id required' }, 400)
     if (!unit) return c.json({ error: 'unit required' }, 400)
     if (!currency) return c.json({ error: 'currency required' }, 400)
     if (supplierPrice === null) return c.json({ error: 'supplier_price required and must be >= 0' }, 400)
@@ -1886,16 +1900,22 @@ app.post('/api/bom', authMiddleware, requirePerm('bom.create'), async c => {
     if (existing) return c.json({ error: `SKU「${productSku}」已存在，請使用不同的 SKU` }, 409)
     const u = c.get('user')
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
-    const r = await execute(`INSERT INTO bom (product_sku,product_name,material_name,spec,unit,supplier_id,supplier_name,supplier_price,company_price,currency,category,color,lt,moq,cert_code,brand,image_url,version,moq_tiers,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [productSku, productName, b.material_name||'', b.spec||'', unit,
-       b.supplier_id||null, b.supplier_name||'', supplierPrice, companyPrice,
-       currency, b.category||'', b.color||'', b.lt||'', b.moq||null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
+    const r = await execute(`INSERT INTO bom (product_sku,product_name,material_id,material_name,spec,unit,supplier_id,supplier_name,supplier_price,company_price,currency,category,color,lt,moq,cert_code,brand,image_url,version,moq_tiers,status,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [productSku, productName, headerMaterial.resolvedId,
+       headerMaterial.material?.material_name || b.material_name || '',
+       headerMaterial.material?.spec || b.spec || '',
+       headerMaterial.material?.unit || unit,
+       headerMaterial.material?.supplier_id || b.supplier_id || null,
+       headerMaterial.material?.supplier_name || b.supplier_name || '',
+       supplierPrice, companyPrice,
+       headerMaterial.material?.currency || currency, b.category||'', headerMaterial.material?.color || b.color || '', headerMaterial.material?.leadtime_text || b.lt || '', headerMaterial.material?.moq ?? b.moq ?? null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
        moqTiers.length ? JSON.stringify(moqTiers) : null,
        'active', u.userId, now8()])
     const bomId = r.insertId
     if (b.items?.length) {
       for (const item of b.items) {
-        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, item.material_code)
+        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, null)
+        if (!materialId || !material) return c.json({ error: 'BOM 組合材料必須選擇有效材料' }, 400)
         await execute('INSERT INTO bom_items (bom_id,material_id,material_code,material_name,spec,unit,quantity,supplier_name,supplier_price,company_price,currency,remark,color,lt,moq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
           [
             bomId,
@@ -1924,31 +1944,40 @@ app.put('/api/bom/:id', authMiddleware, requirePerm('bom.edit'), async c => {
   try {
     await ensureBomMoqTiersColumn()
     await ensureBomExtraColumns()
+    await ensureMaterialReferenceColumns()
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const existing = await queryOne<any>('SELECT product_sku FROM bom WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
     const productName = normalizeRequiredText(b.product_name)
+    const headerMaterial = await resolveMaterialSnapshot(b.material_id, null)
     const unit = normalizeRequiredText(b.unit)
     const currency = normalizeRequiredText(b.currency)
     const totals = calcBomTotals(b.items)
     const supplierPrice = totals.hasItems ? totals.supplierTotal : parseRequiredMoney(b.supplier_price)
     const companyPrice = totals.hasItems ? totals.companyTotal : parseRequiredMoney(b.company_price)
     if (!productName) return c.json({ error: 'product_name required' }, 400)
+    if (!headerMaterial.resolvedId || !headerMaterial.material) return c.json({ error: 'material_id required' }, 400)
     if (!unit) return c.json({ error: 'unit required' }, 400)
     if (!currency) return c.json({ error: 'currency required' }, 400)
     if (supplierPrice === null) return c.json({ error: 'supplier_price required and must be >= 0' }, 400)
     if (companyPrice === null) return c.json({ error: 'company_price required and must be >= 0' }, 400)
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
-    await execute(`UPDATE bom SET product_sku=?,product_name=?,material_name=?,spec=?,unit=?,supplier_id=?,supplier_name=?,supplier_price=?,company_price=?,currency=?,category=?,color=?,lt=?,moq=?,cert_code=?,brand=?,image_url=?,version=?,moq_tiers=? WHERE id=?`,
-      [existing.product_sku, productName, b.material_name||'', b.spec||'', unit,
-       b.supplier_id||null, b.supplier_name||'', supplierPrice, companyPrice,
-       currency, b.category||'', b.color||'', b.lt||'', b.moq||null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
+    await execute(`UPDATE bom SET product_sku=?,product_name=?,material_id=?,material_name=?,spec=?,unit=?,supplier_id=?,supplier_name=?,supplier_price=?,company_price=?,currency=?,category=?,color=?,lt=?,moq=?,cert_code=?,brand=?,image_url=?,version=?,moq_tiers=? WHERE id=?`,
+      [existing.product_sku, productName, headerMaterial.resolvedId,
+       headerMaterial.material?.material_name || b.material_name || '',
+       headerMaterial.material?.spec || b.spec || '',
+       headerMaterial.material?.unit || unit,
+       headerMaterial.material?.supplier_id || b.supplier_id || null,
+       headerMaterial.material?.supplier_name || b.supplier_name || '',
+       supplierPrice, companyPrice,
+       headerMaterial.material?.currency || currency, b.category||'', headerMaterial.material?.color || b.color || '', headerMaterial.material?.leadtime_text || b.lt || '', headerMaterial.material?.moq ?? b.moq ?? null, b.cert_code||'', b.brand||'', b.image_url||'', b.version||'V1',
        moqTiers.length ? JSON.stringify(moqTiers) : null,
        id])
     await softDeleteByWhere('bom_items', 'bom_id=?', [id], c.get('user')?.userId)
     if (b.items?.length) {
       for (const item of b.items) {
-        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, item.material_code)
+        const { resolvedId: materialId, material } = await resolveMaterialSnapshot(item.material_id, null)
+        if (!materialId || !material) return c.json({ error: 'BOM 組合材料必須選擇有效材料' }, 400)
         await execute('INSERT INTO bom_items (bom_id,material_id,material_code,material_name,spec,unit,quantity,supplier_name,supplier_price,company_price,currency,remark,color,lt,moq) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
           [
             id,
@@ -2010,17 +2039,18 @@ app.get('/api/po/:id', authMiddleware, async c => {
   if (!po) return c.json({ error: 'Not found' }, 404)
   const items = await query(`
     SELECT pi.*,
-           COALESCE(NULLIF(m.material_name, ''), NULLIF(pi.material_name, ''), b.product_name, '') as material_name,
-           COALESCE(NULLIF(m.spec, ''), NULLIF(pi.spec, ''), b.spec, '') as spec,
-           COALESCE(NULLIF(m.unit, ''), NULLIF(pi.unit, ''), b.unit, 'PCS') as unit,
-           COALESCE(m.image_url, b.image_url, '') as image_url
+           COALESCE(NULLIF(m.material_name, ''), NULLIF(pi.material_name, ''), '') as material_name,
+           COALESCE(NULLIF(m.spec, ''), NULLIF(pi.spec, ''), '') as spec,
+           COALESCE(NULLIF(m.unit, ''), NULLIF(pi.unit, ''), 'PCS') as unit,
+           COALESCE(m.image_url, '') as image_url
     FROM po_items pi 
-    LEFT JOIN materials m ON (
-      (pi.material_id IS NOT NULL AND pi.material_id > 0 AND pi.material_id = m.id)
-      OR ((pi.material_id IS NULL OR pi.material_id = 0) AND pi.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
-    LEFT JOIN bom b ON pi.material_code = b.product_sku AND b.deleted_at IS NULL
-    WHERE pi.po_id=? AND pi.deleted_at IS NULL`, [c.req.param('id')])
+    LEFT JOIN materials m
+      ON pi.material_id IS NOT NULL
+      AND pi.material_id > 0
+      AND pi.material_id = m.id
+      AND m.deleted_at IS NULL
+    WHERE pi.po_id=? AND pi.deleted_at IS NULL
+    ORDER BY pi.id ASC`, [c.req.param('id')])
   return c.json({ ...po, items })
 })
 app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm('po.create'), async c => {
@@ -2072,10 +2102,11 @@ app.get('/api/po/materials-from-order-po/:poNumber', authMiddleware, requirePerm
           m.moq_tiers,
           m.image_url
         FROM bom_items bi
-        LEFT JOIN materials m ON (
-          (bi.material_id IS NOT NULL AND bi.material_id > 0 AND bi.material_id = m.id)
-          OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
-        ) AND m.deleted_at IS NULL
+        LEFT JOIN materials m
+          ON bi.material_id IS NOT NULL
+          AND bi.material_id > 0
+          AND bi.material_id = m.id
+          AND m.deleted_at IS NULL
         LEFT JOIN suppliers s ON m.supplier_id = s.id AND s.deleted_at IS NULL
         WHERE bi.bom_id=? AND bi.deleted_at IS NULL
         ORDER BY bi.id ASC
@@ -2387,10 +2418,11 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
     JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
     JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
     JOIN bom_items bi ON bi.bom_id = b.id AND bi.deleted_at IS NULL
-    LEFT JOIN materials m ON (
-      (bi.material_id IS NOT NULL AND bi.material_id > 0 AND bi.material_id = m.id)
-      OR ((bi.material_id IS NULL OR bi.material_id = 0) AND bi.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON bi.material_id IS NOT NULL
+      AND bi.material_id > 0
+      AND bi.material_id = m.id
+      AND m.deleted_at IS NULL
     WHERE ci.order_id IN (${orderIds.map(() => '?').join(',')})
     GROUP BY
       COALESCE(bi.material_id, 0),
@@ -2886,10 +2918,11 @@ app.get('/api/quotations/:id', authMiddleware, async c => {
       COALESCE(m.image_url, qi.image_url, '') as image_url,
       COALESCE(m.moq_tiers, qi.moq) as moq_source
     FROM quotation_items qi
-    LEFT JOIN materials m ON (
-      (qi.material_id IS NOT NULL AND qi.material_id > 0 AND qi.material_id = m.id)
-      OR ((qi.material_id IS NULL OR qi.material_id = 0) AND qi.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON qi.material_id IS NOT NULL
+      AND qi.material_id > 0
+      AND qi.material_id = m.id
+      AND m.deleted_at IS NULL
     WHERE qi.quotation_id=? AND qi.deleted_at IS NULL
   `, [c.req.param('id')])
   // Parse moq JSON into moq_tiers array
@@ -3514,10 +3547,11 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
       JOIN delivery_notes dn ON dn.id = dni.dn_id
       LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
-      LEFT JOIN materials m ON (
-        (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
-        OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
-      ) AND m.deleted_at IS NULL
+      LEFT JOIN materials m
+        ON dni.material_id IS NOT NULL
+        AND dni.material_id > 0
+        AND dni.material_id = m.id
+        AND m.deleted_at IS NULL
       WHERE dn.status = 'shipped'
         AND dn.deleted_at IS NULL
         AND dni.deleted_at IS NULL
@@ -3705,10 +3739,11 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
       JOIN delivery_notes dn ON dn.id = dni.dn_id
       LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
-      LEFT JOIN materials m ON (
-        (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
-        OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
-      ) AND m.deleted_at IS NULL
+      LEFT JOIN materials m
+        ON dni.material_id IS NOT NULL
+        AND dni.material_id > 0
+        AND dni.material_id = m.id
+        AND m.deleted_at IS NULL
       LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
       LEFT JOIN suppliers ms ON ms.id = m.supplier_id AND ms.deleted_at IS NULL
       LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
@@ -4528,10 +4563,11 @@ app.get('/api/delivery-notes/:id', authMiddleware, async c => {
            COALESCE(NULLIF(m.spec,''), NULLIF(dni.spec,''), b.spec) as spec,
            COALESCE(NULLIF(m.unit,''), NULLIF(dni.unit,''), b.unit, 'PCS') as unit
     FROM delivery_note_items dni
-    LEFT JOIN materials m ON (
-      (dni.material_id IS NOT NULL AND dni.material_id > 0 AND dni.material_id = m.id)
-      OR ((dni.material_id IS NULL OR dni.material_id = 0) AND dni.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON dni.material_id IS NOT NULL
+      AND dni.material_id > 0
+      AND dni.material_id = m.id
+      AND m.deleted_at IS NULL
     LEFT JOIN (
       SELECT bom.id, bom.product_sku, bom.product_name, 
              COALESCE(bom.spec, GROUP_CONCAT(DISTINCT bi.spec SEPARATOR ', ')) as spec,
@@ -4646,10 +4682,11 @@ app.get('/api/delivery-sheets/:id', authMiddleware, async c => {
            COALESCE(NULLIF(m.spec,''), NULLIF(dsi.spec,''), b.spec) as spec,
            COALESCE(NULLIF(m.unit,''), NULLIF(dsi.unit,''), b.unit, 'PCS') as unit
     FROM delivery_sheet_items dsi
-    LEFT JOIN materials m ON (
-      (dsi.material_id IS NOT NULL AND dsi.material_id > 0 AND dsi.material_id = m.id)
-      OR ((dsi.material_id IS NULL OR dsi.material_id = 0) AND dsi.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON dsi.material_id IS NOT NULL
+      AND dsi.material_id > 0
+      AND dsi.material_id = m.id
+      AND m.deleted_at IS NULL
     LEFT JOIN (
       SELECT bom.id, bom.product_sku, bom.product_name,
              COALESCE(bom.spec, GROUP_CONCAT(DISTINCT bi.spec SEPARATOR ', ')) as spec,
@@ -5219,10 +5256,11 @@ app.get('/api/goods-receipts/:id', authMiddleware, async c => {
            COALESCE(NULLIF(m.spec,''), NULLIF(gri.spec,''), b.spec) as spec,
            COALESCE(NULLIF(m.unit,''), NULLIF(gri.unit,''), b.unit, 'PCS') as unit
     FROM goods_receipt_items gri
-    LEFT JOIN materials m ON (
-      (gri.material_id IS NOT NULL AND gri.material_id > 0 AND gri.material_id = m.id)
-      OR ((gri.material_id IS NULL OR gri.material_id = 0) AND gri.material_code = m.material_code)
-    ) AND m.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON gri.material_id IS NOT NULL
+      AND gri.material_id > 0
+      AND gri.material_id = m.id
+      AND m.deleted_at IS NULL
     LEFT JOIN bom b ON gri.material_code = b.product_sku AND b.deleted_at IS NULL
     WHERE gri.gr_id=?`, [c.req.param('id')])
   return c.json({ ...gr, items })

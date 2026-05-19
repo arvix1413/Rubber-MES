@@ -294,11 +294,11 @@ export default function CustomerOrdersPage() {
       person_in_charge: order.person_in_charge || '',
       payment_terms: order.payment_terms || '',
       items: (data.items || []).map(i => {
-        const matchedBom =
-          (i.bom_id ? boms.find(b => b.id === i.bom_id) : undefined) ||
-          (i.product_sku ? boms.find(b => b.product_sku === i.product_sku) : undefined)
+        const matchedBom = i.bom_id
+          ? boms.find(b => b.id === i.bom_id)
+          : undefined
         return {
-          bom_id: i.bom_id ?? matchedBom?.id ?? null,
+          bom_id: i.bom_id ?? null,
           qty: Number(i.qty),
           unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
           po_no: (i as any).po_no || '',
@@ -316,11 +316,11 @@ export default function CustomerOrdersPage() {
       })
     })
     setUnitPriceInputs(buildUnitPriceInputs((data.items || []).map(i => {
-      const matchedBom =
-        (i.bom_id ? boms.find(b => b.id === i.bom_id) : undefined) ||
-        (i.product_sku ? boms.find(b => b.product_sku === i.product_sku) : undefined)
+      const matchedBom = i.bom_id
+        ? boms.find(b => b.id === i.bom_id)
+        : undefined
       return {
-        bom_id: i.bom_id ?? matchedBom?.id ?? null,
+        bom_id: i.bom_id ?? null,
         qty: Number(i.qty),
         unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
         po_no: (i as any).po_no || '',

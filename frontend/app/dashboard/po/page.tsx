@@ -416,7 +416,9 @@ export default function PoPage() {
       tax_rate: Math.min(25, Math.max(1, Number((data as any).tax_rate ?? (po as any).tax_rate ?? 8))),
       remark: po.remark || '',
       items: (data.items || []).map(i => {
-        const matchedMaterial = materials.find(m => m.material_code === i.material_code)
+        const matchedMaterial = i.material_id
+          ? materials.find(m => m.id === i.material_id)
+          : undefined
         return {
           material_code: i.material_code,
           material_name: i.material_name,
@@ -437,7 +439,9 @@ export default function PoPage() {
       })
     })
     setUnitPriceInputs(buildUnitPriceInputs((data.items || []).map(i => {
-      const matchedMaterial = materials.find(m => m.material_code === i.material_code)
+      const matchedMaterial = i.material_id
+        ? materials.find(m => m.id === i.material_id)
+        : undefined
       return {
         material_code: i.material_code,
         material_name: i.material_name,

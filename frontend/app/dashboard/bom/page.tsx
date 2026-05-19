@@ -14,6 +14,7 @@ import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 
 type Bom = {
   id:number; product_sku:string; product_name:string; material_name:string; spec:string; unit:string
+  material_id?: number | null
   supplier_id:number|null; supplier_name:string; supplier_price:number; company_price:number
   currency:string; category:string; version:string; status:string; created_at:string
   cert_code:string; brand:string; image_url:string; color?:string; lt?:string; moq?:number|null; moq_tiers?: MoqTier[]
@@ -21,6 +22,7 @@ type Bom = {
 }
 type BomItem = {
   id?: number
+  material_id?: number | null
   material_code: string
   material_name: string
   spec: string
@@ -59,7 +61,7 @@ const ensureTierList = (tiers: any): MoqTier[] => {
   return normalized.length ? normalized.slice(0, 5) : emptyTiers()
 }
 const empty = (): Partial<Bom> => ({
-  product_sku:'', product_name:'', material_name:'', spec:'', unit:'PCS',
+  product_sku:'', product_name:'', material_id:null, material_name:'', spec:'', unit:'PCS',
   supplier_id:null, supplier_name:'', supplier_price:undefined, company_price:undefined,
   currency:'VND', category:'', version:'V1', cert_code:'', brand:'', image_url:'', color:'', lt:'', moq:null, moq_tiers: emptyTiers(), items:[]
 })
@@ -82,7 +84,7 @@ export default function BomPage() {
   const [materials, setMaterials] = useState<Material[]>([])
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, BomItem[]>>({})
-  const [headerMaterialCode, setHeaderMaterialCode] = useState('')
+  const [headerMaterialId, setHeaderMaterialId] = useState('')
   const [editing, setEditing] = useState<Partial<Bom>|null>(null)
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -180,8 +182,10 @@ export default function BomPage() {
     const editingId = editing.id ? Number(editing.id) : null
     if (!String(editing.product_sku || '').trim()) { toast('請填寫物料編號', 'error'); return }
     if (!String(editing.product_name || '').trim()) { toast('請填寫產品名稱', 'error'); return }
+    if (!editing.material_id) { toast('請選擇主料（面料）', 'error'); return }
     if (!String(editing.unit || '').trim()) { toast('請選擇單位', 'error'); return }
     if (!String(editing.currency || '').trim()) { toast('請選擇幣別', 'error'); return }
+    if ((editing.items || []).some((item) => !item.material_id)) { toast('BOM 組合材料必須選擇有效材料', 'error'); return }
     if (editing.supplier_price === null || editing.supplier_price === undefined || !Number.isFinite(Number(editing.supplier_price)) || Number(editing.supplier_price) < 0) {
       toast('請填寫有效的供應商單價（不可為空）', 'error')
       return
@@ -199,7 +203,7 @@ export default function BomPage() {
         toast('BOM 建立成功')
       }
       setEditing(null)
-      setHeaderMaterialCode('')
+      setHeaderMaterialId('')
       await refreshAll(false)
       if (editingId && expanded.has(editingId)) await loadBomItems(editingId)
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
@@ -259,7 +263,7 @@ export default function BomPage() {
   }
   const addItem = () => {
     setEditing((p) => {
-      const nextItems = [...(p?.items || []), { material_code: '', material_name: '', spec: '', unit: 'PCS', quantity: 1, currency: 'VND' }]
+      const nextItems = [...(p?.items || []), { material_id: null, material_code: '', material_name: '', spec: '', unit: 'PCS', quantity: 1, currency: 'VND' }]
       const totals = calcItemTotals(nextItems)
       return { ...p, items: nextItems, supplier_price: totals ? totals.supplierTotal : p?.supplier_price, company_price: totals ? totals.companyTotal : p?.company_price }
     })
@@ -278,12 +282,13 @@ export default function BomPage() {
       return { ...p, items: nextItems, supplier_price: totals ? totals.supplierTotal : p?.supplier_price, company_price: totals ? totals.companyTotal : p?.company_price }
     })
   }
-  const applyMaterialToItem = (idx:number, code:string) => {
-    const m = materials.find((x) => x.material_code === code)
-    if (!m) return
+  const applyMaterialToItem = (idx:number, selectedId:string) => {
+    const materialId = selectedId ? Number(selectedId) : null
+    const m = materialId ? materials.find((x) => x.id === materialId) : null
     setEditing((p) => {
-      const nextItems = (p?.items || []).map((it, i) => i !== idx ? it : ({
+      const nextItems = (p?.items || []).map((it, i) => i !== idx ? it : (m ? {
         ...it,
+        material_id: m.id,
         material_code: m.material_code,
         material_name: m.material_name,
         spec: m.spec || '',
@@ -296,6 +301,21 @@ export default function BomPage() {
         lt: m.leadtime || (m.leadtime_days ? `${m.leadtime_days}` : ''),
         moq: m.moq ?? null,
         remark: m.remark || '',
+      } : {
+        ...it,
+        material_id: null,
+        material_code: '',
+        material_name: '',
+        spec: '',
+        unit: 'PCS',
+        supplier_name: '',
+        supplier_price: 0,
+        company_price: 0,
+        currency: 'VND',
+        color: '',
+        lt: '',
+        moq: null,
+        remark: '',
       }))
       const totals = calcItemTotals(nextItems)
       return {
@@ -308,11 +328,15 @@ export default function BomPage() {
   }
 
   const applyMaterialToHeader = (selected: string) => {
-    setHeaderMaterialCode(selected)
-    const m = materials.find((x) => String(x.id) === selected) || materials.find((x) => x.material_code === selected)
-    if (!m) return
+    setHeaderMaterialId(selected)
+    const m = materials.find((x) => String(x.id) === selected)
+    if (!m) {
+      setEditing((p) => ({ ...p, material_id: null }))
+      return
+    }
     setEditing((p) => ({
       ...p,
+      material_id: m.id,
       material_name: m.material_name || '',
       spec: m.spec || '',
       unit: normalizeUnit(m.unit || p?.unit || 'PCS'),
@@ -342,7 +366,7 @@ export default function BomPage() {
   const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input'
   const lockedInp = `${inp} bom-locked-field`
-  const headerMaterialLocked = Boolean(headerMaterialCode)
+  const headerMaterialLocked = Boolean(headerMaterialId)
 
   return (
     <div>
@@ -351,7 +375,7 @@ export default function BomPage() {
           <h1 className="text-xl font-bold text-slate-800">產品規格 / BOM</h1>
           <p className="text-xs text-slate-500 mt-0.5">主產品 + 組合加工材料明細（顏色 / Leadtime / MOQ）</p>
         </div>
-        {canWrite && <button onClick={()=>{ setEditing(empty()); setHeaderMaterialCode('') }} className="btn-primary">+ 建立 BOM</button>}
+        {canWrite && <button onClick={()=>{ setEditing(empty()); setHeaderMaterialId('') }} className="btn-primary">+ 建立 BOM</button>}
       </div>
 
       {/* Edit / Create Modal */}
@@ -364,7 +388,7 @@ export default function BomPage() {
                   <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯材料' : '建立材料'}</h2>
                   <p className="mt-1 text-[11px] text-slate-400">BOM 主資料與新增列固定顯示，長材料明細可直接往下編輯。</p>
                 </div>
-                <button onClick={()=>setEditing(null)} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
+                <button onClick={()=>{ setEditing(null); setHeaderMaterialId('') }} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4 p-6">
@@ -389,7 +413,7 @@ export default function BomPage() {
                 <label className="block text-[11px] text-slate-500 mb-1.5">主料（面料）</label>
                 <SearchableSelect
                   options={materials}
-                  value={headerMaterialCode}
+                  value={headerMaterialId}
                   onChange={applyMaterialToHeader}
                   placeholder="-- 選擇主料（自動帶入資料）--"
                   renderOption={(m) => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
@@ -535,15 +559,19 @@ export default function BomPage() {
                       {(editing.items || []).map((item, i) => (
                         <tr key={i} className="border-b border-slate-100">
                           <td className="p-1">
-                            <input
-                              list={`mat-codes-${i}`}
-                              className={inp}
-                              value={item.material_code || ''}
-                              onChange={e => { updateItem(i, 'material_code', e.target.value); applyMaterialToItem(i, e.target.value) }}
+                            <SearchableSelect
+                              options={materials}
+                              value={item.material_id ? String(item.material_id) : ''}
+                              onChange={(value) => applyMaterialToItem(i, value)}
+                              placeholder="-- 選擇材料 --"
+                              className="text-xs py-1.5"
+                              renderOption={(m) => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
+                              filterFn={(m, search) =>
+                                m.material_code.toLowerCase().includes(search) ||
+                                m.material_name.toLowerCase().includes(search) ||
+                                (m.spec || '').toLowerCase().includes(search)
+                              }
                             />
-                            <datalist id={`mat-codes-${i}`}>
-                              {materials.map(m => <option key={m.id} value={m.material_code}>{m.material_name}</option>)}
-                            </datalist>
                           </td>
                           <td className="p-1"><input className={lockedInp} value={item.material_name || ''} onChange={e => updateItem(i, 'material_name', e.target.value)} readOnly /></td>
                           <td className="p-1"><input className={lockedInp} value={item.spec || ''} onChange={e => updateItem(i, 'spec', e.target.value)} readOnly /></td>
@@ -584,7 +612,7 @@ export default function BomPage() {
             <div className="flex items-center justify-between gap-3 rounded-b-2xl border-t border-slate-100 bg-white px-6 py-4">
               <div className="text-xs text-slate-500">明細列數 <span className="font-semibold text-slate-700">{(editing.items || []).length}</span></div>
               <div className="flex items-center gap-3">
-              <button onClick={()=>setEditing(null)} className="btn-ghost">取消</button>
+              <button onClick={()=>{ setEditing(null); setHeaderMaterialId('') }} className="btn-ghost">取消</button>
               <button onClick={save} className="btn-primary">{editing.id ? '儲存修改' : '建立材料'}</button>
               </div>
             </div>
@@ -662,11 +690,7 @@ export default function BomPage() {
                             <div className="flex gap-1">
                               {canEdit && <button onClick={async ()=>{
                                 const detail = await apiFetch<Bom>(`/api/bom/${b.id}`)
-                                const matchedMaterial =
-                                  materials.find((m) => m.material_code === detail.product_sku) ||
-                                  materials.find((m) => m.material_name === detail.material_name && (!detail.spec || m.spec === detail.spec)) ||
-                                  materials.find((m) => m.material_name === detail.material_name)
-                                setHeaderMaterialCode(matchedMaterial ? String(matchedMaterial.id) : '')
+                                setHeaderMaterialId(detail.material_id ? String(detail.material_id) : '')
                                 setEditing({
                                   ...detail,
                                   unit: normalizeUnit(detail.unit),
