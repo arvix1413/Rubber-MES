@@ -360,14 +360,22 @@ export default function QuotationsPage() {
       table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;word-break:break-word;overflow-wrap:anywhere}
       table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
       table.quote td{height:30px}
-      .seq{width:5%;text-align:center}
-      .product{width:49.5%;text-align:center}
-      .spec{width:10%;text-align:center}
-      .color{width:8%;text-align:center;white-space:normal}
-      .unit{width:5%;text-align:center}
-      .moq{width:9%;text-align:center;white-space:pre-line;line-height:1.45}
-      .money{width:5%;text-align:center;font-variant-numeric:tabular-nums}
-      .remark{width:3.5%;text-align:center}
+      table.quote col.seq{width:5%}
+      table.quote col.product{width:49.5%}
+      table.quote col.spec{width:10%}
+      table.quote col.color{width:8%}
+      table.quote col.unit{width:5%}
+      table.quote col.moq{width:9%}
+      table.quote col.money{width:5%}
+      table.quote col.remark{width:3.5%}
+      .seq{text-align:center}
+      .product{text-align:center}
+      .spec{text-align:center}
+      .color{text-align:center;white-space:normal}
+      .unit{text-align:center}
+      .moq{text-align:center;white-space:pre-line;line-height:1.45}
+      .money{text-align:center;font-variant-numeric:tabular-nums}
+      .remark{text-align:center}
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
@@ -403,6 +411,17 @@ export default function QuotationsPage() {
       </div>
 
       <table class="quote">
+        <colgroup>
+          <col class="seq"/>
+          <col class="product"/>
+          <col class="spec"/>
+          <col class="color"/>
+          <col class="unit"/>
+          <col class="moq"/>
+          <col class="money"/>
+          <col class="money"/>
+          <col class="remark"/>
+        </colgroup>
         <thead><tr>
           <th>項目\nItem</th>
           <th>產品 Products</th>
