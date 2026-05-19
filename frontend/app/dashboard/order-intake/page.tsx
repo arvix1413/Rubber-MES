@@ -592,7 +592,7 @@ export default function OrderIntakePage() {
     }
 
     try {
-      const created = await apiFetch<{ id: number; progress_no: string; dn_id?: number | null; dn_number?: string | null }>('/api/order-intake', {
+      const created = await apiFetch<{ id: number; progress_no: string; dn_id?: number | null; dn_number?: string | null; po_created?: Array<{ id: number; po_number: string; supplier_name: string }>; po_count?: number }>('/api/order-intake', {
         method: 'POST',
         body: JSON.stringify({
           customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
@@ -603,13 +603,10 @@ export default function OrderIntakePage() {
         }),
       })
       const deliveryNoteText = created.dn_number ? `，並自動建立出貨單 ${created.dn_number}` : ''
-      try {
-        const { res, lines: poLines } = await generatePoForProgress(created.id)
-        toast(`交期進度已建立${deliveryNoteText}，並生成 ${res.count || poLines.length} 張採購單`)
-        if (poLines.length) showResultNotice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
-      } catch (e: any) {
-        toast(`交期進度已建立${deliveryNoteText}，但自動生成採購單失敗：${String(e?.message || '請稍後再試')}。可回列表手動點擊「生成採購單」`, 'error')
-      }
+      const poCreated = created.po_created || []
+      const poLines = poCreated.map((po) => `${po.po_number} / ${po.supplier_name || '未指定供應商'}`)
+      toast(`交期進度已建立${deliveryNoteText}，並生成 ${created.po_count || poLines.length} 張採購單`)
+      if (poLines.length) showResultNotice(`已生成 ${created.po_count || poLines.length} 張採購單`, '本次建立結果：', poLines)
       closeCreate()
       await refreshAll(status, false)
     } catch (e: any) {
