@@ -1178,6 +1178,7 @@ type ProgressBomContextMaterial = {
 type ProgressBomContext = {
   customer_order_id: number
   order_item_id: number
+  order_qty: number
   order_po_number: string
   customer_po_number: string
   due_date: string | null
@@ -1195,6 +1196,7 @@ const loadProgressBomContexts = async (orderItemIds: number[]) => {
     SELECT
       ci.order_id as customer_order_id,
       ci.id as order_item_id,
+      ci.qty as order_qty,
       co.po_number as order_po_number,
       ci.po_no as customer_po_number,
       ci.rta_date,
@@ -1230,6 +1232,7 @@ const loadProgressBomContexts = async (orderItemIds: number[]) => {
       out.set(orderItemId, {
         customer_order_id: Number(row.customer_order_id || 0),
         order_item_id: orderItemId,
+        order_qty: 0,
         order_po_number: String(row.order_po_number || '').trim(),
         customer_po_number: String(row.customer_po_number || '').trim(),
         due_date: row.rta_date ? toDateStr(row.rta_date) : null,
@@ -1239,6 +1242,7 @@ const loadProgressBomContexts = async (orderItemIds: number[]) => {
         materials: [],
       })
     }
+    out.get(orderItemId)!.order_qty = toQty(row.order_qty || out.get(orderItemId)!.order_qty || 0)
     out.get(orderItemId)?.materials.push({
       bom_item_id: Number(row.bom_item_id || 0) || null,
       material_id: Number(row.material_id || 0) || null,
@@ -1314,6 +1318,33 @@ const loadPurchasedQtyByProgressItemMaterialIds = async (progressItemMaterialIds
     ids,
   )
   for (const row of rows) out.set(Number(row.progress_item_material_id || 0), toQty(row.qty))
+  return out
+}
+
+const loadAllocatedBomQtyByOrderItems = async (orderItemIds: number[], excludeProgressId?: number | null) => {
+  const ids = uniqueNumberList(orderItemIds)
+  const out = new Map<string, number>()
+  if (!ids.length) return out
+  const params: any[] = [...ids]
+  const excludeSql = excludeProgressId ? ' AND dpi.progress_id<>?' : ''
+  if (excludeProgressId) params.push(excludeProgressId)
+  const rows = await query<any>(
+    `SELECT
+       dpi.order_item_id,
+       dpi.bom_id,
+       COALESCE(SUM(dpi.planned_qty), 0) as qty
+     FROM delivery_progress_items dpi
+     WHERE dpi.deleted_at IS NULL
+       AND dpi.line_type='bom'
+       AND dpi.order_item_id IN (${ids.map(() => '?').join(',')})
+       ${excludeSql}
+     GROUP BY dpi.order_item_id, dpi.bom_id`,
+    params,
+  )
+  for (const row of rows) {
+    const key = `${Number(row.order_item_id || 0)}::${Number(row.bom_id || 0)}`
+    out.set(key, toQty(row.qty))
+  }
   return out
 }
 
@@ -1437,6 +1468,10 @@ const syncDeliveryProgressItems = async (
   const existingIds = new Set(Array.from(existingMap.keys()).filter((id) => Number.isFinite(id) && id > 0))
   const keptIds = new Set<number>()
   const bomContexts = await loadProgressBomContexts(items.map((item) => Number(item?.order_item_id || 0)))
+  const allocatedBomQty = await loadAllocatedBomQtyByOrderItems(
+    items.filter((item) => normalizeProgressItemLineType(item?.line_type) === 'bom').map((item) => Number(item?.order_item_id || 0)),
+    progressId,
+  )
 
   const syncBomMaterialSnapshots = async (
     progressItemId: number,
@@ -1511,6 +1546,11 @@ const syncDeliveryProgressItems = async (
       const context = orderItemId ? bomContexts.get(orderItemId) : null
       if (!context || !bomId || context.bom_id !== bomId) {
         throw new Error(`BOM 明細資料無效：${bomCode || bomName || orderPoNumber || orderItemId || 'unknown'}`)
+      }
+      const allocatedElsewhere = toQty(allocatedBomQty.get(`${context.order_item_id}::${context.bom_id}`) || 0)
+      const remainingQty = toQty(Math.max(0, toQty(context.order_qty) - allocatedElsewhere))
+      if (plannedQty > remainingQty) {
+        throw new Error(`BOM ${context.bom_code || context.bom_name || context.order_item_id} 剩餘可建立數量不足，最多 ${remainingQty}`)
       }
       const effectiveDueDate = dueDate || context.due_date || null
       const effectivePoNumber = orderPoNumber || customerPoNumber || context.customer_po_number || context.order_po_number || ''
@@ -2795,8 +2835,8 @@ app.get('/api/customer-orders', authMiddleware, async c => {
     if (dateTo) { where.push('co.po_date<=?'); params.push(dateTo) }
     where.unshift('co.deleted_at IS NULL')
     const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : ''
-    const orders = await query(`
-      SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
+	    const orders = await query(`
+	      SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
              COALESCE(co.tax_rate, 0) as tax_rate,
              COALESCE(co.tax_amount, 0) as tax_amount, 
              COALESCE(co.total_amount, 0) as total_amount, 
@@ -2807,29 +2847,45 @@ app.get('/api/customer-orders', authMiddleware, async c => {
              co.payment_date, co.payment_note,
              COALESCE(SUM(ci.qty), 0) as order_total_qty,
              COALESCE(SUM(ci.arrived_qty), 0) as shipped_total_qty,
-             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(SUM(ci.arrived_qty), 0)) as balance_total_qty,
-             CASE
-               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
-               ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
-             END as completion_rate,
-             COALESCE(progress_links.has_delivery_progress, 0) as has_delivery_progress,
-             CASE
-               WHEN COALESCE(progress_links.has_delivery_progress, 0) = 1 THEN 'scheduled'
+	             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(SUM(ci.arrived_qty), 0)) as balance_total_qty,
+	             CASE
+	               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
+	               ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
+	             END as completion_rate,
+	             COALESCE(progress_stats.progress_created_qty, 0) as progress_created_qty,
+	             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(progress_stats.progress_created_qty, 0)) as progress_remaining_qty,
+	             CASE
+	               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
+	               ELSE ROUND(LEAST(COALESCE(progress_stats.progress_created_qty, 0), COALESCE(SUM(ci.qty), 0)) / COALESCE(SUM(ci.qty), 0) * 100, 2)
+	             END as progress_created_rate,
+	             COALESCE(progress_links.has_delivery_progress, 0) as has_delivery_progress,
+	             CASE
+	               WHEN COALESCE(progress_links.has_delivery_progress, 0) = 1 THEN 'scheduled'
                ELSE 'unscheduled'
              END as schedule_status,
              COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
       LEFT JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
-      LEFT JOIN (
-        SELECT customer_order_id, 1 as has_delivery_progress
-        FROM delivery_progress_po_links
-        WHERE deleted_at IS NULL
-          AND customer_order_id IS NOT NULL
-        GROUP BY customer_order_id
-      ) progress_links ON progress_links.customer_order_id = co.id
-      ${whereClause}
-      GROUP BY co.id
+	      LEFT JOIN (
+	        SELECT customer_order_id, 1 as has_delivery_progress
+	        FROM delivery_progress_po_links
+	        WHERE deleted_at IS NULL
+	          AND customer_order_id IS NOT NULL
+	        GROUP BY customer_order_id
+	      ) progress_links ON progress_links.customer_order_id = co.id
+	      LEFT JOIN (
+	        SELECT
+	          dpi.customer_order_id,
+	          COALESCE(SUM(dpi.planned_qty), 0) as progress_created_qty
+	        FROM delivery_progress_items dpi
+	        WHERE dpi.deleted_at IS NULL
+	          AND dpi.line_type='bom'
+	          AND dpi.customer_order_id IS NOT NULL
+	        GROUP BY dpi.customer_order_id
+	      ) progress_stats ON progress_stats.customer_order_id = co.id
+	      ${whereClause}
+	      GROUP BY co.id
       ORDER BY co.created_at DESC
     `, params.length ? params : undefined)
     return c.json(orders)
@@ -2967,6 +3023,7 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
       AND ci.deleted_at IS NULL
     ORDER BY co.created_at DESC, ci.id ASC, bi.id ASC
   `, orderIds)
+  const allocatedByOrderItem = await loadAllocatedBomQtyByOrderItems(rows.map((row) => Number(row.order_item_id || 0)))
 
   const grouped = new Map<string, any>()
   for (const row of rows) {
@@ -2975,6 +3032,9 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
     const bomId = Number(row.bom_id || 0)
     const key = `${orderId}::${orderItemId}::${bomId}`
     if (!grouped.has(key)) {
+      const orderQty = toQty(row.order_qty)
+      const allocatedQty = toQty(allocatedByOrderItem.get(`${orderItemId}::${bomId}`) || 0)
+      const remainingQty = toQty(Math.max(0, orderQty - allocatedQty))
       grouped.set(key, {
         id: key,
         order_id: orderId,
@@ -2982,7 +3042,9 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
         order_status: String(row.order_status || ''),
         customer_name: String(row.customer_name || ''),
         order_item_id: orderItemId,
-        order_qty: toQty(row.order_qty),
+        order_qty: orderQty,
+        allocated_qty: allocatedQty,
+        remaining_qty: remainingQty,
         due_date: row.rta_date || null,
         customer_po_number: String(row.customer_po_number || ''),
         bom_id: bomId,
@@ -3008,7 +3070,7 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
       customer_po_number: String(row.customer_po_number || '').trim(),
     })
   }
-  return c.json(Array.from(grouped.values()))
+  return c.json(Array.from(grouped.values()).filter((node) => toQty(node.remaining_qty) > 0))
 })
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
   const order = await queryOne<any>(`

@@ -29,7 +29,7 @@ function getCOActions(status: string) {
 }
 
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
+type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number; progress_created_qty?:number; progress_remaining_qty?:number; progress_created_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Customer = {
   id:number
@@ -660,7 +660,7 @@ export default function CustomerOrdersPage() {
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
             <div className="table-scroll-x">
-            <table className="w-full text-sm" style={{ minWidth: canViewProfit ? 1820 : 1660 }}>
+	            <table className="w-full text-sm" style={{ minWidth: canViewProfit ? 1940 : 1780 }}>
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="w-8" />
@@ -669,8 +669,9 @@ export default function CustomerOrdersPage() {
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">訂單日期</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交貨日</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">已出/總數</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">交期進度</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">總計</th>
                   {canViewProfit && <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">淨利</th>}
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交期</th>
@@ -695,8 +696,16 @@ export default function CustomerOrdersPage() {
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.po_date) || '—'}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.delivery_date) || '—'}</td>
                         <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{formatInteger(qtyNum(o.shipped_total_qty))} / {formatInteger(qtyNum(o.order_total_qty))}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{formatInteger(qtyNum(o.balance_total_qty))}</td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
+	                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{formatInteger(qtyNum(o.balance_total_qty))}</td>
+	                        <td className="px-4 py-3 text-right whitespace-nowrap">
+	                          <div className="text-xs font-semibold text-slate-700">
+	                            {formatInteger(qtyNum(o.progress_created_qty))} / {formatInteger(qtyNum(o.order_total_qty))}
+	                          </div>
+	                          <div className={`text-[11px] ${pct(o.progress_created_rate) >= 100 ? 'text-emerald-600' : 'text-slate-500'}`}>
+	                            {pct(o.progress_created_rate).toFixed(2)}%
+	                          </div>
+	                        </td>
+	                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           <span className={`text-xs font-semibold ${pct(o.completion_rate) >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>
                             {pct(o.completion_rate).toFixed(2)}%
                           </span>
@@ -731,7 +740,7 @@ export default function CustomerOrdersPage() {
                       </tr>
                       {isOpen && (
                         <tr key={`${o.id}-items`} className="border-b border-slate-100">
-                          <td colSpan={canViewProfit ? 13 : 12} className="px-0 py-0">
+	                          <td colSpan={canViewProfit ? 14 : 13} className="px-0 py-0">
                             <div className="expand-row-wrap layer-panel-l2">
                               {canViewProfit && profit && (
                                 <div className="px-4 py-3 border-b" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>

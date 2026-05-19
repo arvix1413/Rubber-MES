@@ -83,6 +83,8 @@ type OrderBomNode = {
   customer_name: string
   order_item_id: number
   order_qty: number
+  allocated_qty?: number
+  remaining_qty?: number
   due_date?: string | null
   customer_po_number?: string
   bom_id: number
@@ -415,7 +417,7 @@ export default function OrderIntakePage() {
   }
 
   const formatCreateBomNode = (node: OrderBomNode) =>
-    `${node.bom_sku || '未設定 BOM SKU'} / ${node.bom_name || '未設定 BOM 名稱'} / 訂單 ${node.order_po_number || '-'}`
+    `剩餘 ${node.remaining_qty ?? node.order_qty} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.customer_po_number || node.order_po_number || '-'} / 原數量 ${node.order_qty}`
 
   const filterCreateBomNode = (node: OrderBomNode, search: string) => {
     const text = [
@@ -441,7 +443,7 @@ export default function OrderIntakePage() {
     material_name: node.bom_name || '',
     spec: '',
     unit: 'PCS',
-    planned_qty: String(node.order_qty || ''),
+    planned_qty: String(node.remaining_qty ?? node.order_qty ?? ''),
     remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
   })
 
@@ -579,6 +581,12 @@ export default function OrderIntakePage() {
     for (const line of lines) {
       if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
         toast(`BOM ${line.bom_code || line.bom_name || ''} 的數量需大於 0`, 'error')
+        return
+      }
+      const node = createBomNodes.find((it) => it.order_item_id === line.order_item_id && it.bom_id === line.bom_id)
+      const remainingQty = Number(node?.remaining_qty ?? node?.order_qty ?? 0)
+      if (remainingQty > 0 && Number(line.planned_qty) > remainingQty) {
+        toast(`BOM ${line.bom_code || line.bom_name || ''} 本次最多只能建立 ${remainingQty}`, 'error')
         return
       }
     }
@@ -1043,7 +1051,7 @@ export default function OrderIntakePage() {
                 {createForm.linkedOrderIds.length > 0 && (
                   <>
                     <p className="mb-2 text-xs text-slate-500">
-                      這裡直接建立 BOM 交期行；系統會保存當下 BOM 材料快照，後續生成採購單時再按你輸入的數量展開。
+                      下拉只顯示 BOM、對應 PO、原訂單數量與剩餘可建數量；本次建立多少由你輸入，下次只會剩下未建立的數量。
                       {createBomLoading ? ' BOM 載入中...' : ` 共 ${createBomNodes.length} 個 BOM 候選，已選 ${createSelectedBomIds.length} 個`}
                     </p>
                     <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
@@ -1070,7 +1078,7 @@ export default function OrderIntakePage() {
                     <thead>
                       <tr className="border-b border-slate-200 bg-slate-50">
                         <th className="px-3 py-2 text-left">BOM</th>
-                        <th className="px-3 py-2 text-right">訂單數量</th>
+                        <th className="px-3 py-2 text-right">本次建立數量</th>
                         <th className="px-3 py-2 text-left">交貨 PO No.</th>
                         <th className="px-3 py-2 text-left">備註</th>
                         <th className="px-3 py-2 text-left">操作</th>
@@ -1104,7 +1112,7 @@ export default function OrderIntakePage() {
                                 {(line.bom_sku || line.bom_name) && (
                                   <div className="text-[11px] text-slate-500">
                                     {line.bom_sku || '-'} / {line.bom_name || '-'}
-                                    {selectedNode ? ` / ${selectedNode.materials.length} 筆材料` : ''}
+                                    {selectedNode ? ` / PO ${selectedNode.customer_po_number || selectedNode.order_po_number || '-'} / 剩餘 ${selectedNode.remaining_qty ?? selectedNode.order_qty}` : ''}
                                   </div>
                                 )}
                               </div>
@@ -1112,7 +1120,7 @@ export default function OrderIntakePage() {
                             <td className="px-3 py-2 align-top text-right">
                               <div className="space-y-1">
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
-                                <div className="h-[17px] text-[11px] text-slate-400">{selectedNode ? `原訂單數量 ${selectedNode.order_qty}` : ''}</div>
+                                <div className="h-[17px] text-[11px] text-slate-400">{selectedNode ? `原數量 ${selectedNode.order_qty} / 已建 ${selectedNode.allocated_qty ?? 0}` : ''}</div>
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top">
