@@ -22,6 +22,7 @@ app.use('/api/*', async (_c, next) => {
   await ensureShipmentReconciliationTables()
   await ensureInvoiceTables()
   await ensureCustomerOrderTrackingColumns()
+  await ensureOrderReferenceColumns()
   await ensureBomStockColumns()
   await ensureStockLedgerTable()
   await ensureMaterialExtraColumns()
@@ -249,7 +250,7 @@ const ensureCustomerOrderTrackingColumns = async () => {
       }
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN reconciled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
       await alterSafe('ALTER TABLE customer_order_items ADD COLUMN settled_qty DECIMAL(15,4) NOT NULL DEFAULT 0')
-      await alterSafe("ALTER TABLE customer_order_items ADD COLUMN po_no VARCHAR(100) NOT NULL DEFAULT ''")
+      await alterSafe("ALTER TABLE customer_order_items ADD COLUMN po_no VARCHAR(255) NOT NULL DEFAULT ''")
       await addIndexSafe('CREATE INDEX idx_customer_orders_status_created ON customer_orders (status, created_at)')
       await addIndexSafe('CREATE INDEX idx_customer_orders_customer ON customer_orders (customer_id)')
       await addIndexSafe('CREATE INDEX idx_customer_order_items_order ON customer_order_items (order_id)')
@@ -261,6 +262,42 @@ const ensureCustomerOrderTrackingColumns = async () => {
     })
   }
   await ensureCustomerOrderTrackingColumnsPromise
+}
+
+let ensureOrderReferenceColumnsPromise: Promise<void> | null = null
+const ensureOrderReferenceColumns = async () => {
+  if (!ensureOrderReferenceColumnsPromise) {
+    ensureOrderReferenceColumnsPromise = (async () => {
+      const alterSafe = async (sql: string) => {
+        try {
+          await execute(sql)
+        } catch (e: any) {
+          const msg = String(e?.message || '').toLowerCase()
+          if (
+            !msg.includes('duplicate column') &&
+            !msg.includes("doesn't exist") &&
+            !msg.includes('unknown column')
+          ) throw e
+        }
+      }
+
+      await alterSafe("ALTER TABLE customer_orders MODIFY COLUMN po_number VARCHAR(255) NOT NULL")
+      await alterSafe("ALTER TABLE customer_order_items MODIFY COLUMN po_no VARCHAR(255) NOT NULL DEFAULT ''")
+      await alterSafe("ALTER TABLE delivery_progress MODIFY COLUMN order_po_number VARCHAR(255) DEFAULT ''")
+      await alterSafe("ALTER TABLE delivery_progress_po_links MODIFY COLUMN order_po_number VARCHAR(255) NOT NULL DEFAULT ''")
+      await alterSafe("ALTER TABLE delivery_progress_items MODIFY COLUMN order_po_number VARCHAR(255) DEFAULT ''")
+      await alterSafe("ALTER TABLE delivery_progress_items MODIFY COLUMN customer_po_number VARCHAR(255) DEFAULT ''")
+      await alterSafe("ALTER TABLE shipment_reconciliation_items MODIFY COLUMN po_number VARCHAR(255) NULL")
+      await alterSafe("ALTER TABLE invoice_items MODIFY COLUMN po_number VARCHAR(255) NULL")
+      await alterSafe("ALTER TABLE delivery_note_items MODIFY COLUMN po_ref TEXT")
+      await alterSafe("ALTER TABLE delivery_sheet_items MODIFY COLUMN po_ref TEXT")
+      await alterSafe("ALTER TABLE po_items MODIFY COLUMN po_ref TEXT")
+    })().catch((e) => {
+      ensureOrderReferenceColumnsPromise = null
+      throw e
+    })
+  }
+  await ensureOrderReferenceColumnsPromise
 }
 
 let ensureShipmentReconciliationTablesPromise: Promise<void> | null = null
@@ -288,7 +325,7 @@ const ensureShipmentReconciliationTables = async () => {
           delivery_note_item_id INT,
           customer_order_id INT,
           order_item_id INT NULL,
-          po_number VARCHAR(100),
+          po_number VARCHAR(255),
           material_code VARCHAR(100),
           material_name VARCHAR(255),
           supplier_id INT NULL,
@@ -602,7 +639,7 @@ const ensureDeliveryProgressTable = async () => {
           customer_name VARCHAR(255) DEFAULT '',
           customer_order_id INT NULL,
           order_item_id INT NULL,
-          order_po_number VARCHAR(100) DEFAULT '',
+          order_po_number VARCHAR(255) DEFAULT '',
           delivery_location VARCHAR(255) DEFAULT '',
           material_code VARCHAR(255) DEFAULT '',
           material_name VARCHAR(255) DEFAULT '',
@@ -623,7 +660,7 @@ const ensureDeliveryProgressTable = async () => {
           id INT AUTO_INCREMENT PRIMARY KEY,
           progress_id INT NOT NULL,
           customer_order_id INT NULL,
-          order_po_number VARCHAR(100) NOT NULL DEFAULT '',
+          order_po_number VARCHAR(255) NOT NULL DEFAULT '',
           created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
           deleted_at DATETIME NULL,
           deleted_by INT NULL
@@ -636,8 +673,8 @@ const ensureDeliveryProgressTable = async () => {
           line_type VARCHAR(20) NOT NULL DEFAULT 'material',
           customer_order_id INT NULL,
           order_item_id INT NULL,
-          order_po_number VARCHAR(100) DEFAULT '',
-          customer_po_number VARCHAR(100) DEFAULT '',
+          order_po_number VARCHAR(255) DEFAULT '',
+          customer_po_number VARCHAR(255) DEFAULT '',
           bom_id INT NULL,
           bom_code VARCHAR(255) DEFAULT '',
           bom_name VARCHAR(255) DEFAULT '',
@@ -684,11 +721,11 @@ const ensureDeliveryProgressTable = async () => {
       await addIndexSafe('CREATE INDEX idx_delivery_progress_po_links_po ON delivery_progress_po_links (order_po_number)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_progress ON delivery_progress_items (progress_id)')
       await addIndexSafe('CREATE INDEX idx_delivery_progress_items_status ON delivery_progress_items (status)')
-      await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN order_po_number VARCHAR(100) DEFAULT '' AFTER progress_id")
+      await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN order_po_number VARCHAR(255) DEFAULT '' AFTER progress_id")
       await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN line_type VARCHAR(20) NOT NULL DEFAULT 'material' AFTER progress_id")
       await alterSafe('ALTER TABLE delivery_progress_items ADD COLUMN customer_order_id INT NULL AFTER line_type')
       await alterSafe('ALTER TABLE delivery_progress_items ADD COLUMN order_item_id INT NULL AFTER customer_order_id')
-      await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN customer_po_number VARCHAR(100) DEFAULT '' AFTER order_po_number")
+      await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN customer_po_number VARCHAR(255) DEFAULT '' AFTER order_po_number")
       await alterSafe('ALTER TABLE delivery_progress_items ADD COLUMN bom_id INT NULL AFTER customer_po_number')
       await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN bom_code VARCHAR(255) DEFAULT '' AFTER bom_id")
       await alterSafe("ALTER TABLE delivery_progress_items ADD COLUMN bom_name VARCHAR(255) DEFAULT '' AFTER bom_code")
@@ -982,7 +1019,7 @@ const ensureInvoiceTables = async () => {
           reconciliation_item_id INT NULL,
           customer_order_id INT NULL,
           order_item_id INT NULL,
-          po_number VARCHAR(100),
+          po_number VARCHAR(255),
           delivery_note_id INT NULL,
           delivery_note_item_id INT NULL,
           material_code VARCHAR(100),
