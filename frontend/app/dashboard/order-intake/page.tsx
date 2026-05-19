@@ -1042,7 +1042,7 @@ export default function OrderIntakePage() {
                   <tbody>
                     {createForm.lines.map((line) => (
                       <tr key={line.key} className="border-b border-slate-100 last:border-0">
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 align-top">
                           <div className="space-y-1">
                             <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
                             {(line.material_name || line.material_code) && (
@@ -1052,16 +1052,16 @@ export default function OrderIntakePage() {
                             )}
                           </div>
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 align-top">
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 align-top">
                           <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 align-top">
                           <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
                         </td>
-                        <td className="px-3 py-2">
+                        <td className="px-3 py-2 align-top">
                           <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
                         </td>
                       </tr>
