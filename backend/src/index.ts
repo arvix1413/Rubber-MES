@@ -2497,6 +2497,91 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
     order_item_count: Number(row.order_item_count || 0),
   })))
 })
+app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
+  const orderIds = uniqueNumberList(String(c.req.query('order_ids') || '').split(','))
+  if (!orderIds.length) return c.json([])
+
+  const rows = await query<any>(`
+    SELECT
+      co.id as order_id,
+      co.po_number as order_po_number,
+      co.status as order_status,
+      COALESCE(c.customer_name, co.customer_name, '') as customer_name,
+      ci.id as order_item_id,
+      ci.qty as order_qty,
+      ci.rta_date,
+      ci.po_no as customer_po_number,
+      b.id as bom_id,
+      TRIM(COALESCE(b.product_sku, '')) as bom_sku,
+      TRIM(COALESCE(b.product_name, '')) as bom_name,
+      COALESCE(bi.id, 0) as bom_item_id,
+      COALESCE(bi.material_id, 0) as material_id,
+      TRIM(COALESCE(bi.material_code, '')) as material_code,
+      TRIM(COALESCE(NULLIF(m.material_name, ''), bi.material_name, '')) as material_name,
+      TRIM(COALESCE(NULLIF(m.spec, ''), bi.spec, '')) as spec,
+      TRIM(COALESCE(NULLIF(m.unit, ''), NULLIF(bi.unit, ''), 'PCS')) as unit,
+      COALESCE(bi.quantity, 0) as bom_unit_qty,
+      COALESCE(ci.qty, 0) * COALESCE(bi.quantity, 0) as suggested_qty,
+      m.supplier_id,
+      COALESCE(s.name, m.supplier_name, '') as supplier_name
+    FROM customer_order_items ci
+    JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+    LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    JOIN bom_items bi ON bi.bom_id = b.id AND bi.deleted_at IS NULL
+    LEFT JOIN materials m
+      ON bi.material_id IS NOT NULL
+      AND bi.material_id > 0
+      AND bi.material_id = m.id
+      AND m.deleted_at IS NULL
+    LEFT JOIN suppliers s ON s.id = m.supplier_id AND s.deleted_at IS NULL
+    WHERE ci.order_id IN (${orderIds.map(() => '?').join(',')})
+      AND ci.deleted_at IS NULL
+    ORDER BY co.created_at DESC, ci.id ASC, bi.id ASC
+  `, orderIds)
+
+  const grouped = new Map<string, any>()
+  for (const row of rows) {
+    const orderId = Number(row.order_id || 0)
+    const orderItemId = Number(row.order_item_id || 0)
+    const bomId = Number(row.bom_id || 0)
+    const key = `${orderId}::${orderItemId}::${bomId}`
+    if (!grouped.has(key)) {
+      grouped.set(key, {
+        id: key,
+        order_id: orderId,
+        order_po_number: String(row.order_po_number || ''),
+        order_status: String(row.order_status || ''),
+        customer_name: String(row.customer_name || ''),
+        order_item_id: orderItemId,
+        order_qty: toQty(row.order_qty),
+        due_date: row.rta_date || null,
+        customer_po_number: String(row.customer_po_number || ''),
+        bom_id: bomId,
+        bom_sku: String(row.bom_sku || ''),
+        bom_name: String(row.bom_name || ''),
+        materials: [] as any[],
+      })
+    }
+    grouped.get(key).materials.push({
+      id: `${key}::${Number(row.bom_item_id || 0)}::${Number(row.material_id || 0)}`,
+      bom_item_id: Number(row.bom_item_id || 0) || null,
+      material_id: Number(row.material_id || 0) || null,
+      material_code: String(row.material_code || '').trim(),
+      material_name: String(row.material_name || '').trim(),
+      spec: String(row.spec || '').trim(),
+      unit: String(row.unit || 'PCS').trim() || 'PCS',
+      bom_unit_qty: toQty(row.bom_unit_qty),
+      suggested_qty: toQty(row.suggested_qty),
+      supplier_id: Number(row.supplier_id || 0) || null,
+      supplier_name: String(row.supplier_name || '').trim(),
+      due_date: row.rta_date || null,
+      order_po_number: String(row.order_po_number || '').trim(),
+      customer_po_number: String(row.customer_po_number || '').trim(),
+    })
+  }
+  return c.json(Array.from(grouped.values()))
+})
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
   const order = await queryOne<any>(`
     SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,

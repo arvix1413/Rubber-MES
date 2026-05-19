@@ -51,6 +51,39 @@ type ProgressDetail = IntakeItem & {
 type Customer = { id: number; customer_name: string; address?: string }
 type OrderSummary = { id: number; po_number: string; customer_id: number; customer_name?: string; status: string }
 
+type OrderBomMaterial = {
+  id: string
+  bom_item_id?: number | null
+  material_id?: number | null
+  material_code: string
+  material_name: string
+  spec: string
+  unit: string
+  bom_unit_qty: number
+  suggested_qty: number
+  supplier_id?: number | null
+  supplier_name?: string
+  due_date?: string | null
+  order_po_number?: string
+  customer_po_number?: string
+}
+
+type OrderBomNode = {
+  id: string
+  order_id: number
+  order_po_number: string
+  order_status: string
+  customer_name: string
+  order_item_id: number
+  order_qty: number
+  due_date?: string | null
+  customer_po_number?: string
+  bom_id: number
+  bom_sku: string
+  bom_name: string
+  materials: OrderBomMaterial[]
+}
+
 type LineForm = {
   key: string
   id?: number
@@ -196,8 +229,8 @@ export default function OrderIntakePage() {
   const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
   const [createLineSeed, setCreateLineSeed] = useState(2)
   const [createOrderSearch, setCreateOrderSearch] = useState('')
-  const [createMaterialOptions, setCreateMaterialOptions] = useState<OrderMaterialOption[]>([])
-  const [createMaterialLoading, setCreateMaterialLoading] = useState(false)
+  const [createBomNodes, setCreateBomNodes] = useState<OrderBomNode[]>([])
+  const [createBomLoading, setCreateBomLoading] = useState(false)
   const [editing, setEditing] = useState<ProgressDetail | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editLineSeed, setEditLineSeed] = useState(1000)
@@ -240,22 +273,27 @@ export default function OrderIntakePage() {
     return apiFetch<OrderMaterialOption[]>(`/api/customer-orders/material-options?order_ids=${orderIds.join(',')}`)
   }
 
+  const fetchOrderBomNodes = async (orderIds: number[]) => {
+    if (!orderIds.length) return []
+    return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?order_ids=${orderIds.join(',')}`)
+  }
+
   useEffect(() => {
     let cancelled = false
     if (!createForm.linkedOrderIds.length) {
-      setCreateMaterialOptions([])
+      setCreateBomNodes([])
       return
     }
-    setCreateMaterialLoading(true)
-    fetchOrderMaterialOptions(createForm.linkedOrderIds)
+    setCreateBomLoading(true)
+    fetchOrderBomNodes(createForm.linkedOrderIds)
       .then((rows) => {
-        if (!cancelled) setCreateMaterialOptions(rows || [])
+        if (!cancelled) setCreateBomNodes(rows || [])
       })
       .catch(() => {
-        if (!cancelled) setCreateMaterialOptions([])
+        if (!cancelled) setCreateBomNodes([])
       })
       .finally(() => {
-        if (!cancelled) setCreateMaterialLoading(false)
+        if (!cancelled) setCreateBomLoading(false)
       })
     return () => { cancelled = true }
   }, [createForm.linkedOrderIds])
@@ -421,6 +459,36 @@ export default function OrderIntakePage() {
   const addCreateLine = () => {
     setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
     setCreateLineSeed((prev) => prev + 1)
+  }
+
+  const appendCreateLineFromMaterial = (node: OrderBomNode, material: OrderBomMaterial) => {
+    const nextLine: LineForm = {
+      key: `line-${createLineSeed}`,
+      materialOptionId: '',
+      material_id: material.material_id || null,
+      orderPoNumber: material.customer_po_number || node.customer_po_number || material.order_po_number || node.order_po_number || '',
+      material_code: material.material_code || '',
+      material_name: material.material_name || '',
+      spec: material.spec || '',
+      unit: material.unit || 'PCS',
+      planned_qty: material.suggested_qty > 0 ? String(material.suggested_qty) : '',
+      remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
+    }
+    setCreateForm((prev) => {
+      const shouldReplaceEmpty = prev.lines.length === 1
+        && !prev.lines[0].material_name
+        && !prev.lines[0].material_code
+        && !prev.lines[0].planned_qty
+        && !prev.lines[0].remark
+      return {
+        ...prev,
+        lines: shouldReplaceEmpty ? [nextLine] : [...prev.lines, nextLine],
+      }
+    })
+    setCreateLineSeed((prev) => prev + 1)
+    if (!createForm.dueDate && material.due_date) {
+      updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(material.due_date) || '') })
+    }
   }
 
   const removeCreateLine = (key: string) => {
@@ -875,7 +943,7 @@ export default function OrderIntakePage() {
                     <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-slate-500">已選 {createLinkedOrders.length} 張訂單，勾選後會自動整合材料候選。</p>
+                <p className="mt-1 text-xs text-slate-500">已選 {createLinkedOrders.length} 張訂單，下一步可在下方按訂單項/BOM 挑選二層材料。</p>
                 {createLinkedOrders.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
                     {createLinkedOrders.map((order) => (
@@ -892,13 +960,72 @@ export default function OrderIntakePage() {
 
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs text-slate-500">BOM 二層材料選擇</label>
+                  <span className="text-xs text-slate-400">
+                    {createBomLoading ? '載入中...' : `${createBomNodes.length} 個訂單項 / BOM`}
+                  </span>
+                </div>
+                <div className="max-h-[320px] overflow-auto rounded-lg border border-slate-200">
+                  {createForm.linkedOrderIds.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500">先選擇客戶訂單，才會顯示對應 BOM 二層材料。</div>
+                  ) : createBomNodes.length === 0 && !createBomLoading ? (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500">所選訂單目前沒有可用的 BOM 材料。</div>
+                  ) : (
+                    <div className="space-y-3 p-3">
+                      {createBomNodes.map((node) => (
+                        <div key={node.id} className="rounded-xl border border-slate-200 bg-slate-50/60">
+                          <div className="border-b border-slate-200 px-4 py-3">
+                            <div className="text-sm font-semibold text-slate-700">
+                              {node.bom_sku || '未設定 BOM SKU'} / {node.bom_name || '未設定 BOM 名稱'}
+                            </div>
+                            <div className="mt-1 text-xs text-slate-500">
+                              訂單 {node.order_po_number || '-'} / 客戶 PO {node.customer_po_number || '-'} / 訂單數量 {node.order_qty}
+                            </div>
+                          </div>
+                          <div className="overflow-hidden">
+                            <table className="w-full text-xs">
+                              <thead>
+                                <tr className="border-b border-slate-200 bg-white">
+                                  <th className="px-3 py-2 text-left">材料</th>
+                                  <th className="px-3 py-2 text-right">BOM 用量</th>
+                                  <th className="px-3 py-2 text-right">建議數量</th>
+                                  <th className="px-3 py-2 text-left">供應商</th>
+                                  <th className="px-3 py-2 text-left">操作</th>
+                                </tr>
+                              </thead>
+                              <tbody>
+                                {node.materials.map((material) => (
+                                  <tr key={material.id} className="border-b border-slate-100 bg-white last:border-0">
+                                    <td className="px-3 py-2">
+                                      <div className="font-medium text-slate-700">{material.material_name || '-'}</div>
+                                      <div className="text-[11px] text-slate-500">{material.material_code || '-'} / {material.spec || '-'} / {material.unit || 'PCS'}</div>
+                                    </td>
+                                    <td className="px-3 py-2 text-right text-slate-600">{material.bom_unit_qty}</td>
+                                    <td className="px-3 py-2 text-right font-medium text-slate-700">{material.suggested_qty}</td>
+                                    <td className="px-3 py-2 text-slate-600">{material.supplier_name || '待分配供應商'}</td>
+                                    <td className="px-3 py-2">
+                                      <button type="button" className="btn-ghost text-xs" onClick={() => appendCreateLineFromMaterial(node, material)}>加入明細</button>
+                                    </td>
+                                  </tr>
+                                ))}
+                              </tbody>
+                            </table>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between">
                   <label className="block text-xs text-slate-500">交期明細</label>
                   <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
                 </div>
                 {createForm.linkedOrderIds.length > 0 && (
                   <p className="mb-2 text-xs text-slate-500">
-                    已按所選客戶訂單，將對應 BOM 的全部材料明細整合為單一材料下拉框。
-                    {createMaterialLoading ? ' 載入中...' : ` 共 ${createMaterialOptions.length} 個材料候選`}
+                    先在上方選 BOM 二層材料，再加入到這裡作為交期明細；也可手動補充。
                   </p>
                 )}
                 <div className="overflow-hidden rounded-lg border border-slate-200">
@@ -916,34 +1043,14 @@ export default function OrderIntakePage() {
                     {createForm.lines.map((line) => (
                       <tr key={line.key} className="border-b border-slate-100 last:border-0">
                         <td className="px-3 py-2">
-                          {createForm.linkedOrderIds.length > 0 ? (
-                            <div className="space-y-1">
-                              <SearchableSelect
-                                options={createMaterialOptions}
-                                value={line.materialOptionId}
-                                onChange={(value) => {
-                                  const option = createMaterialOptions.find((it) => it.id === value)
-                                  if (!option) return
-                                  updateCreateLine(line.key, applyMaterialOption(option, line))
-                                  if (!createForm.dueDate) {
-                                    updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(option.due_date) || '') })
-                                  }
-                                }}
-                                placeholder={createMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
-                                renderOption={formatMaterialOption}
-                                filterFn={filterMaterialOption}
-                                disabled={createMaterialLoading}
-                                className="h-9"
-                              />
-                              {(line.material_name || line.material_code) && (
-                                <div className="text-[11px] text-slate-500">
-                                  {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
-                                </div>
-                              )}
-                            </div>
-                          ) : (
+                          <div className="space-y-1">
                             <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
-                          )}
+                            {(line.material_name || line.material_code) && (
+                              <div className="text-[11px] text-slate-500">
+                                {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
+                              </div>
+                            )}
+                          </div>
                         </td>
                         <td className="px-3 py-2">
                           <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
