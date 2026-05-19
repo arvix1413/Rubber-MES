@@ -1026,16 +1026,28 @@ export default function OrderIntakePage() {
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top text-right">
-                              <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} readOnly />
+                              <div className="space-y-1">
+                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} readOnly />
+                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                              </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                              <div className="space-y-1">
+                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                              </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
+                              <div className="space-y-1">
+                                <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
+                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                              </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
+                              <div className="space-y-1">
+                                <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
+                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                              </div>
                             </td>
                           </tr>
                         )
