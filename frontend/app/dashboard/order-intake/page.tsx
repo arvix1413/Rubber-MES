@@ -118,9 +118,8 @@ type CreateForm = {
   customerId: string
   customerName: string
   dueDate: string
-  linkedOrderIds: number[]
+  selectedBomIds: string[]
   remark: string
-  lines: LineForm[]
 }
 
 type EditForm = {
@@ -154,9 +153,8 @@ const createEmptyForm = (): CreateForm => ({
   customerId: '',
   customerName: '',
   dueDate: '',
-  linkedOrderIds: [],
+  selectedBomIds: [],
   remark: '',
-  lines: [createEmptyLine(1)],
 })
 
 const normalizeYmdInput = (value: string) => {
@@ -227,8 +225,7 @@ export default function OrderIntakePage() {
   const [creatingId, setCreatingId] = useState<number | null>(null)
   const [showCreate, setShowCreate] = useState(false)
   const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
-  const [createLineSeed, setCreateLineSeed] = useState(2)
-  const [createOrderSearch, setCreateOrderSearch] = useState('')
+  const [createBomSearch, setCreateBomSearch] = useState('')
   const [createBomNodes, setCreateBomNodes] = useState<OrderBomNode[]>([])
   const [createBomLoading, setCreateBomLoading] = useState(false)
   const [editing, setEditing] = useState<ProgressDetail | null>(null)
@@ -278,14 +275,21 @@ export default function OrderIntakePage() {
     return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?order_ids=${orderIds.join(',')}`)
   }
 
+  const createCustomerOrderIds = useMemo(
+    () => orders
+      .filter((order) => Number(order.customer_id || 0) === Number(createForm.customerId || 0))
+      .map((order) => order.id),
+    [orders, createForm.customerId],
+  )
+
   useEffect(() => {
     let cancelled = false
-    if (!createForm.linkedOrderIds.length) {
+    if (!createCustomerOrderIds.length) {
       setCreateBomNodes([])
       return
     }
     setCreateBomLoading(true)
-    fetchOrderBomNodes(createForm.linkedOrderIds)
+    fetchOrderBomNodes(createCustomerOrderIds)
       .then((rows) => {
         if (!cancelled) setCreateBomNodes(rows || [])
       })
@@ -296,7 +300,7 @@ export default function OrderIntakePage() {
         if (!cancelled) setCreateBomLoading(false)
       })
     return () => { cancelled = true }
-  }, [createForm.linkedOrderIds])
+  }, [createCustomerOrderIds])
 
   useEffect(() => {
     let cancelled = false
@@ -345,25 +349,24 @@ export default function OrderIntakePage() {
 
   const { page, setPage, totalPages, paged, total } = usePagination(rows, 10)
 
-  const createLinkedOrders = useMemo(
-    () => orders.filter((order) => createForm.linkedOrderIds.includes(order.id)),
-    [orders, createForm.linkedOrderIds],
+  const createBomOptions = useMemo(
+    () => createBomNodes.filter((node) => {
+      if (!createBomSearch.trim()) return true
+      const text = [
+        node.order_po_number,
+        node.customer_po_number || '',
+        node.bom_sku,
+        node.bom_name,
+      ].join(' ').toLowerCase()
+      return text.includes(createBomSearch.trim().toLowerCase())
+    }),
+    [createBomNodes, createBomSearch],
   )
 
-  const createLockedCustomerId = useMemo(() => {
-    const first = createLinkedOrders[0]
-    const customerId = Number(first?.customer_id || 0)
-    return customerId > 0 ? customerId : 0
-  }, [createLinkedOrders])
-
-  const createOrderOptions = useMemo(() => {
-    const selectedId = createLockedCustomerId || (createForm.customerId ? Number(createForm.customerId) : 0)
-    const filtered = orders.filter((order) => {
-      if (!selectedId) return true
-      return Number(order.customer_id || 0) === selectedId
-    })
-    return filterOrdersByKeyword(filtered, createOrderSearch)
-  }, [orders, createForm.customerId, createLockedCustomerId, createOrderSearch])
+  const createSelectedBomNodes = useMemo(
+    () => createBomNodes.filter((node) => createForm.selectedBomIds.includes(node.id)),
+    [createBomNodes, createForm.selectedBomIds],
+  )
 
   const editLinkedOrders = useMemo(() => {
     if (!editForm) return []
@@ -398,8 +401,7 @@ export default function OrderIntakePage() {
 
   const resetCreate = () => {
     setCreateForm(createEmptyForm())
-    setCreateLineSeed(2)
-    setCreateOrderSearch('')
+    setCreateBomSearch('')
   }
 
   const openCreate = () => {
@@ -414,13 +416,6 @@ export default function OrderIntakePage() {
 
   const updateCreateForm = (patch: Partial<CreateForm>) => {
     setCreateForm((prev) => ({ ...prev, ...patch }))
-  }
-
-  const updateCreateLine = (key: string, patch: Partial<LineForm>) => {
-    setCreateForm((prev) => ({
-      ...prev,
-      lines: prev.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
-    }))
   }
 
   const formatMaterialOption = (option: OrderMaterialOption) => {
@@ -456,70 +451,13 @@ export default function OrderIntakePage() {
     planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
   })
 
-  const addCreateLine = () => {
-    setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
-    setCreateLineSeed((prev) => prev + 1)
-  }
-
-  const appendCreateLineFromMaterial = (node: OrderBomNode, material: OrderBomMaterial) => {
-    const nextLine: LineForm = {
-      key: `line-${createLineSeed}`,
-      materialOptionId: '',
-      material_id: material.material_id || null,
-      orderPoNumber: material.customer_po_number || node.customer_po_number || material.order_po_number || node.order_po_number || '',
-      material_code: material.material_code || '',
-      material_name: material.material_name || '',
-      spec: material.spec || '',
-      unit: material.unit || 'PCS',
-      planned_qty: material.suggested_qty > 0 ? String(material.suggested_qty) : '',
-      remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
-    }
-    setCreateForm((prev) => {
-      const shouldReplaceEmpty = prev.lines.length === 1
-        && !prev.lines[0].material_name
-        && !prev.lines[0].material_code
-        && !prev.lines[0].planned_qty
-        && !prev.lines[0].remark
-      return {
-        ...prev,
-        lines: shouldReplaceEmpty ? [nextLine] : [...prev.lines, nextLine],
-      }
-    })
-    setCreateLineSeed((prev) => prev + 1)
-    if (!createForm.dueDate && material.due_date) {
-      updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(material.due_date) || '') })
-    }
-  }
-
-  const removeCreateLine = (key: string) => {
-    setCreateForm((prev) => {
-      if (prev.lines.length <= 1) return { ...prev, lines: [createEmptyLine(createLineSeed)] }
-      return { ...prev, lines: prev.lines.filter((line) => line.key !== key) }
-    })
-    setCreateLineSeed((prev) => prev + 1)
-  }
-
-  const toggleCreateLinkedOrder = (orderId: number) => {
-    const order = orders.find((it) => it.id === orderId)
-    if (!order) return
+  const toggleCreateSelectedBom = (nodeId: string) => {
     setCreateForm((prev) => ({
       ...prev,
-      customerId: prev.customerId || String(order.customer_id || ''),
-      customerName: prev.customerName || order.customer_name || '',
-      linkedOrderIds: prev.linkedOrderIds.includes(orderId)
-        ? prev.linkedOrderIds.filter((id) => id !== orderId)
-        : [...prev.linkedOrderIds, orderId],
+      selectedBomIds: prev.selectedBomIds.includes(nodeId)
+        ? prev.selectedBomIds.filter((id) => id !== nodeId)
+        : [...prev.selectedBomIds, nodeId],
     }))
-  }
-
-  const removeCreateLinkedOrder = (orderId: number) => {
-    setCreateForm((prev) => {
-      const nextLinkedOrderIds = prev.linkedOrderIds.filter((id) => id !== orderId)
-      return {
-        ...prev,
-        linkedOrderIds: nextLinkedOrderIds,
-      }
-    })
   }
 
   const createProgress = async () => {
@@ -529,33 +467,28 @@ export default function OrderIntakePage() {
       toast('請先選擇客戶', 'error')
       return
     }
-    const lines = createForm.lines
-      .map((line) => ({
-        order_po_number: line.orderPoNumber.trim(),
-        material_id: line.material_id,
-        material_code: line.material_code.trim(),
-        material_name: line.material_name.trim(),
-        spec: line.spec.trim(),
-        unit: line.unit.trim() || 'PCS',
-        planned_qty: Number(line.planned_qty),
-        due_date: createForm.dueDate || undefined,
-        remark: line.remark.trim(),
-      }))
-      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.remark)
-
-    if (!lines.length) {
-      toast('請至少新增一筆交貨明細', 'error')
+    if (!createSelectedBomNodes.length) {
+      toast('請至少選擇一個 BOM', 'error')
       return
     }
-    for (const line of lines) {
-      if (!line.material_name) {
-        toast('材料名稱不可空白', 'error')
-        return
-      }
-      if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
-        toast(`材料 ${line.material_name} 的數量需大於 0`, 'error')
-        return
-      }
+    const lines = createSelectedBomNodes.flatMap((node) =>
+      node.materials
+        .map((material) => ({
+          order_po_number: (material.customer_po_number || node.customer_po_number || material.order_po_number || node.order_po_number || '').trim(),
+          material_id: material.material_id || null,
+          material_code: material.material_code.trim(),
+          material_name: material.material_name.trim(),
+          spec: material.spec.trim(),
+          unit: material.unit.trim() || 'PCS',
+          planned_qty: Number(material.suggested_qty || 0),
+          due_date: createForm.dueDate || material.due_date || node.due_date || undefined,
+          remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
+        }))
+        .filter((line) => line.material_name && Number.isFinite(line.planned_qty) && line.planned_qty > 0),
+    )
+    if (!lines.length) {
+      toast('所選 BOM 沒有可生成的材料明細', 'error')
+      return
     }
 
     try {
@@ -564,7 +497,7 @@ export default function OrderIntakePage() {
         body: JSON.stringify({
           customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
           customer_name: customerName,
-          customer_order_ids: createForm.linkedOrderIds,
+          customer_order_ids: Array.from(new Set(createSelectedBomNodes.map((node) => node.order_id))),
           remark: createForm.remark.trim(),
           items: lines,
         }),
@@ -883,19 +816,16 @@ export default function OrderIntakePage() {
                 <label className="mb-1 block text-xs text-slate-500">客戶</label>
                 <select
                   className="rubber-input"
-                  value={createLockedCustomerId ? String(createLockedCustomerId) : createForm.customerId}
-                  disabled={createLockedCustomerId > 0}
+                  value={createForm.customerId}
                   onChange={(e) => {
                     const customerId = e.target.value
                     const customer = customers.find((c) => String(c.id) === customerId)
                     updateCreateForm({
                       customerId,
                       customerName: customer?.customer_name || '',
-                      linkedOrderIds: customerId
-                        ? createForm.linkedOrderIds.filter((id) => Number(orders.find((o) => o.id === id)?.customer_id || 0) === Number(customerId))
-                        : createForm.linkedOrderIds,
+                      selectedBomIds: [],
                     })
-                    setCreateOrderSearch('')
+                    setCreateBomSearch('')
                   }}
                 >
                   <option value="">-- 請選擇客戶 --</option>
@@ -903,9 +833,7 @@ export default function OrderIntakePage() {
                     <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
                   ))}
                 </select>
-                {createLockedCustomerId > 0 && (
-                  <p className="mt-1 text-xs text-slate-500">已依關聯訂單自動鎖定客戶，移除全部訂單後可重新選擇。</p>
-                )}
+                <p className="mt-1 text-xs text-slate-500">選定客戶後，系統會載入這個客戶待處理訂單下的 BOM。</p>
               </div>
 
               <div>
@@ -920,36 +848,38 @@ export default function OrderIntakePage() {
               </div>
 
               <div className="md:col-span-2">
-                <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
+                <label className="mb-1 block text-xs text-slate-500">選擇 BOM</label>
                 <input
                   className="rubber-input h-9"
-                  value={createOrderSearch}
-                  onChange={(e) => setCreateOrderSearch(e.target.value)}
-                  placeholder="搜尋 PO / 客戶"
+                  value={createBomSearch}
+                  onChange={(e) => setCreateBomSearch(e.target.value)}
+                  placeholder="搜尋 BOM SKU / BOM 名稱 / PO"
                 />
                 <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
-                  {createOrderOptions.length > 0 ? createOrderOptions.map((o) => {
-                    const checked = createForm.linkedOrderIds.includes(o.id)
+                  {!createForm.customerId ? (
+                    <div className="px-3 py-4 text-xs text-slate-500">請先選擇客戶</div>
+                  ) : createBomOptions.length > 0 ? createBomOptions.map((node) => {
+                    const checked = createForm.selectedBomIds.includes(node.id)
                     return (
-                      <label key={o.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
-                        <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleCreateLinkedOrder(o.id)} />
+                      <label key={node.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
+                        <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleCreateSelectedBom(node.id)} />
                         <div className="min-w-0">
-                          <div className="font-medium text-slate-700">{o.po_number}</div>
-                          <div className="text-xs text-slate-500">{o.customer_name || '-'} / {STATUS_LABEL[o.status] || o.status}</div>
+                          <div className="font-medium text-slate-700">{node.bom_sku || '未設定 BOM SKU'} / {node.bom_name || '未設定 BOM 名稱'}</div>
+                          <div className="text-xs text-slate-500">訂單 {node.order_po_number || '-'} / 客戶 PO {node.customer_po_number || '-'} / 數量 {node.order_qty}</div>
                         </div>
                       </label>
                     )
                   }) : (
-                    <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
+                    <div className="px-3 py-4 text-xs text-slate-500">{createBomLoading ? 'BOM 載入中...' : '目前沒有可選 BOM'}</div>
                   )}
                 </div>
-                <p className="mt-1 text-xs text-slate-500">已選 {createLinkedOrders.length} 張訂單，下一步可在下方按訂單項/BOM 挑選二層材料。</p>
-                {createLinkedOrders.length > 0 && (
+                <p className="mt-1 text-xs text-slate-500">已選 {createSelectedBomNodes.length} 個 BOM，建立時會依這些 BOM 的材料自動生成交期明細與採購單。</p>
+                {createSelectedBomNodes.length > 0 && (
                   <div className="mt-2 flex flex-wrap gap-2">
-                    {createLinkedOrders.map((order) => (
-                      <span key={order.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
-                        {order.po_number}
-                        <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => removeCreateLinkedOrder(order.id)}>×</button>
+                    {createSelectedBomNodes.map((node) => (
+                      <span key={node.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                        {node.bom_sku || 'BOM'} / {node.bom_name || '-'}
+                        <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => toggleCreateSelectedBom(node.id)}>×</button>
                       </span>
                     ))}
                   </div>
@@ -960,116 +890,45 @@ export default function OrderIntakePage() {
 
               <div className="mt-5">
                 <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-xs text-slate-500">BOM 二層材料選擇</label>
+                  <label className="block text-xs text-slate-500">已選 BOM</label>
                   <span className="text-xs text-slate-400">
-                    {createBomLoading ? '載入中...' : `${createBomNodes.length} 個訂單項 / BOM`}
+                    {createSelectedBomNodes.length} 個
                   </span>
                 </div>
                 <div className="max-h-[320px] overflow-auto rounded-lg border border-slate-200">
-                  {createForm.linkedOrderIds.length === 0 ? (
-                    <div className="px-4 py-8 text-center text-xs text-slate-500">先選擇客戶訂單，才會顯示對應 BOM 二層材料。</div>
-                  ) : createBomNodes.length === 0 && !createBomLoading ? (
-                    <div className="px-4 py-8 text-center text-xs text-slate-500">所選訂單目前沒有可用的 BOM 材料。</div>
+                  {!createForm.customerId ? (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500">先選擇客戶，再從上方 BOM 清單勾選要建立交期進度的項目。</div>
+                  ) : createSelectedBomNodes.length === 0 ? (
+                    <div className="px-4 py-8 text-center text-xs text-slate-500">尚未選擇 BOM。</div>
                   ) : (
                     <div className="space-y-3 p-3">
-                      {createBomNodes.map((node) => (
+                      {createSelectedBomNodes.map((node) => {
+                        const supplierCount = new Set(node.materials.map((material) => material.supplier_id || material.supplier_name || 'pending')).size
+                        const totalSuggestedQty = node.materials.reduce((sum, material) => sum + Number(material.suggested_qty || 0), 0)
+                        return (
                         <div key={node.id} className="rounded-xl border border-slate-200 bg-slate-50/60">
-                          <div className="border-b border-slate-200 px-4 py-3">
+                          <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-4 py-3">
+                            <div>
                             <div className="text-sm font-semibold text-slate-700">
                               {node.bom_sku || '未設定 BOM SKU'} / {node.bom_name || '未設定 BOM 名稱'}
                             </div>
                             <div className="mt-1 text-xs text-slate-500">
                               訂單 {node.order_po_number || '-'} / 客戶 PO {node.customer_po_number || '-'} / 訂單數量 {node.order_qty}
                             </div>
-                          </div>
-                          <div className="overflow-hidden">
-                            <table className="w-full text-xs">
-                              <thead>
-                                <tr className="border-b border-slate-200 bg-white">
-                                  <th className="px-3 py-2 text-left">材料</th>
-                                  <th className="px-3 py-2 text-right">BOM 用量</th>
-                                  <th className="px-3 py-2 text-right">建議數量</th>
-                                  <th className="px-3 py-2 text-left">供應商</th>
-                                  <th className="px-3 py-2 text-left">操作</th>
-                                </tr>
-                              </thead>
-                              <tbody>
-                                {node.materials.map((material) => (
-                                  <tr key={material.id} className="border-b border-slate-100 bg-white last:border-0">
-                                    <td className="px-3 py-2">
-                                      <div className="font-medium text-slate-700">{material.material_name || '-'}</div>
-                                      <div className="text-[11px] text-slate-500">{material.material_code || '-'} / {material.spec || '-'} / {material.unit || 'PCS'}</div>
-                                    </td>
-                                    <td className="px-3 py-2 text-right text-slate-600">{material.bom_unit_qty}</td>
-                                    <td className="px-3 py-2 text-right font-medium text-slate-700">{material.suggested_qty}</td>
-                                    <td className="px-3 py-2 text-slate-600">{material.supplier_name || '待分配供應商'}</td>
-                                    <td className="px-3 py-2">
-                                      <button type="button" className="btn-ghost text-xs" onClick={() => appendCreateLineFromMaterial(node, material)}>加入明細</button>
-                                    </td>
-                                  </tr>
-                                ))}
-                              </tbody>
-                            </table>
+                              <div className="mt-2 flex flex-wrap gap-4 text-xs text-slate-600">
+                                <span>{node.materials.length} 筆材料</span>
+                                <span>預估總量 {totalSuggestedQty}</span>
+                                <span>{supplierCount} 個供應商</span>
+                              </div>
+                            </div>
+                            <button type="button" className="btn-ghost text-xs" onClick={() => toggleCreateSelectedBom(node.id)}>移除</button>
                           </div>
                         </div>
-                      ))}
+                      )})}
                     </div>
                   )}
                 </div>
               </div>
-
-              <div className="mt-5">
-                <div className="mb-2 flex items-center justify-between">
-                  <label className="block text-xs text-slate-500">交期明細</label>
-                  <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
-                </div>
-                {createForm.linkedOrderIds.length > 0 && (
-                  <p className="mb-2 text-xs text-slate-500">
-                    先在上方選 BOM 二層材料，再加入到這裡作為交期明細；也可手動補充。
-                  </p>
-                )}
-                <div className="overflow-hidden rounded-lg border border-slate-200">
-                  <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-slate-200 bg-slate-50">
-                      <th className="px-3 py-2 text-left">材料名稱</th>
-                      <th className="px-3 py-2 text-right">數量</th>
-                      <th className="px-3 py-2 text-left">交貨 PO No.</th>
-                      <th className="px-3 py-2 text-left">備註</th>
-                      <th className="px-3 py-2 text-left">操作</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {createForm.lines.map((line) => (
-                      <tr key={line.key} className="border-b border-slate-100 last:border-0">
-                        <td className="px-3 py-2 align-top">
-                          <div className="space-y-1">
-                            <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateCreateLine(line.key, { material_name: e.target.value })} placeholder="輸入材料名稱" />
-                            {(line.material_name || line.material_code) && (
-                              <div className="text-[11px] text-slate-500">
-                                {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
-                              </div>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
-                        </td>
-                        <td className="px-3 py-2 align-top">
-                          <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
 
             <div className="mt-4">
               <label className="mb-1 block text-xs text-slate-500">主單備註</label>
