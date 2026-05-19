@@ -28,7 +28,14 @@ type IntakeItem = {
 
 type ProgressItem = {
   id?: number
+  line_type?: 'material' | 'bom'
+  customer_order_id?: number | null
+  order_item_id?: number | null
   order_po_number?: string
+  customer_po_number?: string
+  bom_id?: number | null
+  bom_code?: string
+  bom_name?: string
   material_id?: number | null
   material_code?: string
   material_name: string
@@ -87,10 +94,13 @@ type OrderBomNode = {
 type LineForm = {
   key: string
   id?: number
+  lineType: 'material' | 'bom'
   bomNodeId: string
+  customerOrderId: number | null
+  orderItemId: number | null
+  bomId: number | null
   bom_sku: string
   bom_name: string
-  materialOptionId: string
   material_id: number | null
   orderPoNumber: string
   material_code: string
@@ -99,22 +109,6 @@ type LineForm = {
   unit: string
   planned_qty: string
   remark: string
-}
-
-type OrderMaterialOption = {
-  id: string
-  material_id?: number | null
-  material_code: string
-  material_name: string
-  spec: string
-  unit: string
-  suggested_qty: number
-  due_date?: string | null
-  order_po_numbers: string[]
-  customer_po_numbers: string[]
-  bom_skus: string[]
-  bom_names: string[]
-  order_item_count: number
 }
 
 type CreateForm = {
@@ -148,10 +142,13 @@ const STATUS_LABEL: Record<string, string> = {
 
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
+  lineType: 'bom',
   bomNodeId: '',
+  customerOrderId: null,
+  orderItemId: null,
+  bomId: null,
   bom_sku: '',
   bom_name: '',
-  materialOptionId: '',
   material_id: null,
   orderPoNumber: '',
   material_code: '',
@@ -247,8 +244,8 @@ export default function OrderIntakePage() {
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editLineSeed, setEditLineSeed] = useState(1000)
   const [editOrderSearch, setEditOrderSearch] = useState('')
-  const [editMaterialOptions, setEditMaterialOptions] = useState<OrderMaterialOption[]>([])
-  const [editMaterialLoading, setEditMaterialLoading] = useState(false)
+  const [editBomNodes, setEditBomNodes] = useState<OrderBomNode[]>([])
+  const [editBomLoading, setEditBomLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
   const [resultNotice, setResultNotice] = useState<ResultNotice | null>(null)
 
@@ -281,11 +278,6 @@ export default function OrderIntakePage() {
 
   useRefreshOnFocus(() => refreshAll(status, false))
 
-  const fetchOrderMaterialOptions = async (orderIds: number[]) => {
-    if (!orderIds.length) return []
-    return apiFetch<OrderMaterialOption[]>(`/api/customer-orders/material-options?order_ids=${orderIds.join(',')}`)
-  }
-
   const fetchOrderBomNodes = async (orderIds: number[]) => {
     if (!orderIds.length) return []
     return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?order_ids=${orderIds.join(',')}`)
@@ -314,41 +306,22 @@ export default function OrderIntakePage() {
   useEffect(() => {
     let cancelled = false
     if (!editForm?.linkedOrderIds.length) {
-      setEditMaterialOptions([])
+      setEditBomNodes([])
       return
     }
-    setEditMaterialLoading(true)
-    fetchOrderMaterialOptions(editForm.linkedOrderIds)
+    setEditBomLoading(true)
+    fetchOrderBomNodes(editForm.linkedOrderIds)
       .then((rows) => {
-        if (!cancelled) setEditMaterialOptions(rows || [])
+        if (!cancelled) setEditBomNodes(rows || [])
       })
       .catch(() => {
-        if (!cancelled) setEditMaterialOptions([])
+        if (!cancelled) setEditBomNodes([])
       })
       .finally(() => {
-        if (!cancelled) setEditMaterialLoading(false)
+        if (!cancelled) setEditBomLoading(false)
       })
     return () => { cancelled = true }
   }, [editForm?.linkedOrderIds])
-
-  useEffect(() => {
-    if (!editForm || !editMaterialOptions.length) return
-    const nextLines = editForm.lines.map((line) => {
-      if (line.materialOptionId) return line
-      const matched = editMaterialOptions.find((option) =>
-        (option.material_id && line.material_id && option.material_id === line.material_id) ||
-        (
-          option.material_code === line.material_code &&
-          option.material_name === line.material_name &&
-          option.spec === line.spec &&
-          option.unit === line.unit
-        ),
-      )
-      return matched ? { ...line, materialOptionId: matched.id } : line
-    })
-    const changed = nextLines.some((line, idx) => line.materialOptionId !== editForm.lines[idx].materialOptionId)
-    if (changed) setEditForm({ ...editForm, lines: nextLines })
-  }, [editForm, editMaterialOptions])
 
   const summary = useMemo(() => {
     const total = rows.length
@@ -441,39 +414,6 @@ export default function OrderIntakePage() {
     }))
   }
 
-  const formatMaterialOption = (option: OrderMaterialOption) => {
-    const code = option.material_code ? `${option.material_code} ` : ''
-    const spec = option.spec ? ` / ${option.spec}` : ''
-    const bom = option.bom_skus.length ? ` / BOM ${option.bom_skus.join(', ')}` : ''
-    const po = option.order_po_numbers.length ? ` / 訂單 ${option.order_po_numbers.join(', ')}` : ''
-    return `${code}${option.material_name}${spec}${bom}${po}`
-  }
-
-  const filterMaterialOption = (option: OrderMaterialOption, search: string) => {
-    const text = [
-      option.material_code,
-      option.material_name,
-      option.spec,
-      option.unit,
-      ...option.order_po_numbers,
-      ...option.customer_po_numbers,
-      ...option.bom_skus,
-      ...option.bom_names,
-    ].join(' ').toLowerCase()
-    return text.includes(search)
-  }
-
-  const applyMaterialOption = (option: OrderMaterialOption, line: LineForm): Partial<LineForm> => ({
-    materialOptionId: option.id,
-    material_id: option.material_id || null,
-    orderPoNumber: option.customer_po_numbers[0] || option.order_po_numbers[0] || line.orderPoNumber,
-    material_code: option.material_code,
-    material_name: option.material_name,
-    spec: option.spec,
-    unit: option.unit || 'PCS',
-    planned_qty: option.suggested_qty > 0 ? String(option.suggested_qty) : line.planned_qty,
-  })
-
   const formatCreateBomNode = (node: OrderBomNode) =>
     `${node.bom_sku || '未設定 BOM SKU'} / ${node.bom_name || '未設定 BOM 名稱'} / 訂單 ${node.order_po_number || '-'}`
 
@@ -489,10 +429,18 @@ export default function OrderIntakePage() {
   }
 
   const applyCreateBomNode = (node: OrderBomNode): Partial<LineForm> => ({
+    lineType: 'bom',
     bomNodeId: node.id,
+    customerOrderId: node.order_id || null,
+    orderItemId: node.order_item_id || null,
+    bomId: node.bom_id || null,
     bom_sku: node.bom_sku || '',
     bom_name: node.bom_name || '',
     orderPoNumber: node.customer_po_number || node.order_po_number || '',
+    material_code: node.bom_sku || '',
+    material_name: node.bom_name || '',
+    spec: '',
+    unit: 'PCS',
     planned_qty: String(node.order_qty || ''),
     remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
   })
@@ -548,7 +496,7 @@ export default function OrderIntakePage() {
         : [...prev.linkedOrderIds, orderId],
       lines: prev.lines.map((line) => {
         const node = createBomNodes.find((it) => it.id === line.bomNodeId)
-        return node && node.order_id === orderId ? line : { ...line, bomNodeId: '', bom_sku: '', bom_name: '' }
+        return node && node.order_id === orderId ? line : { ...line, ...createEmptyLine(createLineSeed), key: line.key }
       }),
     }))
   }
@@ -562,7 +510,7 @@ export default function OrderIntakePage() {
         linkedOrderIds: nextLinkedOrderIds,
         lines: prev.lines.map((line) => {
           const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
-          return stillExists ? line : { ...line, bomNodeId: '', bom_sku: '', bom_name: '' }
+          return stillExists ? line : { ...line, ...createEmptyLine(createLineSeed), key: line.key }
         }),
       }
     })
@@ -576,6 +524,17 @@ export default function OrderIntakePage() {
         .filter(Boolean),
     )
     return createBomNodes.filter((node) => !selectedByOthers.has(node.id))
+  }
+
+  const editBomOptionsForLine = (lineKey: string) => {
+    if (!editForm) return []
+    const selectedByOthers = new Set(
+      editForm.lines
+        .filter((line) => line.key !== lineKey)
+        .map((line) => line.bomNodeId)
+        .filter(Boolean),
+    )
+    return editBomNodes.filter((node) => !selectedByOthers.has(node.id))
   }
 
   const createProgress = async () => {
@@ -594,26 +553,34 @@ export default function OrderIntakePage() {
       toast('請至少新增一筆 BOM 明細', 'error')
       return
     }
-    const lines = selectedLines.flatMap((line) => {
+    const lines = selectedLines.map((line) => {
       const node = createBomNodes.find((it) => it.id === line.bomNodeId)
-      if (!node) return []
-      return node.materials
-        .map((material) => ({
-          order_po_number: (material.customer_po_number || node.customer_po_number || material.order_po_number || node.order_po_number || '').trim(),
-          material_id: material.material_id || null,
-          material_code: material.material_code.trim(),
-          material_name: material.material_name.trim(),
-          spec: material.spec.trim(),
-          unit: material.unit.trim() || 'PCS',
-          planned_qty: Number(material.suggested_qty || 0),
-          due_date: createForm.dueDate || material.due_date || node.due_date || undefined,
-          remark: line.remark.trim() || (node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : ''),
-        }))
-        .filter((line) => line.material_name && Number.isFinite(line.planned_qty) && line.planned_qty > 0)
+      if (!node) return null
+      return {
+        line_type: 'bom' as const,
+        customer_order_id: node.order_id,
+        order_item_id: node.order_item_id,
+        bom_id: node.bom_id,
+        bom_code: node.bom_sku,
+        bom_name: node.bom_name,
+        order_po_number: line.orderPoNumber.trim() || node.customer_po_number || node.order_po_number || '',
+        customer_po_number: node.customer_po_number || '',
+        planned_qty: Number(line.planned_qty),
+        due_date: createForm.dueDate || node.due_date || undefined,
+        unit: 'PCS',
+        remark: line.remark.trim() || (node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : ''),
+      }
     })
+      .filter((line): line is NonNullable<typeof line> => !!line)
     if (!lines.length) {
-      toast('所選 BOM 沒有可生成的材料明細', 'error')
+      toast('所選 BOM 無效，請重新選擇', 'error')
       return
+    }
+    for (const line of lines) {
+      if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
+        toast(`BOM ${line.bom_code || line.bom_name || ''} 的數量需大於 0`, 'error')
+        return
+      }
     }
 
     try {
@@ -662,10 +629,13 @@ export default function OrderIntakePage() {
         lines: (detail.items || []).map((item, index) => ({
           key: `edit-${item.id || index}`,
           id: item.id,
-          bomNodeId: '',
-          bom_sku: '',
-          bom_name: '',
-          materialOptionId: '',
+          lineType: item.line_type === 'bom' ? 'bom' : 'material',
+          bomNodeId: item.line_type === 'bom' && item.order_item_id && item.bom_id ? `${item.customer_order_id || 0}::${item.order_item_id}::${item.bom_id}` : '',
+          customerOrderId: item.customer_order_id || null,
+          orderItemId: item.order_item_id || null,
+          bomId: item.bom_id || null,
+          bom_sku: item.bom_code || '',
+          bom_name: item.bom_name || '',
           material_id: item.material_id || null,
           orderPoNumber: item.order_po_number || '',
           material_code: item.material_code || '',
@@ -718,19 +688,33 @@ export default function OrderIntakePage() {
     if (!editForm) return
     const order = orders.find((it) => it.id === orderId)
     if (!order) return
+    const nextLinkedOrderIds = editForm.linkedOrderIds.includes(orderId)
+      ? editForm.linkedOrderIds.filter((id) => id !== orderId)
+      : [...editForm.linkedOrderIds, orderId]
+    const nextNodes = editBomNodes.filter((node) => nextLinkedOrderIds.includes(node.order_id))
     setEditForm({
       ...editForm,
-      linkedOrderIds: editForm.linkedOrderIds.includes(orderId)
-        ? editForm.linkedOrderIds.filter((id) => id !== orderId)
-        : [...editForm.linkedOrderIds, orderId],
+      linkedOrderIds: nextLinkedOrderIds,
+      lines: editForm.lines.map((line) => {
+        if (line.lineType !== 'bom') return line
+        const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
+        return stillExists ? line : { ...line, ...createEmptyLine(editLineSeed), key: line.key }
+      }),
     })
   }
 
   const removeEditLinkedOrder = (orderId: number) => {
     if (!editForm) return
+    const nextLinkedOrderIds = editForm.linkedOrderIds.filter((id) => id !== orderId)
+    const nextNodes = editBomNodes.filter((node) => nextLinkedOrderIds.includes(node.order_id))
     setEditForm({
       ...editForm,
-      linkedOrderIds: editForm.linkedOrderIds.filter((id) => id !== orderId),
+      linkedOrderIds: nextLinkedOrderIds,
+      lines: editForm.lines.map((line) => {
+        if (line.lineType !== 'bom') return line
+        const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
+        return stillExists ? line : { ...line, ...createEmptyLine(editLineSeed), key: line.key }
+      }),
     })
   }
 
@@ -749,31 +733,61 @@ export default function OrderIntakePage() {
   const saveEdit = async () => {
     if (!editing || !editForm) return
     const items = editForm.lines
-      .map((line) => ({
-        id: line.id,
-        order_po_number: line.orderPoNumber.trim(),
-        material_id: line.material_id,
-        material_code: line.material_code.trim(),
-        material_name: line.material_name.trim(),
-        spec: line.spec.trim(),
-        unit: line.unit.trim() || 'PCS',
-        planned_qty: Number(line.planned_qty),
-        due_date: editForm.dueDate || undefined,
-        remark: line.remark.trim(),
-      }))
-      .filter((line) => line.material_name || line.material_code || line.planned_qty || line.remark)
+      .map((line) => {
+        const bomNode = line.bomNodeId ? editBomNodes.find((node) => node.id === line.bomNodeId) : null
+        if (line.lineType === 'bom') {
+          return {
+            id: line.id,
+            line_type: 'bom' as const,
+            customer_order_id: line.customerOrderId || bomNode?.order_id || null,
+            order_item_id: line.orderItemId || bomNode?.order_item_id || null,
+            bom_id: line.bomId || bomNode?.bom_id || null,
+            bom_code: line.bom_sku.trim() || bomNode?.bom_sku || '',
+            bom_name: line.bom_name.trim() || bomNode?.bom_name || '',
+            order_po_number: line.orderPoNumber.trim(),
+            customer_po_number: bomNode?.customer_po_number || '',
+            unit: line.unit.trim() || 'PCS',
+            planned_qty: Number(line.planned_qty),
+            due_date: editForm.dueDate || undefined,
+            remark: line.remark.trim(),
+          }
+        }
+        return {
+          id: line.id,
+          line_type: 'material' as const,
+          customer_order_id: line.customerOrderId,
+          order_po_number: line.orderPoNumber.trim(),
+          material_id: line.material_id,
+          material_code: line.material_code.trim(),
+          material_name: line.material_name.trim(),
+          spec: line.spec.trim(),
+          unit: line.unit.trim() || 'PCS',
+          planned_qty: Number(line.planned_qty),
+          due_date: editForm.dueDate || undefined,
+          remark: line.remark.trim(),
+        }
+      })
+      .filter((line) => (
+        line.line_type === 'bom'
+          ? Boolean(line.bom_id || line.bom_code || line.bom_name || line.planned_qty || line.remark)
+          : Boolean(line.material_name || line.material_code || line.planned_qty || line.remark)
+      ))
 
     if (!items.length) {
       toast('請至少保留一筆交貨明細', 'error')
       return
     }
     for (const item of items) {
-      if (!item.material_name) {
-        toast('材料名稱不可空白', 'error')
+      if (!Number.isFinite(item.planned_qty) || item.planned_qty <= 0) {
+        toast(`明細 ${item.line_type === 'bom' ? (item.bom_code || item.bom_name || '') : item.material_name} 的數量需大於 0`, 'error')
         return
       }
-      if (!Number.isFinite(item.planned_qty) || item.planned_qty <= 0) {
-        toast(`材料 ${item.material_name} 的數量需大於 0`, 'error')
+      if (item.line_type === 'bom' && !item.bom_id) {
+        toast('請為每筆明細選擇 BOM', 'error')
+        return
+      }
+      if (item.line_type === 'material' && !item.material_name) {
+        toast('材料名稱不可空白', 'error')
         return
       }
     }
@@ -1029,7 +1043,7 @@ export default function OrderIntakePage() {
                 {createForm.linkedOrderIds.length > 0 && (
                   <>
                     <p className="mb-2 text-xs text-slate-500">
-                      這裡改成直接選 BOM；建立時系統會按 BOM 的二層材料自動生成交期明細與採購單。
+                      這裡直接建立 BOM 交期行；系統會保存當下 BOM 材料快照，後續生成採購單時再按你輸入的數量展開。
                       {createBomLoading ? ' BOM 載入中...' : ` 共 ${createBomNodes.length} 個 BOM 候選，已選 ${createSelectedBomIds.length} 個`}
                     </p>
                     <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
@@ -1097,8 +1111,8 @@ export default function OrderIntakePage() {
                             </td>
                             <td className="px-3 py-2 align-top text-right">
                               <div className="space-y-1">
-                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} readOnly />
-                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
+                                <div className="h-[17px] text-[11px] text-slate-400">{selectedNode ? `原訂單數量 ${selectedNode.order_qty}` : ''}</div>
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top">
@@ -1256,17 +1270,47 @@ export default function OrderIntakePage() {
                     <button type="button" className="btn-ghost text-xs" onClick={addEditLine}>+ 新增明細</button>
                   </div>
                   {editForm.linkedOrderIds.length > 0 && (
-                    <p className="mb-2 text-xs text-slate-500">
-                      已按所選客戶訂單，將對應 BOM 的全部材料明細整合為單一材料下拉框。
-                      {editMaterialLoading ? ' 載入中...' : ` 共 ${editMaterialOptions.length} 個材料候選`}
-                    </p>
+                    <>
+                      <p className="mb-2 text-xs text-slate-500">
+                        編輯時同樣以 BOM 行處理；保存後會沿用原 BOM 快照，只有更換 BOM 時才改寫快照。
+                        {editBomLoading ? ' BOM 載入中...' : ` 共 ${editBomNodes.length} 個 BOM 候選`}
+                      </p>
+                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                        <label className="mb-1 block text-xs text-slate-500">快速新增 BOM</label>
+                        <SearchableSelect
+                          options={editBomNodes.filter((node) => !editForm.lines.some((line) => line.bomNodeId === node.id))}
+                          value=""
+                          onChange={(value) => {
+                            const node = editBomNodes.find((it) => it.id === value)
+                            if (!node) return
+                            setEditForm({
+                              ...editForm,
+                              lines: [
+                                ...editForm.lines,
+                                {
+                                  ...createEmptyLine(editLineSeed),
+                                  ...applyCreateBomNode(node),
+                                  key: `line-${editLineSeed}`,
+                                },
+                              ],
+                            })
+                            setEditLineSeed((prev) => prev + 1)
+                          }}
+                          placeholder={editBomLoading ? '-- BOM 載入中 --' : '-- 選一個 BOM，立即新增一條明細 --'}
+                          renderOption={formatCreateBomNode}
+                          filterFn={filterCreateBomNode}
+                          disabled={editBomLoading || editForm.linkedOrderIds.length === 0}
+                          className="h-9"
+                        />
+                      </div>
+                    </>
                   )}
                   <div className="overflow-hidden rounded-lg border border-slate-200">
                     <table className="w-full text-xs">
                       <thead>
                         <tr className="border-b border-slate-200 bg-slate-50">
-                          <th className="px-3 py-2 text-left">材料名稱</th>
-                          <th className="px-3 py-2 text-right">數量</th>
+                          <th className="px-3 py-2 text-left">BOM</th>
+                          <th className="px-3 py-2 text-right">訂單數量</th>
                           <th className="px-3 py-2 text-left">交貨 PO No.</th>
                           <th className="px-3 py-2 text-right">已採購</th>
                           <th className="px-3 py-2 text-right">缺口</th>
@@ -1277,40 +1321,47 @@ export default function OrderIntakePage() {
                       <tbody>
                         {editForm.lines.map((line, idx) => {
                           const source = editing.items.find((item) => item.id === line.id) || editing.items[idx]
+                          const lineBomOptions = editBomOptionsForLine(line.key)
+                          const selectedNode = editBomNodes.find((node) => node.id === line.bomNodeId)
                           return (
                             <tr key={line.key} className="border-b border-slate-100 last:border-0">
-                              <td className="px-3 py-2">
-                                {editForm.linkedOrderIds.length > 0 ? (
-                                  <div className="space-y-1">
+                              <td className="px-3 py-2 align-top">
+                                <div className="space-y-1">
+                                  {line.lineType === 'bom' ? (
                                     <SearchableSelect
-                                      options={editMaterialOptions}
-                                      value={line.materialOptionId}
+                                      options={lineBomOptions}
+                                      value={line.bomNodeId}
                                       onChange={(value) => {
-                                        const option = editMaterialOptions.find((it) => it.id === value)
-                                        if (!option) return
-                                        updateEditLine(line.key, applyMaterialOption(option, line))
+                                        const node = editBomNodes.find((it) => it.id === value)
+                                        if (!node) return
+                                        updateEditLine(line.key, applyCreateBomNode(node))
                                         if (!editForm.dueDate) {
-                                          setEditForm({ ...editForm, dueDate: normalizeYmdInput(formatDateYMD(option.due_date) || '') })
+                                          setEditForm({ ...editForm, dueDate: normalizeYmdInput(formatDateYMD(node.due_date) || '') })
                                         }
                                       }}
-                                      placeholder={editMaterialLoading ? '-- 材料載入中 --' : '-- 選擇客戶訂單對應材料 --'}
-                                      renderOption={formatMaterialOption}
-                                      filterFn={filterMaterialOption}
-                                      disabled={editMaterialLoading}
+                                      placeholder={editBomLoading ? '-- BOM 載入中 --' : '-- 選擇關聯訂單對應 BOM --'}
+                                      renderOption={formatCreateBomNode}
+                                      filterFn={filterCreateBomNode}
+                                      disabled={editBomLoading || editForm.linkedOrderIds.length === 0}
                                       className="h-9"
                                     />
-                                    {(line.material_name || line.material_code) && (
-                                      <div className="text-[11px] text-slate-500">
-                                        {line.material_code || '-'} / {line.spec || '-'} / {line.unit || 'PCS'}
-                                      </div>
-                                    )}
+                                  ) : (
+                                    <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
+                                  )}
+                                  <div className="text-[11px] text-slate-500">
+                                    {line.lineType === 'bom'
+                                      ? `${line.bom_sku || '-'} / ${line.bom_name || '-'}${selectedNode ? ` / ${selectedNode.materials.length} 筆材料` : ''}`
+                                      : `${line.material_code || '-'} / ${line.spec || '-'} / ${line.unit || 'PCS'}`}
                                   </div>
-                                ) : (
-                                  <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
-                                )}
+                                </div>
                               </td>
-                              <td className="px-3 py-2">
-                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
+                              <td className="px-3 py-2 align-top">
+                                <div className="space-y-1">
+                                  <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
+                                  <div className="text-[11px] text-slate-400">
+                                    {line.lineType === 'bom' && selectedNode ? `原訂單數量 ${selectedNode.order_qty}` : ''}
+                                  </div>
+                                </div>
                               </td>
                               <td className="px-3 py-2">
                                 <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
