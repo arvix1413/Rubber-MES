@@ -134,6 +134,12 @@ type EditForm = {
   lines: LineForm[]
 }
 
+type ResultNotice = {
+  title: string
+  desc: string
+  details: string[]
+}
+
 const STATUS_LABEL: Record<string, string> = {
   pending: '待處理',
   partial: '部分完成',
@@ -223,7 +229,7 @@ const statusBadgeClass = (status: string) => {
 }
 
 export default function OrderIntakePage() {
-  const { notice, toast, confirm } = useDialog()
+  const { toast, confirm } = useDialog()
   const [rows, setRows] = useState<IntakeItem[]>([])
   const [customers, setCustomers] = useState<Customer[]>([])
   const [orders, setOrders] = useState<OrderSummary[]>([])
@@ -244,6 +250,7 @@ export default function OrderIntakePage() {
   const [editMaterialOptions, setEditMaterialOptions] = useState<OrderMaterialOption[]>([])
   const [editMaterialLoading, setEditMaterialLoading] = useState(false)
   const [editLoading, setEditLoading] = useState(false)
+  const [resultNotice, setResultNotice] = useState<ResultNotice | null>(null)
 
   const refreshAll = async (nextStatus = status, showSpinner = false) => {
     if (showSpinner) setLoading(true)
@@ -623,9 +630,7 @@ export default function OrderIntakePage() {
       const { res, lines: poLines } = await generatePoForProgress(created.id)
       const deliveryNoteText = created.dn_number ? `，並自動建立出貨單 ${created.dn_number}` : ''
       toast(`交期進度已建立${deliveryNoteText}，並生成 ${res.count || poLines.length} 張採購單`)
-      if (poLines.length) {
-        notice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
-      }
+      if (poLines.length) showResultNotice(`已生成 ${res.count || poLines.length} 張採購單`, '本次建立結果：', poLines)
       closeCreate()
       await refreshAll(status, false)
     } catch (e: any) {
@@ -737,6 +742,10 @@ export default function OrderIntakePage() {
     return { res, lines }
   }
 
+  const showResultNotice = (title: string, desc: string, details: string[]) => {
+    setResultNotice({ title, desc, details })
+  }
+
   const saveEdit = async () => {
     if (!editing || !editForm) return
     const items = editForm.lines
@@ -792,7 +801,7 @@ export default function OrderIntakePage() {
     setCreatingId(id)
     try {
       const { res, lines } = await generatePoForProgress(id)
-      notice(`已生成 ${res.count || lines.length} 張採購單`, '本次建立結果：', lines)
+      showResultNotice(`已生成 ${res.count || lines.length} 張採購單`, '本次建立結果：', lines)
       await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '生成採購單失敗'), 'error')
@@ -1127,6 +1136,38 @@ export default function OrderIntakePage() {
               <button className="btn-ghost" onClick={closeCreate}>取消</button>
               <button className="btn-primary" onClick={createProgress}>建立</button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {resultNotice && (
+        <div className="fixed bottom-6 right-6 z-[70] w-full max-w-md px-4 sm:px-0">
+          <div className="overflow-hidden rounded-3xl border border-[#d3c3b0] bg-[linear-gradient(160deg,#fffaf2_0%,#f5e8d6_65%,#ebd5bc_100%)] p-5 shadow-[0_24px_50px_rgba(63,35,8,0.24)]">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold tracking-wide text-[#3d2a18]">{resultNotice.title}</h3>
+                <p className="mt-1 text-sm text-[#6b4b31]">{resultNotice.desc}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResultNotice(null)}
+                className="rounded-full border border-[#d3c3b0] bg-white/70 px-2.5 py-1 text-xs font-semibold text-[#6b4b31] hover:bg-white"
+              >
+                關閉
+              </button>
+            </div>
+            {resultNotice.details.length > 0 && (
+              <div className="max-h-52 overflow-auto rounded-2xl border border-[#e3c7a5] bg-white/65 px-3 py-2">
+                <ul className="space-y-1.5 text-sm text-[#5c432e]">
+                  {resultNotice.details.map((line, idx) => (
+                    <li key={`${line}-${idx}`} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#b8682a]" />
+                      <span className="break-all">{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}
