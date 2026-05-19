@@ -330,7 +330,10 @@ export default function QuotationsPage() {
       </tr>`
     }).join('')
 
-    const noteText = txt(q.remark) || [
+    const validityLine = '報價有效期限 / Quotation validity: This quotation is valid for six months from the date of issue.'
+    const noteLines = [
+      txt(q.remark),
+      validityLine,
       '付款條件 / Payment: according to sales contract.',
       '交貨日期 / Lead time: to be confirmed by each product and final order arrangement.',
       '交貨方式 / Delivery: Vietnam local door to door.',
@@ -338,7 +341,8 @@ export default function QuotationsPage() {
       '任何問題根據合同內容討論 / Any concern according to sales contract.',
       todayRateLine,
       txt(company.company_name),
-    ].filter(Boolean).join('\n')
+    ].filter(Boolean)
+    const noteText = noteLines.join('\n')
 
     const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/>
     <title>報價單 ${txt(quotation.quotation_number || q.quotation_number)}</title>
@@ -356,14 +360,14 @@ export default function QuotationsPage() {
       table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;word-break:break-word;overflow-wrap:anywhere}
       table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
       table.quote td{height:30px}
-      .seq{width:6%;text-align:center}
-      .product{width:33%;text-align:center}
-      .spec{width:12%;text-align:center}
-      .color{width:10%;text-align:center;white-space:normal}
-      .unit{width:6%;text-align:center}
-      .moq{width:13%;text-align:center;white-space:pre-line;line-height:1.45}
-      .money{width:8%;text-align:center;font-variant-numeric:tabular-nums}
-      .remark{width:8%;text-align:center}
+      .seq{width:5%;text-align:center}
+      .product{width:49.5%;text-align:center}
+      .spec{width:10%;text-align:center}
+      .color{width:8%;text-align:center;white-space:normal}
+      .unit{width:5%;text-align:center}
+      .moq{width:9%;text-align:center;white-space:pre-line;line-height:1.45}
+      .money{width:5%;text-align:center;font-variant-numeric:tabular-nums}
+      .remark{width:3.5%;text-align:center}
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
