@@ -249,7 +249,7 @@ CREATE TABLE IF NOT EXISTS delivery_note_items (
   unit VARCHAR(50) DEFAULT 'PCS',
   qty DECIMAL(15,4) DEFAULT 0,
   remark TEXT,
-  po_ref VARCHAR(100) COMMENT '订单编号',
+  po_ref TEXT COMMENT '订单编号',
   thickness DECIMAL(10,2) COMMENT '厚度',
   INDEX idx_delivery_note_items_material_id (material_id),
   FOREIGN KEY (dn_id) REFERENCES delivery_notes(id) ON DELETE CASCADE
@@ -278,7 +278,7 @@ CREATE TABLE IF NOT EXISTS delivery_sheet_items (
   unit VARCHAR(50) DEFAULT 'PCS',
   qty DECIMAL(15,4) DEFAULT 0,
   remark TEXT,
-  po_ref VARCHAR(100) COMMENT '訂單編號',
+  po_ref TEXT COMMENT '訂單編號',
   thickness DECIMAL(10,2) COMMENT '厚度',
   INDEX idx_delivery_sheet_items_material_id (material_id),
   FOREIGN KEY (ds_id) REFERENCES delivery_sheets(id) ON DELETE CASCADE

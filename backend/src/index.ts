@@ -573,6 +573,7 @@ const ensureDeliveryNoteProgressIdColumn = async () => {
       }
       await alterSafe('ALTER TABLE delivery_notes ADD COLUMN progress_id INT NULL AFTER customer_order_id')
       await alterSafe('ALTER TABLE delivery_notes ADD INDEX idx_delivery_notes_progress_id (progress_id)')
+      await alterSafe('ALTER TABLE delivery_note_items MODIFY COLUMN po_ref TEXT')
     })().catch((e) => {
       ensureDeliveryNoteProgressIdColumnPromise = null
       throw e
@@ -1791,6 +1792,7 @@ const syncDeliveryNoteFromProgress = async (
     const itemCode = String(lineType === 'bom' ? (item.bom_code || item.material_code || '') : (item.material_code || '')).trim()
     const itemName = String(lineType === 'bom' ? (item.bom_name || item.material_name || '') : (item.material_name || '')).trim()
     const materialId = lineType === 'bom' ? null : await resolveMaterialId(null, itemCode, db)
+    const itemPoRef = String(item.order_po_number || item.customer_po_number || progressPoRef || '').trim()
     await execute(
       'INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [
@@ -1802,7 +1804,7 @@ const syncDeliveryNoteFromProgress = async (
         item.unit || 'PCS',
         toQty(item.planned_qty),
         item.remark || '',
-        item.order_po_number || progressPoRef,
+        itemPoRef,
         null,
       ],
       db,
