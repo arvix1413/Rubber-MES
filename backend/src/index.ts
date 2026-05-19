@@ -2852,17 +2852,17 @@ app.get('/api/customer-orders', authMiddleware, async c => {
 	               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
 	               ELSE ROUND(COALESCE(SUM(ci.arrived_qty), 0) / COALESCE(SUM(ci.qty), 0) * 100, 2)
 	             END as completion_rate,
-	             COALESCE(progress_stats.progress_created_qty, 0) as progress_created_qty,
-	             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(progress_stats.progress_created_qty, 0)) as progress_remaining_qty,
+	             COALESCE(MAX(progress_stats.progress_created_qty), 0) as progress_created_qty,
+	             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(MAX(progress_stats.progress_created_qty), 0)) as progress_remaining_qty,
 	             CASE
 	               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
-	               ELSE ROUND(LEAST(COALESCE(progress_stats.progress_created_qty, 0), COALESCE(SUM(ci.qty), 0)) / COALESCE(SUM(ci.qty), 0) * 100, 2)
+	               ELSE ROUND(LEAST(COALESCE(MAX(progress_stats.progress_created_qty), 0), COALESCE(SUM(ci.qty), 0)) / COALESCE(SUM(ci.qty), 0) * 100, 2)
 	             END as progress_created_rate,
-	             COALESCE(progress_links.has_delivery_progress, 0) as has_delivery_progress,
+	             COALESCE(MAX(progress_links.has_delivery_progress), 0) as has_delivery_progress,
 	             CASE
-	               WHEN COALESCE(progress_links.has_delivery_progress, 0) = 1 THEN 'scheduled'
-               ELSE 'unscheduled'
-             END as schedule_status,
+	               WHEN COALESCE(MAX(progress_links.has_delivery_progress), 0) = 1 THEN 'scheduled'
+	               ELSE 'unscheduled'
+	             END as schedule_status,
              COALESCE(c.customer_name, co.customer_name) as customer_name, c.customer_code
       FROM customer_orders co
       LEFT JOIN customers c ON co.customer_id = c.id AND c.deleted_at IS NULL
