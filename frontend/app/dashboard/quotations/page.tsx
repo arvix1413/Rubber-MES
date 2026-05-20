@@ -558,45 +558,49 @@ export default function QuotationsPage() {
     }))
   }
   const renderTierEditor = (item: QItem, itemIndex: number, inputClass: string) => (
-    <div className="w-full space-y-1.5">
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] text-slate-400 whitespace-nowrap">最多 5 組</span>
+    <div className="w-full space-y-2">
+      <div className="flex items-center justify-between gap-2 pb-1 border-b border-slate-100">
+        <span className="text-[10px] text-slate-400">最多 5 組，至少 1 組</span>
         <button
           type="button"
-          className="text-[10px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300 whitespace-nowrap"
+          className="text-[10px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300"
           onClick={() => addItemTier(itemIndex)}
           disabled={item.moq_tiers.length >= 5}
         >
-          + 新增
+          + 新增 MOQ
         </button>
       </div>
-      {item.moq_tiers.map((tier, t) => (
-        <div key={t} className="grid grid-cols-[24px_1fr_1fr_32px] items-center gap-1.5">
-          <span className="text-[10px] text-slate-400 text-center">#{t + 1}</span>
-          <DecimalInput
-            className={`${inputClass} w-full text-xs`}
-            digits={0}
-            value={tier.moq}
-            placeholder="MOQ"
-            onValueChange={value => updateTier(itemIndex, t, 'moq', value ?? 0)}
-          />
-          <DecimalInput
-            className={`${inputClass} w-full text-xs`}
-            value={tier.price}
-            placeholder="單價"
-            onValueChange={value => updateTier(itemIndex, t, 'price', value ?? 0)}
-          />
-          <button
-            type="button"
-            className="text-[10px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
-            onClick={() => removeItemTier(itemIndex, t)}
-            disabled={item.moq_tiers.length <= 1}
-            title="刪除"
-          >
-            ✕
-          </button>
-        </div>
-      ))}
+      <div className="space-y-1.5">
+        {item.moq_tiers.map((tier, t) => (
+          <div key={t} className="flex items-center gap-2">
+            <span className="text-[10px] text-slate-400 w-6 text-center shrink-0">#{t + 1}</span>
+            <div className="flex-1 flex items-center gap-2">
+              <DecimalInput
+                className={`${inputClass} flex-1 text-xs`}
+                digits={0}
+                value={tier.moq}
+                placeholder="MOQ"
+                onValueChange={value => updateTier(itemIndex, t, 'moq', value ?? 0)}
+              />
+              <DecimalInput
+                className={`${inputClass} flex-1 text-xs`}
+                value={tier.price}
+                placeholder="單價"
+                onValueChange={value => updateTier(itemIndex, t, 'price', value ?? 0)}
+              />
+            </div>
+            <button
+              type="button"
+              className="text-[11px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300 w-6 shrink-0"
+              onClick={() => removeItemTier(itemIndex, t)}
+              disabled={item.moq_tiers.length <= 1}
+              title="刪除"
+            >
+              ✕
+            </button>
+          </div>
+        ))}
+      </div>
     </div>
   )
 
