@@ -558,41 +558,42 @@ export default function QuotationsPage() {
     }))
   }
   const renderTierEditor = (item: QItem, itemIndex: number, inputClass: string) => (
-    <div className="w-full min-w-[320px] space-y-1">
+    <div className="w-full space-y-1.5">
       <div className="flex items-center justify-between gap-2">
-        <span className="text-[10px] text-slate-400">最多 5 組，至少 1 組</span>
+        <span className="text-[10px] text-slate-400 whitespace-nowrap">最多 5 組</span>
         <button
           type="button"
-          className="text-[11px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300"
+          className="text-[10px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300 whitespace-nowrap"
           onClick={() => addItemTier(itemIndex)}
           disabled={item.moq_tiers.length >= 5}
         >
-          + 新增 MOQ
+          + 新增
         </button>
       </div>
       {item.moq_tiers.map((tier, t) => (
-        <div key={t} className="grid grid-cols-[26px_minmax(96px,1fr)_minmax(110px,1fr)_auto] items-center gap-1">
+        <div key={t} className="grid grid-cols-[24px_1fr_1fr_32px] items-center gap-1.5">
           <span className="text-[10px] text-slate-400 text-center">#{t + 1}</span>
           <DecimalInput
-            className={`${inputClass} w-full`}
+            className={`${inputClass} w-full text-xs`}
             digits={0}
             value={tier.moq}
             placeholder="MOQ"
             onValueChange={value => updateTier(itemIndex, t, 'moq', value ?? 0)}
           />
           <DecimalInput
-            className={`${inputClass} w-full`}
+            className={`${inputClass} w-full text-xs`}
             value={tier.price}
             placeholder="單價"
             onValueChange={value => updateTier(itemIndex, t, 'price', value ?? 0)}
           />
           <button
             type="button"
-            className="text-[11px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
+            className="text-[10px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300"
             onClick={() => removeItemTier(itemIndex, t)}
             disabled={item.moq_tiers.length <= 1}
+            title="刪除"
           >
-            刪除
+            ✕
           </button>
         </div>
       ))}
@@ -677,36 +678,36 @@ export default function QuotationsPage() {
           </div>
           <div className="px-6 py-4">
           <div className="detail-scroll-panel rounded-2xl border border-[#eadfce] bg-white">
-            <table className="oms-table w-full table-fixed text-xs" style={{ minWidth: 1420 }}>
+            <table className="oms-table w-full text-xs" style={{ minWidth: 1420 }}>
               <colgroup>
-                <col style={{ width: '28%' }} />
-                <col style={{ width: '15%' }} />
-                <col style={{ width: '12%' }} />
-                <col style={{ width: '8%' }} />
-                <col style={{ width: '26%' }} />
-                <col style={{ width: '9%' }} />
+                <col style={{ width: '24%' }} />
+                <col style={{ width: '14%' }} />
+                <col style={{ width: '11%' }} />
+                <col style={{ width: '7%' }} />
+                <col style={{ width: '32%' }} />
+                <col style={{ width: '10%' }} />
                 <col style={{ width: '2%' }} />
               </colgroup>
               <thead><tr className="border-b border-[#eadfce] bg-[#fbf6f0]">
                 {['選擇BOM','品名','規格','單位','階梯報價（MOQ / 單價）','Remark',''].map(h=>(
-                  <th key={h} className="sticky top-0 z-10 bg-[#fbf6f0] px-1.5 py-2 text-left text-[10px] font-semibold uppercase whitespace-nowrap text-[#7d705f] shadow-sm">{h}</th>
+                  <th key={h} className="sticky top-0 z-10 bg-[#fbf6f0] px-2 py-2 text-left text-[10px] font-semibold uppercase whitespace-nowrap text-[#7d705f] shadow-sm">{h}</th>
                 ))}
               </tr></thead>
               <tbody>
                 {form.items.map((item,i)=>(
                   <tr key={i} className="border-b border-[#f0e7da] last:border-0">
-                    <td className="p-1 align-top">
+                    <td className="p-2 align-top">
                       <select className={`${inp} w-full`} value={item.bom_id ? String(item.bom_id) : ''} onChange={e => onSelectBom(i, e.target.value)}>
                         <option value="">-- 選擇 BOM --</option>
                         {boms.map(b => <option key={b.id} value={String(b.id)}>{b.product_sku} — {b.product_name}</option>)}
                       </select>
                     </td>
-                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.item_name} readOnly /></td>
-                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.spec} readOnly /></td>
-                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.unit || ''} readOnly /></td>
-                    <td className="p-1 align-top">{renderTierEditor(item, i, inp)}</td>
-                    <td className="p-1 align-top"><input className={`${inp} w-full`} value={item.remark} onChange={e=>updateItem(i,'remark',e.target.value)} /></td>
-                    <td className="p-1 align-top text-center"><button onClick={()=>removeItem(i)} className="mt-2 text-slate-300 transition-colors hover:text-red-600">✕</button></td>
+                    <td className="p-2 align-top"><input className={`${lockedInp} w-full`} value={item.item_name} readOnly /></td>
+                    <td className="p-2 align-top"><input className={`${lockedInp} w-full`} value={item.spec} readOnly /></td>
+                    <td className="p-2 align-top"><input className={`${lockedInp} w-full`} value={item.unit || ''} readOnly /></td>
+                    <td className="p-2 align-top">{renderTierEditor(item, i, inp)}</td>
+                    <td className="p-2 align-top"><input className={`${inp} w-full`} value={item.remark} onChange={e=>updateItem(i,'remark',e.target.value)} /></td>
+                    <td className="p-2 align-top text-center"><button onClick={()=>removeItem(i)} className="mt-2 text-slate-300 transition-colors hover:text-red-600">✕</button></td>
                   </tr>
                 ))}
               </tbody>

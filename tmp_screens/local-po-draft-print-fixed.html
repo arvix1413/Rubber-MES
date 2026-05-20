@@ -1,0 +1,256 @@
+<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/><title>採購單 PO1779181428165-01</title><style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: "Microsoft JhengHei", "PingFang TC", Arial, sans-serif; font-size: 11px; font-weight: 400; color: #000; background: #fff; -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+    .page { padding: 8mm 6mm; max-width: 210mm; margin: 0 auto; }
+    .header { display: flex; justify-content: space-between; align-items: flex-start; border-bottom: 2px solid #000; padding-bottom: 5mm; margin-bottom: 5mm; }
+    .company { font-size: 18px; font-weight: 700; letter-spacing: 1px; text-transform: uppercase; }
+    .subtitle { font-size: 10px; color: #666; margin-top: 3px; }
+    .doc-title { font-size: 22px; font-weight: 700; color: #1a56db; letter-spacing: 2px; text-align: right; }
+    .doc-sub { font-size: 10px; color: #666; text-align: right; margin-top: 2px; }
+    .doc-no { font-size: 12px; font-weight: 600; text-align: right; margin-top: 3px; }
+    
+  .party-table{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:5mm}
+  .party-table td{border:1px solid #bbb;padding:4px 7px;font-size:10px;vertical-align:top;text-align:left}
+  .party-table .section{background:#d9edf7;font-weight:700;text-align:left;white-space:nowrap}
+  .party-table .label{background:#f5f5f5;font-weight:600;white-space:nowrap;width:92px}
+  .party-table .value{text-align:left;white-space:normal;overflow-wrap:anywhere;word-break:break-word;line-height:1.35}
+
+	    .info-table { width: 100%; border-collapse: collapse; margin-bottom: 5mm; }
+	    .info-table td { border: 1px solid #bbb; padding: 5px 8px; font-size: 11px; font-weight: 400; vertical-align: middle; text-align: center; }
+	    .info-table .lbl { font-weight: 600; background: #f5f5f5; white-space: nowrap; width: 110px; color: #333; line-height: 1.4; }
+	    
+  table.items{width:100%;border-collapse:collapse;table-layout:auto;margin-bottom:5mm}
+  table.items th{border:1px solid #555;background:#e8e8e8;padding:6px 6px;text-align:center;font-size:10px;font-weight:600;color:#000;white-space:nowrap;overflow:hidden;text-overflow:clip}
+  table.items td{border:1px solid #bbb;padding:5px 6px;font-size:11px;font-weight:400;color:#000;white-space:normal;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;text-align:center}
+  table.items tbody tr:nth-child(even){background:#fafafa}
+
+  table.items .col-st{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+  table.items .col-code{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+  table.items .col-material{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+  table.items .col-spec{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+  table.items .col-unit{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+  table.items .col-qty{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-variant-numeric:tabular-nums}
+  table.items .col-price{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-variant-numeric:tabular-nums}
+  table.items .col-amt{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-variant-numeric:tabular-nums}
+  table.items .col-total{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-variant-numeric:tabular-nums}
+  table.items .col-moq{width:1%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-variant-numeric:tabular-nums}
+
+  table.items .col-name{white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.35}
+  table.items .col-remark{white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
+
+  .total-row td{border:1px solid #555;background:#efefef;font-weight:600;font-size:11px;padding:6px 8px;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+
+      .po-ref-box { border: 1px solid #bbb; padding: 6px 8px; margin-bottom: 4mm; }
+      .po-ref-title { font-size: 10px; font-weight: 600; color: #333; margin-bottom: 4px; }
+      .po-ref-list { font-size: 10px; line-height: 1.55; color: #222; word-break: break-word; }
+      table.items.po-items { table-layout: fixed; }
+      table.items.po-items .col-st { width: 4%; }
+      table.items.po-items .col-code { width: 20%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+      table.items.po-items .col-material { width: 8%; }
+      table.items.po-items .col-name { width: 17%; }
+      table.items.po-items .col-spec { width: 10%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+      table.items.po-items .col-qty { width: 6%; }
+      table.items.po-items .col-unit { width: 5%; }
+      table.items.po-items .col-price { width: 8%; }
+      table.items.po-items .col-total { width: 8%; }
+      table.items.po-items .col-remark { width: 14%; }
+	    .remark-box { border: 1px solid #bbb; padding: 6px 10px; min-height: 18mm; font-size: 10px; font-weight: 400; margin-top: 5mm; }
+	    .remark-title { font-weight: 600; margin-bottom: 4px; font-size: 10px; }
+	    .terms { border: 1px solid #ccc; padding: 6px 10px; margin-top: 4mm; font-size: 9px; font-weight: 400; line-height: 1.5; color: #555; }
+    .sign-section { display: grid; grid-template-columns: 1fr 1fr; gap: 8mm; margin-top: 8mm; }
+    .sign-box { border: 1px solid #bbb; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; }
+    .sign-label { font-weight: 600; font-size: 10px; color: #333; padding-bottom: 4px; border-bottom: 1px solid #eee; margin-bottom: 0; }
+    .sign-area { flex: 1; min-height: 120px; display: flex; align-items: center; justify-content: center; }
+    .sign-line { border-top: 1px solid #555; padding-top: 4px; font-size: 10px; font-weight: 400; color: #333; margin-top: 4px; }
+    @media print { @page { size: A4; margin: 0; } }
+  </style></head><body>
+    <div class="page">
+      <div class="header">
+        <div>
+          <img src="http://43.133.56.234:10102/uploads/1779162205919.png" style="max-height:40px;max-width:160px;object-fit:contain;margin-bottom:4px" onerror="this.style.display='none'"/><br/>
+          <div class="company">KUNYI CO., LTD</div>
+          <div class="subtitle">CÔNG TY TNHH KUNYI VIỆT NAM</div>
+        </div>
+        <div>
+          <div class="doc-title">採購單</div>
+          <div class="doc-sub">PURCHASE ORDER / ĐƠN ĐẶT HÀNG</div>
+          <div class="doc-no">No. PO1779181428165-01</div>
+        </div>
+      </div>
+
+      <table class="party-table">
+        <tr><td class="section" colspan="4">本公司 / Company Name</td><td class="section" colspan="4">供應商公司 / Supplier Name</td></tr>
+        <tr><td class="label">公司名</td><td class="value" colspan="3">KUNYI CO., LTD</td><td class="label">公司名</td><td class="value" colspan="3">CÔNG TY TNHH THỰC NGHIỆP VIỆT NAM THIÊN THẠC 天碩</td></tr>
+        <tr><td class="label">地址</td><td class="value" colspan="3">152 Ha Huy Tap Street, Tan Hung Ward, Ho Chi Minh City, Vietnam.</td><td class="label">地址</td><td class="value" colspan="3"></td></tr>
+        <tr><td class="label">電話</td><td class="value" colspan="3">0909883728 / 0933223927</td><td class="label">電話</td><td class="value" colspan="3"></td></tr>
+        <tr><td class="label">聯絡人</td><td class="value" colspan="3">Danny Lin / Buu Buu</td><td class="label">聯絡人</td><td class="value" colspan="3"></td></tr>
+      </table>
+
+	      <table class="info-table">
+        <tr>
+          <td class="lbl">供應商</td><td class="val" colspan="3" style="font-weight:600;font-size:12px">CÔNG TY TNHH THỰC NGHIỆP VIỆT NAM THIÊN THẠC 天碩</td>
+          <td class="lbl">採購單號</td><td class="val" style="font-family:monospace;font-weight:600">PO1779181428165-01</td>
+        </tr>
+        <tr>
+          <td class="lbl">幣別</td><td class="val">VND</td>
+          <td class="lbl">稅率</td><td class="val">8%</td>
+          <td class="lbl">建立日期</td><td class="val">2026-05-19</td>
+	        </tr>
+	      </table>
+
+        <div class="po-ref-box">
+          <div class="po-ref-title">來源客戶單 / PO NO 摘要</div>
+          <div class="po-ref-list">5103M 04+05/2026 / 5106V 03+04/2026 / 510AC 03/2026 / 510AE 04/2026 / 510R8 02+03+04/2026 / 51114 01+02+03+04/2026 / 51115 01+03+04/2026 / 51116 03+04/2026 / 51117 03+04/2026 / 51118 04/2026 / 51119 04/2026 / 51120 03+04/2026 / 6911765 / 6915548 / 6915547 / 6911762 / 6911748 / 6911747 / 6902704 / 6911759 / A001S1R / 6916256 / A001SFF / 6915545</div>
+        </div>
+
+	      <table class="items po-items">
+	        <thead><tr>
+	          <th class="col-st">ST</th><th class="col-code">PO NO</th><th class="col-material">MTL NO</th><th class="col-name">材料名稱</th><th class="col-spec">規格</th><th class="col-qty">數量</th><th class="col-unit">單位</th><th class="col-price">單價</th><th class="col-total">金額</th><th class="col-remark">備註</th>
+	        </tr></thead>
+        <tbody>
+          
+      <tr>
+        <td class="col-st" style="text-align:center">1</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51120</td>
+        <td class="col-name">Đen 12mm EVA 32C</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">35</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">226.860</td>
+        <td class="col-total">7.940.100</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">2</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51119</td>
+        <td class="col-name">Đen 10mm EVA 32C</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">32</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">189.050</td>
+        <td class="col-total">6.049.600</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">3</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51118</td>
+        <td class="col-name">Đen 8mm EVA 32C</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">40</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">151.240</td>
+        <td class="col-total">6.049.600</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">4</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51117</td>
+        <td class="col-name">Đen 7mm EVA 32C</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">7</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">132.335</td>
+        <td class="col-total">926.345</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">5</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51116</td>
+        <td class="col-name">6MM 32C BLACK EVA</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">16</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">113.430</td>
+        <td class="col-total">1.814.880</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">6</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51115</td>
+        <td class="col-name">5MM 32C BLACK EVA</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">21</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">94.525</td>
+        <td class="col-total">1.985.025</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">7</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51114</td>
+        <td class="col-name">3MM 32C BLACK EVA</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">16</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">56.715</td>
+        <td class="col-total">907.440</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">8</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">51114</td>
+        <td class="col-name">3MM 32C BLACK EVA</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">3</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">56.715</td>
+        <td class="col-total">170.145</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">9</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">5106V</td>
+        <td class="col-name">14MM 42C WHITE EVA(EXPOSED)</td>
+        <td class="col-spec">130x215cm</td>
+        <td class="col-qty">31</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">539.000</td>
+        <td class="col-total">16.709.000</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+      <tr>
+        <td class="col-st" style="text-align:center">10</td>
+        <td class="col-code">5103M 04+05/2026, 5106V 03+04/2026 等 24 筆</td>
+        <td class="col-material">5103M</td>
+        <td class="col-name">Đen 15mm EVA 32C</td>
+        <td class="col-spec">110x270cm</td>
+        <td class="col-qty">18</td>
+        <td class="col-unit">SHEET</td>
+        <td class="col-price">298.500</td>
+        <td class="col-total">5.373.000</td>
+        <td class="col-remark">由交期進度自動生成，來源 DP1779181128721</td>
+      </tr>
+    
+          <tr class="total-row"><td colspan="8">小計</td><td>47.925.135</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">VAT 8%</td><td>3.834.010,8</td><td></td></tr>
+          <tr class="total-row"><td colspan="8">總計</td><td>51.759.145,8</td><td>VND</td></tr>
+        </tbody>
+      </table>
+
+      <div class="remark-box"><div class="remark-title">備註：</div><div>由交期進度自動生成，來源 DP1779181128721</div></div>
+      <div class="terms"><strong>注意事項：</strong> 付款條件依據合同；交期以實際通知為準；單價未含稅除非另有說明。</div>
+
+      <div class="sign-section">
+        <div class="sign-box"><div class="sign-label">供應商確認</div><div class="sign-area"></div><div class="sign-line">CÔNG TY TNHH THỰC NGHIỆP VIỆT NAM THIÊN THẠC 天碩</div></div>
+        <div class="sign-box"><div class="sign-label">採購確認</div><div class="sign-area"></div><div class="sign-line">KUNYI CO., LTD</div></div>
+      </div>
+    </div>
+  </body></html>
