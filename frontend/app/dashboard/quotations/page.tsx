@@ -385,9 +385,9 @@ export default function QuotationsPage() {
       .block strong{font-weight:700}
       .meta{margin-top:2mm;margin-bottom:4mm}
       table.quote{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}
-      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;word-break:break-word;overflow-wrap:anywhere}
+      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;overflow:hidden}
       table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
-      table.quote td{height:30px}
+      table.quote td{height:30px;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
       table.quote col.seq{width:5%}
       table.quote col.product{width:49.5%}
       table.quote col.spec{width:10%}
@@ -396,14 +396,14 @@ export default function QuotationsPage() {
       table.quote col.moq{width:9%}
       table.quote col.money{width:5%}
       table.quote col.remark{width:3.5%}
-      .seq{text-align:center}
-      .product{text-align:center}
-      .spec{text-align:center}
-      .color{text-align:center;white-space:normal}
-      .unit{text-align:center}
-      .moq{text-align:center;white-space:pre-line;line-height:1.45}
-      .money{text-align:center;font-variant-numeric:tabular-nums}
-      .remark{text-align:center}
+      .seq{text-align:center;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+      .product{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
+      .spec{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
+      .color{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
+      .unit{text-align:center;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+      .moq{text-align:center;white-space:pre-line !important;line-height:1.45}
+      .money{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
+      .remark{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
       .notes{margin-top:4mm}
       .notes-title{font-weight:700;margin-bottom:4px}
       .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}

@@ -7,7 +7,7 @@ export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items .col-st{width:4%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
   table.items .col-code{width:12%;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;font-size:10px}
   table.items .col-material{width:10%;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;font-size:10px}
-  table.items .col-spec{width:10%;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;font-size:10px}
+  table.items .col-spec{width:10%;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;font-size:10px;line-height:1.25}
   table.items .col-unit{width:7%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-size:10px}
   table.items .col-qty{width:8%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-size:10px;font-variant-numeric:tabular-nums}
   table.items .col-price{width:10%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-size:10px;font-variant-numeric:tabular-nums}
@@ -15,7 +15,7 @@ export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items .col-total{width:10%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-size:10px;font-variant-numeric:tabular-nums}
   table.items .col-moq{width:8%;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important;font-size:10px;font-variant-numeric:tabular-nums}
 
-  table.items .col-name{white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.35}
+  table.items .col-name{white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.25}
   table.items .col-remark{white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
 
   .total-row td{border:1px solid #555;background:#efefef;font-weight:600;font-size:10px;padding:6px 8px;white-space:nowrap !important;overflow:hidden;overflow-wrap:normal !important;word-break:keep-all !important}
