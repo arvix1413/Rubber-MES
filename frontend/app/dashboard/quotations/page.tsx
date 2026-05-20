@@ -560,10 +560,10 @@ export default function QuotationsPage() {
   const renderTierEditor = (item: QItem, itemIndex: number, inputClass: string) => (
     <div className="w-full">
       <div className="flex items-center justify-between gap-2 mb-1">
-        <span className="text-[9px] text-slate-400 leading-none">最多 5 組，至少 1 組</span>
+        <span className="text-[10px] text-slate-400 leading-none">最多 5 組，至少 1 組</span>
         <button
           type="button"
-          className="text-[9px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300 leading-none"
+          className="text-[10px] font-medium text-[#a0541f] transition hover:text-[#7a3d14] disabled:cursor-not-allowed disabled:text-slate-300 leading-none"
           onClick={() => addItemTier(itemIndex)}
           disabled={item.moq_tiers.length >= 5}
         >
@@ -573,7 +573,7 @@ export default function QuotationsPage() {
       <div className="space-y-1">
         {item.moq_tiers.map((tier, t) => (
           <div key={t} className="flex items-center gap-1.5">
-            <span className="text-[9px] text-slate-400 w-5 text-center shrink-0 leading-none">{t + 1}</span>
+            <span className="text-[10px] text-slate-400 w-5 text-center shrink-0 leading-none">{t + 1}</span>
             <div className="flex-1 flex items-center gap-1.5">
               <DecimalInput
                 className={`${inputClass} flex-1 text-xs`}
@@ -591,7 +591,7 @@ export default function QuotationsPage() {
             </div>
             <button
               type="button"
-              className="text-xs text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300 w-5 shrink-0 leading-none"
+              className="text-[10px] text-slate-400 transition hover:text-red-600 disabled:cursor-not-allowed disabled:text-slate-300 w-5 shrink-0 leading-none"
               onClick={() => removeItemTier(itemIndex, t)}
               disabled={item.moq_tiers.length <= 1}
               title="刪除"
