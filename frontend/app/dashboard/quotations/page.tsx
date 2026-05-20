@@ -14,7 +14,7 @@ import StatusCountChips from '@/components/StatusCountChips'
 import { can } from '@/lib/usePermissions'
 
 type MoqTier = { moq: number; price: number }
-type QItem = { bom_id?:number|null; item_name:string; material_code:string; spec:string; unit:string; qty:number; unit_price:number; total_price:number; remark:string; moq_tiers:MoqTier[]; image_url?:string }
+type QItem = { bom_id?:number|null; material_id?:number|null; item_name:string; material_code:string; spec:string; unit:string; qty:number; unit_price:number; total_price:number; remark:string; moq_tiers:MoqTier[]; image_url?:string }
 type Q = { id:number; quotation_number:string; customer_name:string; customer_id?:number; status:string; total_amount:number; currency:string; valid_until:string; remark:string; created_at:string; items?:QItem[] }
 type Customer = {
   id:number
@@ -52,6 +52,26 @@ const ensureTierList = (tiers: any): MoqTier[] => {
 const emptyItem = (): QItem => ({ bom_id:null, item_name:'', material_code:'', spec:'', unit:'', qty:0, unit_price:0, total_price:0, remark:'', moq_tiers:emptyTiers(), image_url:'' })
 const normalizeTiers = (tiers: any): MoqTier[] => {
   return ensureTierList(tiers)
+}
+const findBomForQuotationItem = (boms: BOM[], item: Partial<QItem> & { material_id?: number | null; material_code?: string | null; item_name?: string | null }) => {
+  if (item.bom_id) {
+    const matchedByBomId = boms.find(b => b.id === item.bom_id)
+    if (matchedByBomId) return matchedByBomId
+  }
+  if (item.material_code) {
+    const normalizedCode = String(item.material_code).trim().toLowerCase()
+    const matchedByCode = boms.find(b => String(b.product_sku || '').trim().toLowerCase() === normalizedCode)
+    if (matchedByCode) return matchedByCode
+  }
+  if (item.material_id) {
+    const matchedByMaterialId = boms.find(b => (b as any).material_id === item.material_id)
+    if (matchedByMaterialId) return matchedByMaterialId
+  }
+  if (item.item_name) {
+    const normalizedName = String(item.item_name).trim().toLowerCase()
+    return boms.find(b => String(b.product_name || '').trim().toLowerCase() === normalizedName)
+  }
+  return undefined
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:    { label:'尚未審核', badge:'badge-gray'  },
@@ -239,9 +259,7 @@ export default function QuotationsPage() {
       valid_until: q.valid_until ? String(q.valid_until).slice(0,10) : '',
       remark: q.remark || '',
       items: (data.items || []).map((i: any) => {
-        const matchedBom = i.bom_id
-          ? boms.find(b => b.id === i.bom_id)
-          : undefined
+        const matchedBom = findBomForQuotationItem(boms, i)
         let moq_tiers = emptyTiers()
         if (i.moq_tiers) {
           moq_tiers = normalizeTiers(i.moq_tiers)
@@ -252,10 +270,11 @@ export default function QuotationsPage() {
           } catch {}
         }
         return {
-          bom_id: i.bom_id ?? null,
-          item_name: i.item_name || '',
-          material_code: i.material_code || '',
-          spec: i.spec || '',
+          bom_id: matchedBom?.id ?? null,
+          material_id: i.material_id ?? null,
+          item_name: i.item_name || matchedBom?.product_name || '',
+          material_code: i.material_code || matchedBom?.product_sku || '',
+          spec: i.spec || matchedBom?.spec || '',
           unit: i.unit || matchedBom?.unit || '',
           qty: Number(i.qty) || 0,
           unit_price: Number(i.unit_price) || 0,
@@ -517,7 +536,7 @@ export default function QuotationsPage() {
       items: p.items.map((item, i) => {
         if (i !== index) return item
         if (!bom) {
-          return { ...item, bom_id: null, material_code: '', item_name: '', spec: '', unit: '', unit_price: 0, image_url: '' }
+          return { ...item, bom_id: null, material_id: null, material_code: '', item_name: '', spec: '', unit: '', unit_price: 0, image_url: '' }
         }
         const bomTiers = normalizeMoqTiers(bom.moq_tiers)
         const tiers = ensureTierList(bomTiers.length ? bomTiers : item.moq_tiers)
@@ -525,6 +544,7 @@ export default function QuotationsPage() {
         return {
           ...item,
           bom_id: bom.id,
+          material_id: (bom as any).material_id ?? item.material_id ?? null,
           material_code: bom.product_sku,
           item_name: bom.product_name,
           spec: bom.spec || '',
@@ -538,7 +558,7 @@ export default function QuotationsPage() {
     }))
   }
   const renderTierEditor = (item: QItem, itemIndex: number, inputClass: string) => (
-    <div className="min-w-[260px] space-y-1">
+    <div className="w-full min-w-[320px] space-y-1">
       <div className="flex items-center justify-between gap-2">
         <span className="text-[10px] text-slate-400">最多 5 組，至少 1 組</span>
         <button
@@ -551,17 +571,17 @@ export default function QuotationsPage() {
         </button>
       </div>
       {item.moq_tiers.map((tier, t) => (
-        <div key={t} className="grid grid-cols-[26px_1fr_1fr_auto] gap-1 items-center">
+        <div key={t} className="grid grid-cols-[26px_minmax(96px,1fr)_minmax(110px,1fr)_auto] items-center gap-1">
           <span className="text-[10px] text-slate-400 text-center">#{t + 1}</span>
           <DecimalInput
-            className={inputClass}
+            className={`${inputClass} w-full`}
             digits={0}
             value={tier.moq}
             placeholder="MOQ"
             onValueChange={value => updateTier(itemIndex, t, 'moq', value ?? 0)}
           />
           <DecimalInput
-            className={inputClass}
+            className={`${inputClass} w-full`}
             value={tier.price}
             placeholder="單價"
             onValueChange={value => updateTier(itemIndex, t, 'price', value ?? 0)}
@@ -657,7 +677,16 @@ export default function QuotationsPage() {
           </div>
           <div className="px-6 py-4">
           <div className="detail-scroll-panel rounded-2xl border border-[#eadfce] bg-white">
-            <table className="w-full text-xs oms-table" style={{ minWidth: 1320 }}>
+            <table className="oms-table w-full table-fixed text-xs" style={{ minWidth: 1420 }}>
+              <colgroup>
+                <col style={{ width: '28%' }} />
+                <col style={{ width: '15%' }} />
+                <col style={{ width: '12%' }} />
+                <col style={{ width: '8%' }} />
+                <col style={{ width: '26%' }} />
+                <col style={{ width: '9%' }} />
+                <col style={{ width: '2%' }} />
+              </colgroup>
               <thead><tr className="border-b border-[#eadfce] bg-[#fbf6f0]">
                 {['選擇BOM','品名','規格','單位','階梯報價（MOQ / 單價）','Remark',''].map(h=>(
                   <th key={h} className="sticky top-0 z-10 bg-[#fbf6f0] px-1.5 py-2 text-left text-[10px] font-semibold uppercase whitespace-nowrap text-[#7d705f] shadow-sm">{h}</th>
@@ -666,18 +695,22 @@ export default function QuotationsPage() {
               <tbody>
                 {form.items.map((item,i)=>(
                   <tr key={i} className="border-b border-[#f0e7da] last:border-0">
-                    <td className="p-1 min-w-[260px]">
-                      <select className={inp} value={item.bom_id ? String(item.bom_id) : ''} onChange={e => onSelectBom(i, e.target.value)}>
-                        <option value="">-- 選擇 BOM --</option>
-                        {boms.map(b => <option key={b.id} value={String(b.id)}>{b.product_sku} — {b.product_name}</option>)}
-                      </select>
+                    <td className="p-1 align-top">
+                      {editingId ? (
+                        <input className={`${lockedInp} w-full`} value={item.bom_id ? `${item.material_code} — ${item.item_name}` : ''} readOnly />
+                      ) : (
+                        <select className={`${inp} w-full`} value={item.bom_id ? String(item.bom_id) : ''} onChange={e => onSelectBom(i, e.target.value)}>
+                          <option value="">-- 選擇 BOM --</option>
+                          {boms.map(b => <option key={b.id} value={String(b.id)}>{b.product_sku} — {b.product_name}</option>)}
+                        </select>
+                      )}
                     </td>
-                    <td className="p-1"><input className={lockedInp} style={{width:180}} value={item.item_name} readOnly /></td>
-                    <td className="p-1"><input className={lockedInp} style={{width:120}} value={item.spec} readOnly /></td>
-                    <td className="p-1"><input className={lockedInp} style={{width:70}} value={item.unit || ''} readOnly /></td>
+                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.item_name} readOnly /></td>
+                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.spec} readOnly /></td>
+                    <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.unit || ''} readOnly /></td>
                     <td className="p-1 align-top">{renderTierEditor(item, i, inp)}</td>
-                    <td className="p-1"><input className={inp} style={{width:180}} value={item.remark} onChange={e=>updateItem(i,'remark',e.target.value)} /></td>
-                    <td className="p-1 text-center"><button onClick={()=>removeItem(i)} className="text-slate-300 hover:text-red-600 transition-colors">✕</button></td>
+                    <td className="p-1 align-top"><input className={`${inp} w-full`} value={item.remark} onChange={e=>updateItem(i,'remark',e.target.value)} /></td>
+                    <td className="p-1 align-top text-center"><button onClick={()=>removeItem(i)} className="mt-2 text-slate-300 transition-colors hover:text-red-600">✕</button></td>
                   </tr>
                 ))}
               </tbody>
