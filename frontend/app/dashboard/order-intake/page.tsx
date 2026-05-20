@@ -1119,27 +1119,27 @@ export default function OrderIntakePage() {
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top text-right">
-                              <div className="space-y-1">
+                              <div className="flex min-h-[56px] flex-col justify-between">
                                 <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
                                 <div className="h-[17px] text-[11px] text-slate-400">{selectedNode ? `原數量 ${selectedNode.order_qty} / 已建 ${selectedNode.allocated_qty ?? 0}` : ''}</div>
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <div className="space-y-1">
+                              <div className="flex min-h-[56px] flex-col justify-between">
                                 <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
-                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <div className="space-y-1">
+                              <div className="flex min-h-[56px] flex-col justify-between">
                                 <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
-                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
                               </div>
                             </td>
                             <td className="px-3 py-2 align-top">
-                              <div className="space-y-1">
+                              <div className="flex min-h-[56px] flex-col justify-between">
                                 <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
-                                <div className="h-[17px] text-[11px] text-transparent select-none">.</div>
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
                               </div>
                             </td>
                           </tr>
@@ -1365,23 +1365,42 @@ export default function OrderIntakePage() {
                                 </div>
                               </td>
                               <td className="px-3 py-2 align-top">
-                                <div className="space-y-1">
+                                <div className="flex min-h-[56px] flex-col justify-between">
                                   <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
-                                  <div className="text-[11px] text-slate-400">
+                                  <div className="h-[17px] text-[11px] text-slate-400">
                                     {line.lineType === 'bom' && selectedNode ? `原訂單數量 ${selectedNode.order_qty}` : ''}
                                   </div>
                                 </div>
                               </td>
-                              <td className="px-3 py-2">
-                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
                               </td>
-                              <td className="px-3 py-2 text-right text-slate-500">{source?.purchased_qty ?? 0}</td>
-                              <td className="px-3 py-2 text-right text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</td>
-                              <td className="px-3 py-2">
-                                <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />
+                              <td className="px-3 py-2 align-top text-right">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <div className="h-9 content-center text-slate-500">{source?.purchased_qty ?? 0}</div>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
                               </td>
-                              <td className="px-3 py-2">
-                                <button type="button" className="btn-ghost text-xs" onClick={() => removeEditLine(line.key)}>刪除</button>
+                              <td className="px-3 py-2 align-top text-right">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <div className="h-9 content-center text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</div>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <button type="button" className="btn-ghost text-xs" onClick={() => removeEditLine(line.key)}>刪除</button>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
                               </td>
                             </tr>
                           )
