@@ -417,7 +417,7 @@ export default function OrderIntakePage() {
   }
 
   const formatCreateBomNode = (node: OrderBomNode) =>
-    `剩餘 ${node.remaining_qty ?? node.order_qty} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.customer_po_number || node.order_po_number || '-'} / 原數量 ${node.order_qty}`
+    `剩餘 ${node.remaining_qty ?? node.order_qty} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.order_po_number || '-'} / 原數量 ${node.order_qty}`
 
   const filterCreateBomNode = (node: OrderBomNode, search: string) => {
     const text = [
@@ -438,7 +438,7 @@ export default function OrderIntakePage() {
     bomId: node.bom_id || null,
     bom_sku: node.bom_sku || '',
     bom_name: node.bom_name || '',
-    orderPoNumber: node.customer_po_number || node.order_po_number || '',
+    orderPoNumber: node.order_po_number || '',
     material_code: node.bom_sku || '',
     material_name: node.bom_name || '',
     spec: '',
@@ -565,7 +565,7 @@ export default function OrderIntakePage() {
         bom_id: node.bom_id,
         bom_code: node.bom_sku,
         bom_name: node.bom_name,
-        order_po_number: line.orderPoNumber.trim() || node.customer_po_number || node.order_po_number || '',
+        order_po_number: line.orderPoNumber.trim() || node.order_po_number || '',
         customer_po_number: node.customer_po_number || '',
         planned_qty: Number(line.planned_qty),
         due_date: createForm.dueDate || node.due_date || undefined,
@@ -1080,7 +1080,7 @@ export default function OrderIntakePage() {
                       <tr className="border-b border-slate-200 bg-slate-50">
                         <th className="px-3 py-2 text-left">BOM</th>
                         <th className="px-3 py-2 text-right">本次建立數量</th>
-                        <th className="px-3 py-2 text-left">交貨 PO No.</th>
+                        <th className="px-3 py-2 text-left">來源訂單 PO No.</th>
                         <th className="px-3 py-2 text-left">備註</th>
                         <th className="px-3 py-2 text-left">操作</th>
                       </tr>
@@ -1113,7 +1113,7 @@ export default function OrderIntakePage() {
                                 {(line.bom_sku || line.bom_name) && (
                                   <div className="text-[11px] text-slate-500">
                                     {line.bom_sku || '-'} / {line.bom_name || '-'}
-                                    {selectedNode ? ` / PO ${selectedNode.customer_po_number || selectedNode.order_po_number || '-'} / 剩餘 ${selectedNode.remaining_qty ?? selectedNode.order_qty}` : ''}
+                                    {selectedNode ? ` / PO ${selectedNode.order_po_number || '-'} / 剩餘 ${selectedNode.remaining_qty ?? selectedNode.order_qty}` : ''}
                                   </div>
                                 )}
                               </div>
@@ -1126,7 +1126,7 @@ export default function OrderIntakePage() {
                             </td>
                             <td className="px-3 py-2 align-top">
                               <div className="flex min-h-[56px] flex-col justify-between">
-                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入來源訂單 PO No." />
                                 <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
                               </div>
                             </td>
@@ -1320,7 +1320,7 @@ export default function OrderIntakePage() {
                         <tr className="border-b border-slate-200 bg-slate-50">
                           <th className="px-3 py-2 text-left">BOM</th>
                           <th className="px-3 py-2 text-right">訂單數量</th>
-                          <th className="px-3 py-2 text-left">交貨 PO No.</th>
+                          <th className="px-3 py-2 text-left">來源訂單 PO No.</th>
                           <th className="px-3 py-2 text-right">已採購</th>
                           <th className="px-3 py-2 text-right">缺口</th>
                           <th className="px-3 py-2 text-left">備註</th>
@@ -1374,7 +1374,7 @@ export default function OrderIntakePage() {
                               </td>
                               <td className="px-3 py-2 align-top">
                                 <div className="flex min-h-[56px] flex-col justify-between">
-                                  <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入 PO No." />
+                                  <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入來源訂單 PO No." />
                                   <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
                                 </div>
                               </td>

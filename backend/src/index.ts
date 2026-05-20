@@ -1628,7 +1628,7 @@ const syncDeliveryProgressItems = async (
         throw new Error(`BOM ${context.bom_code || context.bom_name || context.order_item_id} 剩餘可建立數量不足，最多 ${remainingQty}`)
       }
       const effectiveDueDate = dueDate || context.due_date || null
-      const effectivePoNumber = orderPoNumber || customerPoNumber || context.customer_po_number || context.order_po_number || ''
+      const effectivePoNumber = orderPoNumber || context.order_po_number || ''
       const effectiveCustomerPoNumber = customerPoNumber || context.customer_po_number || ''
       const changedSnapshotSource = !!existingItem && (
         normalizeProgressItemLineType(existingItem.line_type) !== 'bom'
@@ -1851,7 +1851,7 @@ const syncDeliveryNoteFromProgress = async (
     const itemCode = String(lineType === 'bom' ? (item.bom_code || item.material_code || '') : (item.material_code || '')).trim()
     const itemName = String(lineType === 'bom' ? (item.bom_name || item.material_name || '') : (item.material_name || '')).trim()
     const materialId = lineType === 'bom' ? null : await resolveMaterialId(null, itemCode, db)
-    const itemPoRef = String(item.order_po_number || item.customer_po_number || progressPoRef || '').trim()
+    const itemPoRef = String(item.order_po_number || progressPoRef || '').trim()
     await execute(
       'INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
       [
