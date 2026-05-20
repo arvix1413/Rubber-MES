@@ -1888,6 +1888,19 @@ const toDateStr = (value: any): string => {
   return `${y}-${m}-${day}`
 }
 
+const addMonthsDateStr = (dateText: string, months: number): string => {
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(String(dateText || '').trim())
+  if (!match) return toDateStr(dateText)
+  const base = new Date(Number(match[1]), Number(match[2]) - 1, Number(match[3]))
+  if (Number.isNaN(base.getTime())) return toDateStr(dateText)
+  const next = new Date(base)
+  next.setMonth(next.getMonth() + months)
+  const y = next.getFullYear()
+  const m = String(next.getMonth() + 1).padStart(2, '0')
+  const day = String(next.getDate()).padStart(2, '0')
+  return `${y}-${m}-${day}`
+}
+
 const toPeriod = (dateStr: string): string => {
   return dateStr.slice(0, 7).replace('-', '')
 }
@@ -3655,8 +3668,11 @@ app.post('/api/quotations', authMiddleware, requirePerm('customer_order.create')
     const b = await c.req.json(); const u = c.get('user')
     const qNum = `QT${Date.now()}`
     const total = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
+    const createdAt = now8()
+    const issueDate = toDateStr(createdAt)
+    const validUntil = b.valid_until ? toDateStr(b.valid_until) : addMonthsDateStr(issueDate, 6)
     const r = await execute('INSERT INTO quotations (quotation_number,customer_id,customer_name,status,total_amount,currency,valid_until,remark,created_by,created_at) VALUES (?,?,?,?,?,?,?,?,?,?)',
-      [qNum,b.customer_id||null,b.customer_name,'draft',total,b.currency||'VND',b.valid_until||null,b.remark||'',u.userId,now8()])
+      [qNum,b.customer_id||null,b.customer_name,'draft',total,b.currency||'VND',validUntil,b.remark||'',u.userId,createdAt])
     const qId = r.insertId
     if (b.items?.length) {
       for (const item of b.items) {

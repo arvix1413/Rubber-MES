@@ -28,6 +28,23 @@ type BOM = { id:number; product_sku:string; product_name:string; spec:string; un
 
 const emptyTier = (): MoqTier => ({ moq: 0, price: 0 })
 const emptyTiers = (count = 1): MoqTier[] => Array.from({ length: Math.min(5, Math.max(1, count)) }, emptyTier)
+const pad2 = (value: number) => String(value).padStart(2, '0')
+const formatLocalYmd = (date: Date) => `${date.getFullYear()}-${pad2(date.getMonth() + 1)}-${pad2(date.getDate())}`
+const addMonthsYmd = (dateText: string, months: number) => {
+  const normalized = String(dateText || '').trim().replace(/\//g, '-')
+  if (!normalized) return ''
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(normalized)
+  if (!match) return normalized
+  const year = Number(match[1])
+  const monthIndex = Number(match[2]) - 1
+  const day = Number(match[3])
+  const base = new Date(year, monthIndex, day)
+  if (Number.isNaN(base.getTime())) return normalized
+  const next = new Date(base)
+  next.setMonth(next.getMonth() + months)
+  return formatLocalYmd(next)
+}
+const defaultQuotationValidUntil = () => addMonthsYmd(formatLocalYmd(new Date()), 6)
 const ensureTierList = (tiers: any): MoqTier[] => {
   const normalized = normalizeMoqTiers(tiers)
   return normalized.length ? normalized.slice(0, 5) : emptyTiers()
@@ -82,7 +99,7 @@ export default function QuotationsPage() {
   const [loadedItems, setLoadedItems] = useState<Record<number, QItem[]>>({})
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [form, setForm] = useState({ customer_id: '', customer_name:'', currency:'VND', valid_until:'', remark:'', items:[emptyItem()] })
+  const [form, setForm] = useState({ customer_id: '', customer_name:'', currency:'VND', valid_until: defaultQuotationValidUntil(), remark:'', items:[emptyItem()] })
   const [loading, setLoading] = useState(true)
   const [mounted, setMounted] = useState(false)
   const [search, setSearch] = useState('')
@@ -126,7 +143,7 @@ export default function QuotationsPage() {
   },[])
 
   const resetForm = (opts: { keepCreating?: boolean } = {}) => {
-    setForm({ customer_id:'', customer_name:'', currency:'VND', valid_until:'', remark:'', items:[emptyItem()] })
+    setForm({ customer_id:'', customer_name:'', currency:'VND', valid_until: defaultQuotationValidUntil(), remark:'', items:[emptyItem()] })
     if (!opts.keepCreating) setCreating(false)
     setEditingId(null)
   }
@@ -271,16 +288,6 @@ export default function QuotationsPage() {
       .replace(/</g, '&lt;')
       .replace(/>/g, '&gt;')
       .replace(/"/g, '&quot;')
-    const addMonths = (dateText: string, months: number) => {
-      const normalized = txt(dateText).replace(/\//g, '-')
-      if (!normalized) return ''
-      const base = new Date(normalized)
-      if (Number.isNaN(base.getTime())) return txt(dateText)
-      const next = new Date(base)
-      next.setMonth(next.getMonth() + months)
-      return next.toISOString().slice(0, 10).replace(/-/g, '/')
-    }
-
     const [data, company] = await Promise.all([
       apiFetch<Q>(`/api/quotations/${id}`),
       getCompany(),
@@ -296,10 +303,10 @@ export default function QuotationsPage() {
     const customerAddress = txt(customerDetail?.address)
     const customerPhone = txt(customerDetail?.phone)
     const customerContact = txt(customerDetail?.contact)
-    const issueDate = String(q.created_at || '').slice(0,10).replace(/-/g, '/')
-    const expireDate = q.valid_until
-      ? String(q.valid_until).slice(0,10).replace(/-/g, '/')
-      : addMonths(issueDate, 6)
+    const issueDateRaw = String(quotation.created_at || q.created_at || '').slice(0,10)
+    const issueDate = issueDateRaw ? issueDateRaw.replace(/-/g, '/') : ''
+    const expireDateRaw = String(quotation.valid_until || q.valid_until || '').slice(0,10) || addMonthsYmd(issueDateRaw, 6)
+    const expireDate = expireDateRaw ? expireDateRaw.replace(/-/g, '/') : ''
     const todayRateLine = txt(q.currency) === 'USD' ? '匯率: 1 USD = 26,500 VND' : ''
 
     const itemRows = items.map((item: any, idx: number) => {
