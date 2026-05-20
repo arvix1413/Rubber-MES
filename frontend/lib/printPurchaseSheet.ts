@@ -83,16 +83,18 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
       .po-ref-title { font-size: 10px; font-weight: 600; color: #333; margin-bottom: 4px; }
       .po-ref-list { font-size: 10px; line-height: 1.55; color: #222; word-break: break-word; }
       table.items.po-items { table-layout: fixed; }
+      table.items.po-items th,
+      table.items.po-items td { overflow: hidden; }
       table.items.po-items .col-st { width: 4%; }
-      table.items.po-items .col-code { width: 20%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+      table.items.po-items .col-code { width: 18%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
       table.items.po-items .col-material { width: 8%; }
-      table.items.po-items .col-name { width: 17%; }
-      table.items.po-items .col-spec { width: 10%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
-      table.items.po-items .col-qty { width: 6%; }
-      table.items.po-items .col-unit { width: 5%; }
-      table.items.po-items .col-price { width: 8%; }
-      table.items.po-items .col-total { width: 8%; }
-      table.items.po-items .col-remark { width: 14%; }
+      table.items.po-items .col-name { width: 15%; }
+      table.items.po-items .col-spec { width: 9%; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+      table.items.po-items .col-qty { width: 6%; font-size: 10px; }
+      table.items.po-items .col-unit { width: 6%; font-size: 10px; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; line-height: 1.25; }
+      table.items.po-items .col-price { width: 9%; font-size: 10px; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; line-height: 1.25; }
+      table.items.po-items .col-total { width: 9%; font-size: 10px; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; line-height: 1.25; }
+      table.items.po-items .col-remark { width: 16%; font-size: 10px; }
 	    .remark-box { border: 1px solid #bbb; padding: 6px 10px; min-height: 18mm; font-size: 10px; font-weight: 400; margin-top: 5mm; }
 	    .remark-title { font-weight: 600; margin-bottom: 4px; font-size: 10px; }
 	    .terms { border: 1px solid #ccc; padding: 6px 10px; margin-top: 4mm; font-size: 9px; font-weight: 400; line-height: 1.5; color: #555; }
