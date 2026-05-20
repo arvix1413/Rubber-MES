@@ -696,14 +696,10 @@ export default function QuotationsPage() {
                 {form.items.map((item,i)=>(
                   <tr key={i} className="border-b border-[#f0e7da] last:border-0">
                     <td className="p-1 align-top">
-                      {editingId ? (
-                        <input className={`${lockedInp} w-full`} value={item.bom_id ? `${item.material_code} — ${item.item_name}` : ''} readOnly />
-                      ) : (
-                        <select className={`${inp} w-full`} value={item.bom_id ? String(item.bom_id) : ''} onChange={e => onSelectBom(i, e.target.value)}>
-                          <option value="">-- 選擇 BOM --</option>
-                          {boms.map(b => <option key={b.id} value={String(b.id)}>{b.product_sku} — {b.product_name}</option>)}
-                        </select>
-                      )}
+                      <select className={`${inp} w-full`} value={item.bom_id ? String(item.bom_id) : ''} onChange={e => onSelectBom(i, e.target.value)}>
+                        <option value="">-- 選擇 BOM --</option>
+                        {boms.map(b => <option key={b.id} value={String(b.id)}>{b.product_sku} — {b.product_name}</option>)}
+                      </select>
                     </td>
                     <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.item_name} readOnly /></td>
                     <td className="p-1 align-top"><input className={`${lockedInp} w-full`} value={item.spec} readOnly /></td>
