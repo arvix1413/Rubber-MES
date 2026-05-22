@@ -25,7 +25,7 @@ export function generateDeliverySheetHTML(data: any, signatureUrl?: string, comp
     email: '',
     logo_url: null,
   }
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.160.199.226:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
   const signatureConfig = getPrintSignatureConfig(co)
   const items: any[] = Array.isArray(data.items) ? data.items : []

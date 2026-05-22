@@ -6,22 +6,17 @@ Rubber MES 是橡胶业务用的制造执行 / 订单执行系统。它和 `oms-
 
 ## 1. Current Environment
 
-### Branch To Environment
-- `stg` -> STG 环境，服务器 `43.133.56.234`
-- `prd` -> PRD 环境，服务器 `43.160.199.226`
+当前仅保留 **PRD** 环境，服务器 `43.160.199.226`，部署目录 `/opt/rubber`。
 
 ### Online URLs
-- STG 前端: `http://43.133.56.234:10101`
-- STG 后端: `http://43.133.56.234:10102`
-- STG MySQL: `43.133.56.234:10103`
-- PRD 前端: `http://43.160.199.226:10101`
-- PRD 后端: `http://43.160.199.226:10102`
-- PRD MySQL: `43.160.199.226:10103`
+- 前端: `http://43.160.199.226:10101`
+- 后端: `http://43.160.199.226:10102`
+- MySQL: `43.160.199.226:10103`
 
 ### Account Access
 - 请使用个人账号登录
-- PRD 共享排查账号: `admin@rubber.local`
-- PRD 当前密码: `Make$45617`
+- 共享排查账号: `admin@rubber.local`
+- 当前密码: `Make$45617`
 - 上述共享账号仅限内部排查、回归测试、紧急部署验证
 - 如需开通或重置个人账号，请由管理员处理
 
@@ -206,15 +201,14 @@ cd ../backend && npm run build
 发布以 GitHub Actions 为准。
 
 ### Release Rule
-- 需要发布时，只做 `git push`
+- 需要发布时，向 `prd` 分支做 `git push`
 - 不要手工跑 `deploy-local.sh`
 - 不要手工 SSH 到服务器执行部署
-- `push stg` 会自动发 STG
-- `push prd` 会自动发 PRD
+- `push prd` 会自动发布到 PRD
 
 ### Workflow
 - 文件: [/.github/workflows/deploy-rubber.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/deploy-rubber.yml)
-- 触发条件: push 到 `stg` 或 `prd`
+- 触发条件: push 到 `prd`
 - 流程:
   1. checkout
   2. 登录 Docker Hub

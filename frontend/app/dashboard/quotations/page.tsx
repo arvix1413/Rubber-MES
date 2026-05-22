@@ -8,7 +8,7 @@ import { useSearchParams } from 'next/navigation'
 import { formatDecimal, formatInteger } from '@/lib/numberFormat'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
-import { getPrintSignatureConfig } from '@/lib/printSignature'
+import { generateQuotationHTML, openQuotationPrint } from '@/lib/printQuotation'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
 import StatusCountChips from '@/components/StatusCountChips'
 import { can } from '@/lib/usePermissions'
@@ -291,200 +291,27 @@ export default function QuotationsPage() {
   }
 
   const printQuotation = async (id: number, q: Q) => {
-    const txt = (v: any) => {
-      if (v === null || v === undefined) return ''
-      const s = String(v).trim()
-      if (!s || s === 'null' || s === 'undefined' || s === '—' || s === '-') return ''
-      return s
-    }
-    const num = (v: any) => {
-      const n = Number(v)
-      return Number.isFinite(n) ? n : 0
-    }
-    const fmt = (v: any) => formatDecimal(num(v))
-    const escapeHtml = (v: any) => txt(v)
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
     const [data, company] = await Promise.all([
       apiFetch<Q>(`/api/quotations/${id}`),
       getCompany(),
     ])
-    const quotation = data as any
-    const items = data.items || []
-    const signatureConfig = getPrintSignatureConfig(company)
+    const quotation = data as Record<string, unknown>
     const signUrl = quotation.status !== 'draft' ? (getCompanySignatureUrl(company) || '') : ''
     const rawCustomerId = quotation.customer_id ?? q.customer_id
     const customerDetail = rawCustomerId
       ? customers.find(c => String(c.id) === String(rawCustomerId))
       : customers.find(c => c.customer_name === q.customer_name)
-    const customerAddress = txt(customerDetail?.address)
-    const customerPhone = txt(customerDetail?.phone)
-    const customerContact = txt(customerDetail?.contact)
-    const issueDateRaw = String(quotation.created_at || q.created_at || '').slice(0,10)
-    const issueDate = issueDateRaw ? issueDateRaw.replace(/-/g, '/') : ''
-    const expireDateRaw = String(quotation.valid_until || q.valid_until || '').slice(0,10) || addMonthsYmd(issueDateRaw, 6)
-    const expireDate = expireDateRaw ? expireDateRaw.replace(/-/g, '/') : ''
-    const todayRateLine = txt(q.currency) === 'USD' ? '匯率: 1 USD = 26,500 VND' : ''
-
-    const itemRows = items.map((item: any, idx: number) => {
-      const matchedBom = item.bom_id
-        ? boms.find(b => b.id === item.bom_id)
-        : undefined
-      const spec = txt(item.spec || matchedBom?.spec)
-      const color = txt((matchedBom as any)?.color)
-      const moqTiers = normalizeMoqTiers(item.moq_tiers)
-      const moqDisplay = moqTiers.length
-        ? moqTiers.map((tier) => `${formatInteger(tier.moq)}:${formatDecimal(tier.price)}`).join('\n')
-        : ''
-      const unitPrice = num(item.unit_price)
-      const usdPrice = txt(q.currency).toUpperCase() === 'USD' ? fmt(unitPrice) : ''
-      const vndPrice = txt(q.currency).toUpperCase() === 'VND' ? fmt(unitPrice) : ''
-      const remark = txt(item.remark)
-      const displayRemark = remark || (txt(q.currency).toUpperCase() === 'TWD' ? `Price in ${escapeHtml(q.currency)}` : '')
-
-      return `
-      <tr>
-        <td class="seq">${idx + 1}</td>
-        <td class="product">${escapeHtml(item.item_name)}</td>
-        <td class="spec">${escapeHtml(spec)}</td>
-        <td class="color">${escapeHtml(color)}</td>
-        <td class="unit">${escapeHtml(txt(item.unit) || 'PCS')}</td>
-        <td class="moq">${escapeHtml(moqDisplay)}</td>
-        <td class="money">${usdPrice}</td>
-        <td class="money">${vndPrice}</td>
-        <td class="remark">${escapeHtml(displayRemark)}</td>
-      </tr>`
-    }).join('')
-
-    const validityLine = '報價有效期限 / Quotation validity: This quotation is valid for six months from the date of issue.'
-    const noteLines = [
-      txt(q.remark),
-      validityLine,
-      '付款條件 / Payment: according to sales contract.',
-      '交貨日期 / Lead time: to be confirmed by each product and final order arrangement.',
-      '交貨方式 / Delivery: Vietnam local door to door.',
-      '單價不含 VAT / Price excluding VAT.',
-      '任何問題根據合同內容討論 / Any concern according to sales contract.',
-      todayRateLine,
-      txt(company.company_name),
-    ].filter(Boolean)
-    const noteText = noteLines.join('\n')
-
-    const html = `<!DOCTYPE html><html lang="zh-TW"><head><meta charset="utf-8"/>
-    <title>報價單 ${txt(quotation.quotation_number || q.quotation_number)}</title>
-    <style>
-      *{box-sizing:border-box;margin:0;padding:0}
-      body{font-family:"Microsoft JhengHei","PingFang TC",Arial,sans-serif;font-size:11px;color:#111;background:#fff}
-      .page{padding:8mm 8mm 10mm;max-width:210mm;margin:0 auto}
-      .topbar{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:4mm}
-      .title{font-size:24px;font-weight:700;letter-spacing:.5px}
-      .doc-no{font-size:11px;font-weight:600;text-align:right;margin-top:4px}
-      .block{margin-bottom:5px;font-size:11px;line-height:1.45}
-      .block strong{font-weight:700}
-      .meta{margin-top:2mm;margin-bottom:4mm}
-      table.quote{width:100%;border-collapse:collapse;table-layout:fixed;margin-top:3mm}
-      table.quote th,table.quote td{border:1px solid #444;padding:6px 5px;font-size:10px;vertical-align:middle;overflow:hidden}
-      table.quote th{background:#f2f2f2;font-weight:700;text-align:center;white-space:pre-line}
-      table.quote td{height:30px;white-space:normal;overflow-wrap:anywhere;word-break:break-word}
-      table.quote col.seq{width:5%}
-      table.quote col.product{width:49.5%}
-      table.quote col.spec{width:10%}
-      table.quote col.color{width:8%}
-      table.quote col.unit{width:5%}
-      table.quote col.moq{width:9%}
-      table.quote col.money{width:5%}
-      table.quote col.remark{width:3.5%}
-      .seq{text-align:center;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
-      .product{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
-      .spec{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
-      .color{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
-      .unit{text-align:center;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
-      .moq{text-align:center;white-space:pre-line !important;line-height:1.45}
-      .money{text-align:center;font-variant-numeric:tabular-nums;white-space:nowrap !important;overflow-wrap:normal !important;word-break:keep-all !important}
-      .remark{text-align:center;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important}
-      .notes{margin-top:4mm}
-      .notes-title{font-weight:700;margin-bottom:4px}
-      .notes-body{white-space:pre-line;line-height:1.6;font-size:10px}
-      .footer{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
-      .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
-      .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-      .sign-area{flex:1;min-height:${signatureConfig.areaMinHeight}px;display:flex;align-items:center;justify-content:center}
-      .sign-area img{${signatureConfig.imgStyle}}
-      .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
-      @media print{body{-webkit-print-color-adjust:exact}@page{size:A4;margin:0}}
-    </style></head><body>
-    <div class="page">
-      <div class="topbar">
-        <div>
-          <div class="title">報價單 QUOTATION</div>
-        </div>
-        <div>
-          <div class="doc-no">No. ${escapeHtml(quotation.quotation_number || q.quotation_number)}</div>
-        </div>
-      </div>
-
-      <div class="meta">
-        <div class="block"><strong>公司名稱 Company Name:</strong> ${escapeHtml(company.company_name)}</div>
-        <div class="block"><strong>地址 Address:</strong> ${escapeHtml(company.address)}</div>
-        <div class="block"><strong>電話 Tel:</strong> ${escapeHtml(company.phone)}</div>
-        <div class="block"><strong>聯繫人 Contact person:</strong> ${escapeHtml(company.contact_person)}</div>
-        <div class="block"><strong>報價日期 Date Issue:</strong> ${escapeHtml(issueDate)}</div>
-        <div class="block"><strong>報價期限 Date Expire:</strong> ${escapeHtml(expireDate)}</div>
-        <div class="block"><strong>客戶工廠名稱 Company Name:</strong> ${escapeHtml(q.customer_name)}</div>
-        <div class="block"><strong>地址 Address:</strong> ${escapeHtml(customerAddress)}</div>
-        <div class="block"><strong>電話 Tel:</strong> ${escapeHtml(customerPhone)}</div>
-        <div class="block"><strong>聯繫人 Contact person:</strong> ${escapeHtml(customerContact)}</div>
-      </div>
-
-      <table class="quote">
-        <colgroup>
-          <col class="seq"/>
-          <col class="product"/>
-          <col class="spec"/>
-          <col class="color"/>
-          <col class="unit"/>
-          <col class="moq"/>
-          <col class="money"/>
-          <col class="money"/>
-          <col class="remark"/>
-        </colgroup>
-        <thead><tr>
-          <th>項目\nItem</th>
-          <th>產品 Products</th>
-          <th>規格\nSpec</th>
-          <th>顏色\nColor</th>
-          <th>單位\nUnit</th>
-          <th>MOQ / 單價</th>
-          <th>美金價\nPrice USD</th>
-          <th>越盾價\nVND</th>
-          <th>備註</th>
-        </tr></thead>
-        <tbody>${itemRows}</tbody>
-      </table>
-
-      <div class="notes">
-        <div class="notes-title">備註 Mark</div>
-        <div class="notes-body">${escapeHtml(noteText)}</div>
-      </div>
-
-      <div class="footer">
-        <div class="sign-box">
-          <div class="sign-label">我方確認</div>
-          <div class="sign-area">${signUrl ? `<img src="${signUrl}" onerror="this.style.display='none'"/>` : ''}</div>
-          <div class="sign-line">${escapeHtml(company.company_name)}</div>
-        </div>
-        <div class="sign-box">
-          <div class="sign-label">客戶簽章</div>
-          <div class="sign-area"></div>
-          <div class="sign-line">${escapeHtml(q.customer_name)}</div>
-        </div>
-      </div>
-    </div>
-    </body></html>`
-    const w = window.open('','_blank','width=900,height=1200')
-    if (w) { w.document.write(html); w.document.close(); setTimeout(()=>w.print(),600) }
+    const html = generateQuotationHTML({
+      quotation,
+      q: q as unknown as Record<string, unknown>,
+      company,
+      signUrl,
+      customerDetail: customerDetail
+        ? { address: customerDetail.address, phone: customerDetail.phone, contact: customerDetail.contact }
+        : null,
+      boms,
+    })
+    openQuotationPrint(html)
   }
   const addItem = () => setForm(p=>({...p,items:[...p.items,emptyItem()]}))
   const removeItem = (i:number) => setForm(p=>({...p,items:p.items.filter((_,idx)=>idx!==i)}))

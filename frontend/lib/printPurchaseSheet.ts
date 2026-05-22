@@ -38,7 +38,7 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
     contact_person: '',
     logo_url: null,
   }
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.160.199.226:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
   const signatureConfig = getPrintSignatureConfig(co)
 
@@ -82,21 +82,17 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
       .po-ref-box { border: 1px solid #bbb; padding: 6px 8px; margin-bottom: 4mm; }
       .po-ref-title { font-size: 10px; font-weight: 600; color: #333; margin-bottom: 4px; }
       .po-ref-list { font-size: 10px; line-height: 1.55; color: #222; word-break: break-word; }
-      table.items.po-items { table-layout: fixed; }
-      table.items.po-items th,
-      table.items.po-items td { overflow: hidden; }
       table.items.po-items .col-st { width: 4%; }
-      table.items.po-items .col-code { width: 15%; font-size: 9px; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; }
+      table.items.po-items .col-code { width: 15%; font-size: 9px; }
       table.items.po-items .col-material { width: 7%; font-size: 10px; }
       table.items.po-items .col-name { width: 13%; font-size: 9px; line-height: 1.25; }
-      table.items.po-items .col-spec { width: 8%; font-size: 9px; white-space: normal !important; overflow-wrap: anywhere !important; word-break: break-word !important; line-height: 1.25; }
-      table.items.po-items .col-qty { width: 5%; font-size: 10px; white-space: nowrap !important; overflow-wrap: normal !important; word-break: keep-all !important; }
-      table.items.po-items .col-unit { width: 7%; font-size: 9px; white-space: nowrap !important; overflow-wrap: normal !important; word-break: keep-all !important; }
-      table.items.po-items .col-price { width: 10%; font-size: 9px; white-space: nowrap !important; overflow-wrap: normal !important; word-break: keep-all !important; }
-      table.items.po-items .col-total { width: 11%; font-size: 9px; white-space: nowrap !important; overflow-wrap: normal !important; word-break: keep-all !important; }
+      table.items.po-items .col-spec { width: 8%; font-size: 9px; line-height: 1.25; }
+      table.items.po-items .col-qty { width: 5%; font-size: 10px; }
+      table.items.po-items .col-unit { width: 7%; font-size: 9px; }
+      table.items.po-items .col-price { width: 10%; font-size: 9px; }
+      table.items.po-items .col-total { width: 11%; font-size: 9px; }
       table.items.po-items .col-remark { width: 20%; font-size: 9px; line-height: 1.25; }
       .po-items .total-label { text-align: right; padding-right: 10px; }
-      .po-items .total-value { white-space: nowrap !important; overflow-wrap: normal !important; word-break: keep-all !important; }
       .po-items .total-value { font-size: 10px; text-align: right; }
 	    .remark-box { border: 1px solid #bbb; padding: 6px 10px; min-height: 18mm; font-size: 10px; font-weight: 400; margin-top: 5mm; }
 	    .remark-title { font-weight: 600; margin-bottom: 4px; font-size: 10px; }
