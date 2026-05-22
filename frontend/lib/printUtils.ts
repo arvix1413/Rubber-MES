@@ -49,7 +49,7 @@ body{
 .mono{font-family:inherit;font-variant-numeric:tabular-nums;letter-spacing:.2px}
 table{width:100%;border-collapse:collapse;margin-top:7px;table-layout:fixed}
 th,td{border:1px solid #334155;padding:4px 5px;vertical-align:middle;overflow:hidden}
-th{background:#e2e8f0;text-align:center;font-size:12px;font-weight:700;color:#0f172a;white-space:nowrap;text-overflow:ellipsis}
+th{background:#e2e8f0;text-align:center;font-size:12px;font-weight:700;color:#0f172a;white-space:pre-line;line-height:1.25;overflow:visible;text-overflow:clip;word-break:keep-all}
 td{text-align:center;font-size:12px;word-break:break-word;overflow-wrap:anywhere}
 td.num,td.r,td.right,.print-num{max-width:0;white-space:nowrap !important;word-break:keep-all !important;overflow-wrap:normal !important;text-overflow:ellipsis;font-variant-numeric:tabular-nums}
 thead{display:table-header-group}

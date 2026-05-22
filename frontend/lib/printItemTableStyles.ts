@@ -1,18 +1,34 @@
 /**
  * 打印明細表共用樣式。
- * 數字列：單行不換行 + table-layout:fixed 下不撐破格線（max-width:0 + overflow:hidden）。
+ * 表頭：完整顯示、可換行，不省略。
+ * 數字格（td）：單行不換行 + 不越框（max-width:0 + ellipsis）。
  */
 
-/** 表格內數字/序號/單位等緊湊欄位（th/td） */
+/** 表頭：全局不省略，雙語標題用換行 */
+export const SHARED_PRINT_TABLE_HEADER_CSS = `
+  table.items th {
+    max-width:none !important;
+    white-space:pre-line !important;
+    overflow:visible !important;
+    overflow-wrap:normal !important;
+    word-break:keep-all !important;
+    text-overflow:clip !important;
+    line-height:1.25;
+    vertical-align:middle;
+    padding:5px 4px;
+  }
+`
+
+/** 表格內數字/序號/單位等緊湊欄位（僅 td，表頭不走省略） */
 export const SHARED_PRINT_NUMERIC_CELL_CSS = `
-  table.items :is(th,td).col-st,
-  table.items :is(th,td).col-unit,
-  table.items :is(th,td).col-qty,
-  table.items :is(th,td).col-price,
-  table.items :is(th,td).col-amt,
-  table.items :is(th,td).col-total,
-  table.items :is(th,td).col-moq,
-  table.items.quote-items :is(th,td).col-remark {
+  table.items td.col-st,
+  table.items td.col-unit,
+  table.items td.col-qty,
+  table.items td.col-price,
+  table.items td.col-amt,
+  table.items td.col-total,
+  table.items td.col-moq,
+  table.items.quote-items td.col-remark {
     max-width:0;
     white-space:nowrap !important;
     overflow:hidden !important;
@@ -23,7 +39,7 @@ export const SHARED_PRINT_NUMERIC_CELL_CSS = `
     vertical-align:middle;
   }
 
-  table.items :is(td).col-moq {
+  table.items td.col-moq {
     white-space:normal !important;
   }
 
@@ -75,10 +91,11 @@ export const SHARED_PRINT_NUMERIC_MISC_CSS = `
 
 export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items{width:100%;border-collapse:collapse;table-layout:fixed;margin-bottom:5mm}
-  table.items th{border:1px solid #555;background:#e8e8e8;padding:6px 6px;text-align:center;font-size:10px;font-weight:600;color:#000;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  table.items th{border:1px solid #555;background:#e8e8e8;text-align:center;font-size:10px;font-weight:600;color:#000}
   table.items td{border:1px solid #bbb;padding:5px 6px;font-size:11px;font-weight:400;color:#000;white-space:normal;overflow:hidden;overflow-wrap:anywhere;word-break:break-word;vertical-align:top;text-align:center;line-height:1.3}
   table.items tbody tr:nth-child(even){background:#fafafa}
 
+  ${SHARED_PRINT_TABLE_HEADER_CSS}
   ${SHARED_PRINT_NUMERIC_CELL_CSS}
   ${SHARED_PRINT_NUMERIC_MISC_CSS}
 
@@ -100,7 +117,7 @@ export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items .total-row .total-label{white-space:nowrap !important;overflow:hidden;text-overflow:ellipsis;max-width:none;text-align:right}
 `
 
-/** 報價單明細表：僅覆寫列寬；數字列規則沿用 SHARED_PRINT_NUMERIC_* */
+/** 報價單明細表：僅覆寫列寬；表頭/數字規則沿用共用樣式 */
 export const SHARED_PRINT_QUOTATION_ITEM_TABLE_CSS = `
   table.items.quote-items .col-st{width:4%}
   table.items.quote-items .col-name{width:30%;white-space:normal !important;overflow-wrap:anywhere !important;word-break:break-word !important;line-height:1.25;max-width:none}
@@ -111,17 +128,6 @@ export const SHARED_PRINT_QUOTATION_ITEM_TABLE_CSS = `
   table.items.quote-items .col-price{width:8%;font-size:10px}
   table.items.quote-items .col-amt{width:9%;font-size:10px}
   table.items.quote-items .col-remark{width:14%;font-size:10px}
-
-  table.items.quote-items th{white-space:pre-line;line-height:1.25;max-width:none}
-  table.items.quote-items th.col-st,
-  table.items.quote-items th.col-unit,
-  table.items.quote-items th.col-moq,
-  table.items.quote-items th.col-price,
-  table.items.quote-items th.col-amt,
-  table.items.quote-items th.col-remark {
-    max-width:0;
-    overflow:hidden;
-  }
   table.items.quote-items td{min-height:28px}
 `
 
