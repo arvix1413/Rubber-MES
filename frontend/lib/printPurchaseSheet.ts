@@ -85,7 +85,7 @@ export function generatePurchaseSheetHTML(data: any, signatureUrl?: string, comp
       table.items.po-items .col-code { min-width: 12%; font-size: 9px; }
       table.items.po-items .col-material { min-width: 6%; font-size: 10px; }
       table.items.po-items .col-name { min-width: 10%; font-size: 9px; line-height: 1.25; }
-      table.items.po-items .col-spec { min-width: 6%; font-size: 9px; line-height: 1.25; }
+      table.items.po-items .col-spec { font-size: 9px; line-height: 1.25; }
       table.items.po-items .col-qty { font-size: 10px; }
       table.items.po-items .col-unit { font-size: 9px; }
       table.items.po-items .col-price { font-size: 9px; }

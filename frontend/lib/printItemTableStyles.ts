@@ -1,7 +1,7 @@
 /**
  * 打印明細表共用樣式。
  * - 表頭：完整顯示（pre-line），不省略。
- * - 數字格：單行不換行，列寬隨內容撐開（table-layout:auto + width:1%），PDF 不出現省略號。
+ * - 數字/規格列：單行不換行，列寬隨內容撐開（table-layout:auto + width:1%），PDF 不出現省略號。
  */
 
 /** 表頭：全局不省略，雙語標題用換行 */
@@ -19,9 +19,10 @@ export const SHARED_PRINT_TABLE_HEADER_CSS = `
   }
 `
 
-/** 數字/序號/單位：不換行，列寬隨內容自增（不用 ellipsis） */
+/** 數字/規格/序號/單位：不換行，列寬隨內容自增（不用 ellipsis） */
 export const SHARED_PRINT_NUMERIC_CELL_CSS = `
   table.items :is(td,th).col-st,
+  table.items :is(td,th).col-spec,
   table.items :is(td,th).col-unit,
   table.items :is(td,th).col-qty,
   table.items :is(td,th).col-price,
@@ -40,6 +41,7 @@ export const SHARED_PRINT_NUMERIC_CELL_CSS = `
   }
 
   table.items th.col-st,
+  table.items th.col-spec,
   table.items th.col-unit,
   table.items th.col-qty,
   table.items th.col-price,
@@ -109,7 +111,7 @@ export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items .col-st{font-size:10px}
   table.items .col-code{font-size:10px;min-width:8%}
   table.items .col-material{font-size:10px;min-width:7%}
-  table.items .col-spec{font-size:10px;line-height:1.25;min-width:7%}
+  table.items .col-spec{font-size:10px;line-height:1.25}
   table.items .col-unit{font-size:10px}
   table.items .col-qty{font-size:10px}
   table.items .col-price{font-size:10px}
