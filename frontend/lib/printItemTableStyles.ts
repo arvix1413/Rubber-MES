@@ -117,18 +117,31 @@ export const SHARED_PRINT_ITEM_TABLE_CSS = `
   table.items .col-total{font-size:10px}
   table.items .col-moq{font-size:10px}
 
-  table.items .col-name{line-height:1.25;min-width:12%}
+  table.items .col-name{line-height:1.25;min-width:0;width:1%;max-width:40%}
   table.items .col-remark{min-width:8%}
 
   table.items .total-row td{border:1px solid #555;background:#efefef;font-weight:600;font-size:10px;padding:6px 8px}
   table.items .total-row .total-label{text-align:right;white-space:nowrap !important;overflow:visible !important;text-overflow:clip !important}
 `
 
-/** 報價單：文字列給最小寬度，數字列隨內容撐開 */
+/**
+ * 報價單文字列：width:1% 讓列盡量收窄並可換行；max-width 防止吃掉整表剩餘寬度。
+ * （非固定列寬；先前 min-width:14% + 表格 100% 寬會把產品列撐得過寬。）
+ */
 export const SHARED_PRINT_QUOTATION_ITEM_TABLE_CSS = `
-  table.items.quote-items .col-name{min-width:14%;line-height:1.25}
-  table.items.quote-items .col-spec{min-width:6%}
-  table.items.quote-items .col-color{min-width:5%;font-size:10px}
+  table.items.quote-items :is(td,th).col-name,
+  table.items.quote-items :is(td,th).col-spec,
+  table.items.quote-items :is(td,th).col-color {
+    width:1%;
+    min-width:0;
+    white-space:normal !important;
+    overflow-wrap:anywhere !important;
+    word-break:break-word !important;
+    text-align:left;
+  }
+  table.items.quote-items .col-name{max-width:36%;line-height:1.25}
+  table.items.quote-items .col-spec{max-width:14%}
+  table.items.quote-items .col-color{max-width:10%;font-size:10px}
   table.items.quote-items .col-unit{font-size:10px}
   table.items.quote-items .col-moq{font-size:9.5px}
   table.items.quote-items .col-price{font-size:10px}
