@@ -2059,6 +2059,20 @@ const resolveOrderItemIdForDnLine = async (
   return null
 }
 
+/** Material line match between DN item and 交期進度 row (multi-order batches may share bom_code). */
+const dnProgressMaterialMatchSql = `
+  TRIM(COALESCE(dpi.bom_code, dpi.material_code, '')) = TRIM(COALESCE(dni.material_code, ''))
+`
+
+/** When DN po_ref is set, only match the progress line for that PO (avoids wrong order_item_id). */
+const dnProgressPoMatchSql = `
+  (
+    TRIM(COALESCE(dni.po_ref, '')) = ''
+    OR TRIM(COALESCE(dpi.order_po_number, '')) = TRIM(COALESCE(dni.po_ref, ''))
+    OR TRIM(COALESCE(dpi.customer_po_number, '')) = TRIM(COALESCE(dni.po_ref, ''))
+  )
+`
+
 /** Match DN line to order_item_id via linked 交期進度 (multi-order progress). */
 const resolveOrderItemIdFromProgress = async (
   deliveryNoteItemId: number,
@@ -2070,9 +2084,16 @@ const resolveOrderItemIdFromProgress = async (
     JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.progress_id IS NOT NULL
     JOIN delivery_progress_items dpi ON dpi.progress_id = dn.progress_id AND dpi.deleted_at IS NULL
       AND dpi.order_item_id IS NOT NULL AND dpi.order_item_id > 0
-      AND TRIM(COALESCE(dpi.bom_code, dpi.material_code, '')) = TRIM(COALESCE(dni.material_code, ''))
+      AND ${dnProgressMaterialMatchSql}
+      AND ${dnProgressPoMatchSql}
     WHERE dni.id=? AND dni.deleted_at IS NULL
-    ORDER BY dpi.id ASC
+    ORDER BY
+      CASE
+        WHEN TRIM(COALESCE(dni.po_ref, '')) <> ''
+          AND TRIM(COALESCE(dpi.order_po_number, '')) = TRIM(COALESCE(dni.po_ref, '')) THEN 0
+        ELSE 1
+      END,
+      dpi.id ASC
     LIMIT 1
   `, [deliveryNoteItemId], db)
   const id = Number(row?.order_item_id || 0)
@@ -2294,12 +2315,29 @@ const backfillAllOrderItemIds = async (db?: DbExecutor): Promise<OrderItemIdBack
   }
   stats.delivery_progress_items.unresolved = await countMissingOrderItemId('delivery_progress_items', db)
 
+  // Prefer PO-specific match (fixes wrong order_item_id when multiple POs share the same bom_code).
   stats.delivery_note_items.sql += await runSql(`
     UPDATE delivery_note_items dni
     JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.progress_id IS NOT NULL
     JOIN delivery_progress_items dpi ON dpi.progress_id = dn.progress_id AND dpi.deleted_at IS NULL
       AND dpi.order_item_id IS NOT NULL AND dpi.order_item_id > 0
-      AND TRIM(COALESCE(dpi.bom_code, dpi.material_code, '')) = TRIM(COALESCE(dni.material_code, ''))
+      AND ${dnProgressMaterialMatchSql}
+      AND TRIM(COALESCE(dni.po_ref, '')) <> ''
+      AND TRIM(COALESCE(dpi.order_po_number, '')) = TRIM(COALESCE(dni.po_ref, ''))
+    LEFT JOIN customer_order_items ci ON ci.id = dni.order_item_id AND ci.deleted_at IS NULL
+    LEFT JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+    SET dni.order_item_id = dpi.order_item_id
+    WHERE dni.deleted_at IS NULL
+      AND (dni.order_item_id IS NULL OR dni.order_item_id = 0 OR co.po_number IS NULL OR TRIM(co.po_number) <> TRIM(dni.po_ref))
+  `)
+
+  stats.delivery_note_items.sql += await runSql(`
+    UPDATE delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.progress_id IS NOT NULL
+    JOIN delivery_progress_items dpi ON dpi.progress_id = dn.progress_id AND dpi.deleted_at IS NULL
+      AND dpi.order_item_id IS NOT NULL AND dpi.order_item_id > 0
+      AND ${dnProgressMaterialMatchSql}
+      AND ${dnProgressPoMatchSql}
     SET dni.order_item_id = dpi.order_item_id
     WHERE dni.deleted_at IS NULL AND ${missing}
   `)
@@ -2330,7 +2368,17 @@ const backfillAllOrderItemIds = async (db?: DbExecutor): Promise<OrderItemIdBack
     SELECT dni.id, dni.material_code, dni.item_name, dn.customer_order_id
     FROM delivery_note_items dni
     JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL
-    WHERE dni.deleted_at IS NULL AND ${missing} AND dn.customer_order_id IS NOT NULL
+    LEFT JOIN customer_order_items ci ON ci.id = dni.order_item_id AND ci.deleted_at IS NULL
+    LEFT JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+    WHERE dni.deleted_at IS NULL
+      AND (
+        (${missing} AND dn.customer_order_id IS NOT NULL)
+        OR (
+          dn.progress_id IS NOT NULL
+          AND TRIM(COALESCE(dni.po_ref, '')) <> ''
+          AND (co.po_number IS NULL OR TRIM(co.po_number) <> TRIM(dni.po_ref))
+        )
+      )
   `, [], db)
   for (const row of dniRows) {
     let resolved = await resolveOrderItemIdFromProgress(Number(row.id), db)
