@@ -1704,13 +1704,21 @@ const syncDeliveryProgressItems = async (
       continue
     }
     if (!materialName) continue
+    let materialOrderItemId: number | null = orderItemId
+    if (!materialOrderItemId && customerOrderId) {
+      materialOrderItemId = await resolveOrderItemIdForDnLine(customerOrderId, {
+        materialCode: materialCode || materialName,
+        itemName: materialName,
+      }, db)
+    }
     if (existingIds.has(itemId) && !keptIds.has(itemId)) {
       await execute(
         `UPDATE delivery_progress_items
-         SET line_type='material', customer_order_id=?, order_item_id=NULL, order_po_number=?, customer_po_number='', bom_id=NULL, bom_code='', bom_name='', material_id=?, material_code=?, material_name=?, spec=?, unit=?, planned_qty=?, due_date=?, status=?, remark=?, deleted_at=NULL, deleted_by=NULL
+         SET line_type='material', customer_order_id=?, order_item_id=?, order_po_number=?, customer_po_number='', bom_id=NULL, bom_code='', bom_name='', material_id=?, material_code=?, material_name=?, spec=?, unit=?, planned_qty=?, due_date=?, status=?, remark=?, deleted_at=NULL, deleted_by=NULL
          WHERE id=? AND progress_id=? AND deleted_at IS NULL`,
         [
           customerOrderId,
+          materialOrderItemId,
           orderPoNumber,
           materialId,
           materialCode || materialName,
@@ -1736,12 +1744,13 @@ const syncDeliveryProgressItems = async (
     }
     const created = await execute(
       `INSERT INTO delivery_progress_items
-        (progress_id, line_type, customer_order_id, order_po_number, material_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        (progress_id, line_type, customer_order_id, order_item_id, order_po_number, material_id, material_code, material_name, spec, unit, planned_qty, due_date, status, remark, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         progressId,
         'material',
         customerOrderId,
+        materialOrderItemId,
         orderPoNumber,
         materialId,
         materialCode || materialName,
@@ -1854,7 +1863,14 @@ const syncDeliveryNoteFromProgress = async (
     const itemName = String(lineType === 'bom' ? (item.bom_name || item.material_name || '') : (item.material_name || '')).trim()
     const materialId = lineType === 'bom' ? null : await resolveMaterialId(null, itemCode, db)
     const itemPoRef = String(item.order_po_number || progressPoRef || '').trim()
-    const orderItemId = Number(item.order_item_id || 0) || null
+    let orderItemId = Number(item.order_item_id || 0) || null
+    if (!orderItemId && customerOrderId) {
+      orderItemId = await resolveOrderItemIdForDnLine(customerOrderId, {
+        orderItemId: null,
+        materialCode: itemCode,
+        itemName: itemName,
+      }, db)
+    }
     await execute(
       'INSERT INTO delivery_note_items (dn_id,order_item_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       [
@@ -1959,9 +1975,15 @@ const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; mat
       AND (
         ci.material_code IN (${codePlaceholders})
         OR b.product_sku IN (${codePlaceholders})
+        OR EXISTS (
+          SELECT 1 FROM bom_items bi
+          WHERE bi.bom_id = ci.bom_id
+            AND bi.deleted_at IS NULL
+            AND TRIM(COALESCE(bi.material_code, '')) IN (${codePlaceholders})
+        )
       )
     ORDER BY ci.id ASC
-  `, [...orderIds, ...materialCodes, ...materialCodes])
+  `, [...orderIds, ...materialCodes, ...materialCodes, ...materialCodes])
   for (const row of rows) {
     const orderId = Number(row.customer_order_id || 0)
     const materialCode = String(row.material_code || '').trim()
@@ -1970,6 +1992,505 @@ const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; mat
     if (!keyMap.has(key)) keyMap.set(key, Number(row.order_item_id))
   }
   return keyMap
+}
+
+/** Resolve customer_order_items.id for a DN line missing order_item_id (e.g. material-only 交期進度). */
+const resolveOrderItemIdForDnLine = async (
+  customerOrderId: number,
+  params: { orderItemId?: number | null; materialCode?: string; itemName?: string; bomId?: number | null },
+  db?: DbExecutor,
+): Promise<number | null> => {
+  const direct = Number(params.orderItemId || 0)
+  if (direct > 0) return direct
+  const orderId = Number(customerOrderId || 0)
+  if (orderId <= 0) return null
+  const bomId = Number(params.bomId || 0)
+  if (bomId > 0) {
+    const byBom = await queryOne<any>(`
+      SELECT ci.id
+      FROM customer_order_items ci
+      WHERE ci.order_id=? AND ci.bom_id=? AND ci.deleted_at IS NULL
+      ORDER BY ci.id ASC
+      LIMIT 1
+    `, [orderId, bomId], db)
+    if (byBom?.id) return Number(byBom.id)
+  }
+  const code = String(params.materialCode || '').trim()
+  const name = String(params.itemName || '').trim()
+  if (!code && !name) return null
+
+  if (code) {
+    const bySku = await queryOne<any>(`
+      SELECT ci.id
+      FROM customer_order_items ci
+      JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
+        AND TRIM(COALESCE(b.product_sku, '')) = ?
+      ORDER BY ci.id ASC
+      LIMIT 1
+    `, [orderId, code], db)
+    if (bySku?.id) return Number(bySku.id)
+
+    const byBomMaterial = await queryOne<any>(`
+      SELECT ci.id
+      FROM customer_order_items ci
+      JOIN bom_items bi ON bi.bom_id = ci.bom_id AND bi.deleted_at IS NULL
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
+        AND TRIM(COALESCE(bi.material_code, '')) = ?
+      ORDER BY ci.id ASC
+      LIMIT 1
+    `, [orderId, code], db)
+    if (byBomMaterial?.id) return Number(byBomMaterial.id)
+  }
+
+  if (name) {
+    const byName = await queryOne<any>(`
+      SELECT ci.id
+      FROM customer_order_items ci
+      JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+      WHERE ci.order_id=? AND ci.deleted_at IS NULL
+        AND TRIM(COALESCE(b.product_name, '')) = ?
+      ORDER BY ci.id ASC
+      LIMIT 1
+    `, [orderId, name], db)
+    if (byName?.id) return Number(byName.id)
+  }
+
+  return null
+}
+
+/** Match DN line to order_item_id via linked 交期進度 (multi-order progress). */
+const resolveOrderItemIdFromProgress = async (
+  deliveryNoteItemId: number,
+  db?: DbExecutor,
+): Promise<number | null> => {
+  const row = await queryOne<any>(`
+    SELECT dpi.order_item_id
+    FROM delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.progress_id IS NOT NULL
+    JOIN delivery_progress_items dpi ON dpi.progress_id = dn.progress_id AND dpi.deleted_at IS NULL
+      AND dpi.order_item_id IS NOT NULL AND dpi.order_item_id > 0
+      AND TRIM(COALESCE(dpi.bom_code, dpi.material_code, '')) = TRIM(COALESCE(dni.material_code, ''))
+    WHERE dni.id=? AND dni.deleted_at IS NULL
+    ORDER BY dpi.id ASC
+    LIMIT 1
+  `, [deliveryNoteItemId], db)
+  const id = Number(row?.order_item_id || 0)
+  return id > 0 ? id : null
+}
+
+const recalcCustomerOrderStatus = async (orderIds: number[]) => {
+  const normalized = Array.from(new Set(orderIds.map((id) => Number(id || 0)).filter((id) => id > 0)))
+  for (const orderId of normalized) {
+    const summary = await queryOne<any>(
+      'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
+      [orderId]
+    )
+    const totalQty = toQty(summary?.total_qty || 0)
+    const arrivedQty = toQty(summary?.arrived_qty || 0)
+    const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
+    await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
+  }
+}
+
+/** Sum shipped qty per order line from ALL shipped DNs (supports multi-order 交期進度). */
+const buildShippedQtyByOrderItemId = async (db?: DbExecutor): Promise<Map<number, number>> => {
+  const shippedByOrderItem = new Map<number, number>()
+  const dniRows = await query<any>(`
+    SELECT dni.id, dni.order_item_id, dni.material_code, dni.item_name,
+           COALESCE(dni.qty, 0) as qty, dn.customer_order_id
+    FROM delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL
+    WHERE dn.status='shipped' AND dni.deleted_at IS NULL
+  `, [], db)
+
+  for (const row of dniRows) {
+    let orderItemId = Number(row.order_item_id || 0)
+    if (!orderItemId) {
+      orderItemId = (await resolveOrderItemIdFromProgress(Number(row.id), db))
+        || (await resolveOrderItemIdForDnLine(Number(row.customer_order_id || 0), {
+          materialCode: row.material_code,
+          itemName: row.item_name,
+        }, db))
+        || 0
+      if (orderItemId) {
+        await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, row.id], db)
+      }
+    }
+    if (!orderItemId) continue
+    shippedByOrderItem.set(orderItemId, toQty((shippedByOrderItem.get(orderItemId) || 0) + toQty(row.qty)))
+  }
+  return shippedByOrderItem
+}
+
+const applyShippedQtyToOrderItems = async (
+  shippedByOrderItem: Map<number, number>,
+  filterOrderIds?: number[],
+  db?: DbExecutor,
+): Promise<number[]> => {
+  const orderItemIds = Array.from(shippedByOrderItem.keys()).filter((id) => id > 0)
+  if (!orderItemIds.length) return []
+
+  const inClause = orderItemIds.map(() => '?').join(',')
+  const orderItems = await query<any>(`
+    SELECT id, order_id, qty, COALESCE(arrived_qty, 0) as arrived_qty, COALESCE(reconciled_qty, 0) as reconciled_qty
+    FROM customer_order_items
+    WHERE id IN (${inClause}) AND deleted_at IS NULL
+  `, orderItemIds, db)
+
+  const arrivedCase: string[] = []
+  const balanceCase: string[] = []
+  const statusCase: string[] = []
+  const params: any[] = []
+  const touchedIds: number[] = []
+  const touchedOrderIds = new Set<number>()
+
+  for (const row of orderItems) {
+    const itemId = Number(row.id || 0)
+    const orderId = Number(row.order_id || 0)
+    if (!itemId || !orderId) continue
+    if (filterOrderIds?.length && !filterOrderIds.includes(orderId)) continue
+
+    const totalQty = toQty(row.qty)
+    const shippedSum = toQty(shippedByOrderItem.get(itemId) || 0)
+    const reconciledQty = toQty(row.reconciled_qty)
+    const nextArrived = toQty(Math.min(totalQty, Math.max(shippedSum, reconciledQty)))
+    const nextBalance = toQty(Math.max(0, totalQty - nextArrived))
+    const nextStatus = nextArrived >= totalQty && totalQty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
+
+    if (toQty(row.arrived_qty) === nextArrived) continue
+
+    arrivedCase.push('WHEN ? THEN ?')
+    params.push(itemId, nextArrived)
+    balanceCase.push('WHEN ? THEN ?')
+    params.push(itemId, nextBalance)
+    statusCase.push('WHEN ? THEN ?')
+    params.push(itemId, nextStatus)
+    touchedIds.push(itemId)
+    touchedOrderIds.add(orderId)
+  }
+
+  if (touchedIds.length > 0) {
+    const idClause = touchedIds.map(() => '?').join(',')
+    await execute(`
+      UPDATE customer_order_items
+      SET
+        arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
+        balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
+        status = CASE id ${statusCase.join(' ')} ELSE status END
+      WHERE id IN (${idClause})
+    `, [...params, ...touchedIds], db)
+    await recalcCustomerOrderStatus(Array.from(touchedOrderIds))
+  }
+  return Array.from(touchedOrderIds)
+}
+
+/** Recompute arrived_qty from shipped DNs by order_item_id (not only dn.customer_order_id). */
+const syncCustomerOrderArrivedFromShippedDns = async (customerOrderId: number, db?: DbExecutor) => {
+  const orderId = Number(customerOrderId || 0)
+  if (orderId <= 0) return
+  const shippedMap = await buildShippedQtyByOrderItemId(db)
+  await applyShippedQtyToOrderItems(shippedMap, [orderId], db)
+}
+
+/** Full historical repair: all order lines referenced by any shipped DN. */
+const syncAllCustomerOrdersArrivedFromShippedDns = async (db?: DbExecutor): Promise<{ orders_synced: number; order_items_updated: number }> => {
+  const shippedMap = await buildShippedQtyByOrderItemId(db)
+  const before = shippedMap.size
+  const touchedOrderIds = await applyShippedQtyToOrderItems(shippedMap, undefined, db)
+  const updated = await queryOne<any>(`
+    SELECT COUNT(*) as cnt FROM customer_order_items ci
+    JOIN delivery_note_items dni ON dni.order_item_id = ci.id AND dni.deleted_at IS NULL
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.status='shipped' AND dn.deleted_at IS NULL
+    WHERE ci.deleted_at IS NULL AND ci.arrived_qty > 0
+  `, [], db)
+  return {
+    orders_synced: touchedOrderIds.length,
+    order_items_updated: Number(updated?.cnt || before),
+  }
+}
+
+type OrderItemIdBackfillStats = {
+  delivery_progress_items: { sql: number; js: number; unresolved: number }
+  delivery_note_items: { sql: number; js: number; unresolved: number }
+  shipment_reconciliation_items: { sql: number; js: number; unresolved: number }
+  invoice_items: { sql: number; js: number; unresolved: number }
+  delivery_progress: { sql: number; unresolved: number }
+  arrived_qty_orders_synced: number
+}
+
+const countMissingOrderItemId = async (table: string, db?: DbExecutor): Promise<number> => {
+  const row = await queryOne<any>(
+    `SELECT COUNT(*) as cnt FROM ${table} WHERE deleted_at IS NULL AND (order_item_id IS NULL OR order_item_id = 0)`,
+    [],
+    db,
+  )
+  return Number(row?.cnt || 0)
+}
+
+/** Backfill order_item_id on progress/DN/reconcile/invoice rows and refresh arrived_qty from shipped DNs. */
+const backfillAllOrderItemIds = async (db?: DbExecutor): Promise<OrderItemIdBackfillStats> => {
+  const stats: OrderItemIdBackfillStats = {
+    delivery_progress_items: { sql: 0, js: 0, unresolved: 0 },
+    delivery_note_items: { sql: 0, js: 0, unresolved: 0 },
+    shipment_reconciliation_items: { sql: 0, js: 0, unresolved: 0 },
+    invoice_items: { sql: 0, js: 0, unresolved: 0 },
+    delivery_progress: { sql: 0, unresolved: 0 },
+    arrived_qty_orders_synced: 0,
+  }
+  const missing = '(order_item_id IS NULL OR order_item_id = 0)'
+
+  const runSql = async (sql: string) => {
+    const r = await execute(sql, [], db)
+    return Number(r.affectedRows || 0)
+  }
+
+  stats.delivery_progress_items.sql += await runSql(`
+    UPDATE delivery_progress_items dpi
+    JOIN customer_order_items ci
+      ON ci.order_id = dpi.customer_order_id AND ci.bom_id = dpi.bom_id AND ci.deleted_at IS NULL
+    SET dpi.order_item_id = ci.id
+    WHERE dpi.deleted_at IS NULL AND ${missing}
+      AND dpi.customer_order_id IS NOT NULL AND dpi.bom_id IS NOT NULL
+  `)
+
+  stats.delivery_progress_items.sql += await runSql(`
+    UPDATE delivery_progress_items dpi
+    JOIN customer_order_items ci ON ci.order_id = dpi.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    SET dpi.order_item_id = ci.id
+    WHERE dpi.deleted_at IS NULL AND ${missing}
+      AND dpi.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(dpi.bom_code, '')) <> ''
+      AND TRIM(COALESCE(b.product_sku, '')) = TRIM(dpi.bom_code)
+  `)
+
+  stats.delivery_progress_items.sql += await runSql(`
+    UPDATE delivery_progress_items dpi
+    JOIN customer_order_items ci ON ci.order_id = dpi.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom_items bi ON bi.bom_id = ci.bom_id AND bi.deleted_at IS NULL
+    SET dpi.order_item_id = ci.id
+    WHERE dpi.deleted_at IS NULL AND ${missing}
+      AND dpi.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(dpi.material_code, '')) <> ''
+      AND TRIM(COALESCE(bi.material_code, '')) = TRIM(dpi.material_code)
+  `)
+
+  const dpiRows = await query<any>(`
+    SELECT id, customer_order_id, bom_id, bom_code, material_code, material_name, bom_name
+    FROM delivery_progress_items
+    WHERE deleted_at IS NULL AND ${missing} AND customer_order_id IS NOT NULL
+  `, [], db)
+  for (const row of dpiRows) {
+    const resolved = await resolveOrderItemIdForDnLine(Number(row.customer_order_id), {
+      bomId: row.bom_id,
+      materialCode: row.bom_code || row.material_code,
+      itemName: row.bom_name || row.material_name,
+    }, db)
+    if (resolved) {
+      await execute('UPDATE delivery_progress_items SET order_item_id=? WHERE id=?', [resolved, row.id], db)
+      stats.delivery_progress_items.js += 1
+    }
+  }
+  stats.delivery_progress_items.unresolved = await countMissingOrderItemId('delivery_progress_items', db)
+
+  stats.delivery_note_items.sql += await runSql(`
+    UPDATE delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.progress_id IS NOT NULL
+    JOIN delivery_progress_items dpi ON dpi.progress_id = dn.progress_id AND dpi.deleted_at IS NULL
+      AND dpi.order_item_id IS NOT NULL AND dpi.order_item_id > 0
+      AND TRIM(COALESCE(dpi.bom_code, dpi.material_code, '')) = TRIM(COALESCE(dni.material_code, ''))
+    SET dni.order_item_id = dpi.order_item_id
+    WHERE dni.deleted_at IS NULL AND ${missing}
+  `)
+
+  stats.delivery_note_items.sql += await runSql(`
+    UPDATE delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.customer_order_id IS NOT NULL
+    JOIN customer_order_items ci ON ci.order_id = dn.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    SET dni.order_item_id = ci.id
+    WHERE dni.deleted_at IS NULL AND ${missing}
+      AND TRIM(COALESCE(dni.material_code, '')) <> ''
+      AND TRIM(COALESCE(b.product_sku, '')) = TRIM(dni.material_code)
+  `)
+
+  stats.delivery_note_items.sql += await runSql(`
+    UPDATE delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL AND dn.customer_order_id IS NOT NULL
+    JOIN customer_order_items ci ON ci.order_id = dn.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom_items bi ON bi.bom_id = ci.bom_id AND bi.deleted_at IS NULL
+    SET dni.order_item_id = ci.id
+    WHERE dni.deleted_at IS NULL AND ${missing}
+      AND TRIM(COALESCE(dni.material_code, '')) <> ''
+      AND TRIM(COALESCE(bi.material_code, '')) = TRIM(dni.material_code)
+  `)
+
+  const dniRows = await query<any>(`
+    SELECT dni.id, dni.material_code, dni.item_name, dn.customer_order_id
+    FROM delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL
+    WHERE dni.deleted_at IS NULL AND ${missing} AND dn.customer_order_id IS NOT NULL
+  `, [], db)
+  for (const row of dniRows) {
+    let resolved = await resolveOrderItemIdFromProgress(Number(row.id), db)
+    if (!resolved) {
+      resolved = await resolveOrderItemIdForDnLine(Number(row.customer_order_id), {
+        materialCode: row.material_code,
+        itemName: row.item_name,
+      }, db)
+    }
+    if (resolved) {
+      await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [resolved, row.id], db)
+      stats.delivery_note_items.js += 1
+    }
+  }
+  stats.delivery_note_items.unresolved = await countMissingOrderItemId('delivery_note_items', db)
+
+  stats.shipment_reconciliation_items.sql += await runSql(`
+    UPDATE shipment_reconciliation_items sri
+    JOIN delivery_note_items dni ON dni.id = sri.delivery_note_item_id AND dni.deleted_at IS NULL
+    SET sri.order_item_id = dni.order_item_id
+    WHERE sri.deleted_at IS NULL AND ${missing}
+      AND dni.order_item_id IS NOT NULL AND dni.order_item_id > 0
+  `)
+
+  stats.shipment_reconciliation_items.sql += await runSql(`
+    UPDATE shipment_reconciliation_items sri
+    JOIN customer_order_items ci ON ci.order_id = sri.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    SET sri.order_item_id = ci.id
+    WHERE sri.deleted_at IS NULL AND ${missing}
+      AND sri.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(sri.material_code, '')) <> ''
+      AND TRIM(COALESCE(b.product_sku, '')) = TRIM(sri.material_code)
+  `)
+
+  stats.shipment_reconciliation_items.sql += await runSql(`
+    UPDATE shipment_reconciliation_items sri
+    JOIN customer_order_items ci ON ci.order_id = sri.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom_items bi ON bi.bom_id = ci.bom_id AND bi.deleted_at IS NULL
+    SET sri.order_item_id = ci.id
+    WHERE sri.deleted_at IS NULL AND ${missing}
+      AND sri.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(sri.material_code, '')) <> ''
+      AND TRIM(COALESCE(bi.material_code, '')) = TRIM(sri.material_code)
+  `)
+
+  const sriRows = await query<any>(`
+    SELECT id, customer_order_id, material_code, material_name
+    FROM shipment_reconciliation_items
+    WHERE deleted_at IS NULL AND ${missing} AND customer_order_id IS NOT NULL
+  `, [], db)
+  for (const row of sriRows) {
+    const resolved = await resolveOrderItemIdForDnLine(Number(row.customer_order_id), {
+      materialCode: row.material_code,
+      itemName: row.material_name,
+    }, db)
+    if (resolved) {
+      await execute('UPDATE shipment_reconciliation_items SET order_item_id=? WHERE id=?', [resolved, row.id], db)
+      stats.shipment_reconciliation_items.js += 1
+    }
+  }
+  stats.shipment_reconciliation_items.unresolved = await countMissingOrderItemId('shipment_reconciliation_items', db)
+
+  stats.invoice_items.sql += await runSql(`
+    UPDATE invoice_items ii
+    JOIN shipment_reconciliation_items sri ON sri.id = ii.reconciliation_item_id AND sri.deleted_at IS NULL
+    SET ii.order_item_id = sri.order_item_id
+    WHERE ii.deleted_at IS NULL AND ${missing}
+      AND sri.order_item_id IS NOT NULL AND sri.order_item_id > 0
+  `)
+
+  stats.invoice_items.sql += await runSql(`
+    UPDATE invoice_items ii
+    JOIN customer_order_items ci ON ci.order_id = ii.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    SET ii.order_item_id = ci.id
+    WHERE ii.deleted_at IS NULL AND ${missing}
+      AND ii.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(ii.material_code, '')) <> ''
+      AND TRIM(COALESCE(b.product_sku, '')) = TRIM(ii.material_code)
+  `)
+
+  const iiRows = await query<any>(`
+    SELECT id, customer_order_id, material_code, material_name
+    FROM invoice_items
+    WHERE deleted_at IS NULL AND ${missing} AND customer_order_id IS NOT NULL
+  `, [], db)
+  for (const row of iiRows) {
+    const resolved = await resolveOrderItemIdForDnLine(Number(row.customer_order_id), {
+      materialCode: row.material_code,
+      itemName: row.material_name,
+    }, db)
+    if (resolved) {
+      await execute('UPDATE invoice_items SET order_item_id=? WHERE id=?', [resolved, row.id], db)
+      stats.invoice_items.js += 1
+    }
+  }
+  stats.invoice_items.unresolved = await countMissingOrderItemId('invoice_items', db)
+
+  stats.delivery_progress.sql += await runSql(`
+    UPDATE delivery_progress dp
+    JOIN (
+      SELECT progress_id, MIN(order_item_id) as order_item_id
+      FROM delivery_progress_items
+      WHERE deleted_at IS NULL AND order_item_id IS NOT NULL AND order_item_id > 0
+      GROUP BY progress_id
+    ) linked ON linked.progress_id = dp.id
+    SET dp.order_item_id = linked.order_item_id
+    WHERE dp.deleted_at IS NULL AND (dp.order_item_id IS NULL OR dp.order_item_id = 0)
+  `)
+
+  stats.delivery_progress.sql += await runSql(`
+    UPDATE delivery_progress dp
+    JOIN customer_order_items ci ON ci.order_id = dp.customer_order_id AND ci.deleted_at IS NULL
+    JOIN bom b ON b.id = ci.bom_id AND b.deleted_at IS NULL
+    SET dp.order_item_id = ci.id
+    WHERE dp.deleted_at IS NULL AND (dp.order_item_id IS NULL OR dp.order_item_id = 0)
+      AND dp.customer_order_id IS NOT NULL
+      AND TRIM(COALESCE(dp.material_code, '')) <> ''
+      AND TRIM(COALESCE(b.product_sku, '')) = TRIM(dp.material_code)
+  `)
+  stats.delivery_progress.unresolved = Number((await queryOne<any>(
+    'SELECT COUNT(*) as cnt FROM delivery_progress WHERE deleted_at IS NULL AND (order_item_id IS NULL OR order_item_id = 0) AND customer_order_id IS NOT NULL',
+    [],
+    db,
+  ))?.cnt || 0)
+
+  const syncResult = await syncAllCustomerOrdersArrivedFromShippedDns(db)
+  stats.arrived_qty_orders_synced = syncResult.orders_synced
+
+  return stats
+}
+
+let ensureOrderItemIdBackfillPromise: Promise<OrderItemIdBackfillStats> | null = null
+const ensureOrderItemIdBackfill = async () => {
+  if (!ensureOrderItemIdBackfillPromise) {
+    ensureOrderItemIdBackfillPromise = (async () => {
+      await ensureDeliveryProgressTable()
+      await ensureShipmentReconciliationTables()
+      await ensureInvoiceTables()
+      await ensureDeliveryNoteProgressIdColumn()
+      const stats = await backfillAllOrderItemIds()
+      const unresolvedTotal =
+        stats.delivery_progress_items.unresolved
+        + stats.delivery_note_items.unresolved
+        + stats.shipment_reconciliation_items.unresolved
+        + stats.invoice_items.unresolved
+        + stats.delivery_progress.unresolved
+      if (unresolvedTotal > 0) {
+        console.warn('[order_item_id backfill] remaining rows without order_item_id:', stats)
+      } else {
+        console.log('[order_item_id backfill] complete:', stats)
+      }
+      return stats
+    })().catch((e) => {
+      ensureOrderItemIdBackfillPromise = null
+      throw e
+    })
+  }
+  await ensureOrderItemIdBackfillPromise
 }
 
 // ── Audit ────────────────────────────────────────────────────────────────────
@@ -2941,7 +3462,7 @@ app.get('/api/customer-orders', authMiddleware, async c => {
     if (dateTo) { where.push('co.po_date<=?'); params.push(dateTo) }
     where.unshift('co.deleted_at IS NULL')
     const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : ''
-	    const orders = await query(`
+    const listCustomerOrders = () => query(`
 	      SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
              COALESCE(co.tax_rate, 0) as tax_rate,
              COALESCE(co.tax_amount, 0) as tax_amount, 
@@ -2994,6 +3515,34 @@ app.get('/api/customer-orders', authMiddleware, async c => {
 	      GROUP BY co.id
       ORDER BY co.created_at DESC
     `, params.length ? params : undefined)
+
+    let orders = await listCustomerOrders()
+    const staleIds = orders
+      .filter((o: any) => toQty(o.completion_rate) === 0 && toQty(o.order_total_qty) > 0)
+      .map((o: any) => Number(o.id))
+      .filter((id: number) => id > 0)
+    if (staleIds.length) {
+      const placeholders = staleIds.map(() => '?').join(',')
+      const needsSync = await queryOne<any>(`
+        SELECT COUNT(*) as cnt FROM (
+          SELECT DISTINCT co.id
+          FROM customer_orders co
+          JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
+          JOIN delivery_note_items dni ON dni.order_item_id = ci.id AND dni.deleted_at IS NULL
+          JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.status='shipped' AND dn.deleted_at IS NULL
+          WHERE co.id IN (${placeholders}) AND co.deleted_at IS NULL
+          UNION
+          SELECT DISTINCT dn.customer_order_id
+          FROM delivery_notes dn
+          WHERE dn.status='shipped' AND dn.deleted_at IS NULL AND dn.customer_order_id IN (${placeholders})
+        ) t
+      `, [...staleIds, ...staleIds])
+      if (Number(needsSync?.cnt || 0) > 0) {
+        await syncAllCustomerOrdersArrivedFromShippedDns()
+        orders = await listCustomerOrders()
+      }
+    }
+
     return c.json(orders)
   } catch (e: any) {
     console.error('Error fetching customer orders:', e.message)
@@ -3179,6 +3728,14 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
   return c.json(Array.from(grouped.values()).filter((node) => toQty(node.remaining_qty) > 0))
 })
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
+  const orderId = Number(c.req.param('id') || 0)
+  if (orderId > 0) {
+    const hasShipped = await queryOne<any>(
+      `SELECT id FROM delivery_notes WHERE customer_order_id=? AND status='shipped' AND deleted_at IS NULL LIMIT 1`,
+      [orderId],
+    )
+    if (hasShipped) await syncCustomerOrderArrivedFromShippedDns(orderId)
+  }
   const order = await queryOne<any>(`
     SELECT co.id, co.po_date, co.po_number, co.customer_id, co.status, co.remark, co.created_at,
            co.tax_rate, co.tax_amount, co.total_amount, co.currency,
@@ -4777,20 +5334,6 @@ const getInvoicedQtyMapByReconciliationItems = async (reconciliationItemIds: num
 const markDeletedByWhere = async (table: string, whereSql: string, params: any[], userId?: number | null) =>
   softDeleteByWhere(table, whereSql, params, userId)
 
-const recalcCustomerOrderStatus = async (orderIds: number[]) => {
-  const normalized = Array.from(new Set(orderIds.map((id) => Number(id || 0)).filter((id) => id > 0)))
-  for (const orderId of normalized) {
-    const summary = await queryOne<any>(
-      'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
-      [orderId]
-    )
-    const totalQty = toQty(summary?.total_qty || 0)
-    const arrivedQty = toQty(summary?.arrived_qty || 0)
-    const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
-    await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
-  }
-}
-
 const deleteInvoiceWithRollback = async (invoiceId: number, user: any) => {
   const header = await queryOne<any>(
     'SELECT id, invoice_no, status, invoice_type FROM invoice_headers WHERE id=? AND deleted_at IS NULL',
@@ -5441,72 +5984,12 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
 
     await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
 
-    // 出貨確認時同步回寫客戶訂單 arrived_qty
+    // 出貨確認時依已出貨單重算客戶訂單 arrived_qty（含材料明細無 order_item_id 的出貨行）
     if (status === 'shipped') {
-      const dnId = Number(id)
-      const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [dnId])
+      const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [Number(id)])
       const customerOrderId = Number(dn?.customer_order_id || 0)
       if (customerOrderId > 0) {
-        const dniRows = await query<any>(
-          `SELECT dni.id, dni.order_item_id, COALESCE(dni.qty, 0) as qty
-           FROM delivery_note_items dni
-           WHERE dni.dn_id = ? AND dni.deleted_at IS NULL AND dni.order_item_id IS NOT NULL`,
-          [dnId]
-        )
-        if (dniRows.length > 0) {
-          const arrivedCase: string[] = []
-          const balanceCase: string[] = []
-          const statusCase: string[] = []
-          const params: any[] = []
-          const orderItemIds: number[] = []
-
-          for (const dni of dniRows) {
-            const orderItemId = Number(dni.order_item_id)
-            const delta = toQty(dni.qty)
-            if (!orderItemId || delta <= 0) continue
-
-            const ciRow = await queryOne<any>(
-              'SELECT id, qty, arrived_qty FROM customer_order_items WHERE id=? AND deleted_at IS NULL',
-              [orderItemId]
-            )
-            if (!ciRow) continue
-
-            const totalQty = toQty(ciRow.qty)
-            const nextArrived = toQty(Math.min(totalQty, toQty(ciRow.arrived_qty) + delta))
-            const nextBalance = toQty(Math.max(0, totalQty - nextArrived))
-            const nextStatus = nextArrived >= totalQty && totalQty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
-
-            arrivedCase.push('WHEN ? THEN ?')
-            params.push(orderItemId, nextArrived)
-            balanceCase.push('WHEN ? THEN ?')
-            params.push(orderItemId, nextBalance)
-            statusCase.push('WHEN ? THEN ?')
-            params.push(orderItemId, nextStatus)
-            orderItemIds.push(orderItemId)
-          }
-
-          if (orderItemIds.length > 0) {
-            const inClause = orderItemIds.map(() => '?').join(',')
-            await execute(`
-              UPDATE customer_order_items
-              SET
-                arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
-                balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
-                status = CASE id ${statusCase.join(' ')} ELSE status END
-              WHERE id IN (${inClause})
-            `, [...params, ...orderItemIds])
-
-            // 更新客戶訂單整體狀態
-            const summary = await queryOne<any>(
-              'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
-              [customerOrderId]
-            )
-            const totalQty = toQty(summary?.total_qty || 0)
-            const arrivedQty = toQty(summary?.arrived_qty || 0)
-            const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
-            await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, customerOrderId])
-          }
-        }
+        await syncCustomerOrderArrivedFromShippedDns(customerOrderId)
       }
     }
 
@@ -6469,6 +6952,27 @@ app.get('/api/stats', authMiddleware, async c => {
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
+// ── Admin maintenance ─────────────────────────────────────────────────────────
+app.post('/api/admin/backfill-order-item-ids', authMiddleware, isAdmin, async c => {
+  try {
+    const stats = await backfillAllOrderItemIds()
+    await audit(c.get('user'), 'BACKFILL', 'order_item_id', 0, JSON.stringify(stats))
+    return c.json({ ok: true, stats })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.post('/api/admin/sync-shipped-arrived-qty', authMiddleware, isAdmin, async c => {
+  try {
+    const result = await syncAllCustomerOrdersArrivedFromShippedDns()
+    await audit(c.get('user'), 'SYNC', 'shipped_arrived_qty', 0, JSON.stringify(result))
+    return c.json({ ok: true, ...result })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── Upload ────────────────────────────────────────────────────────────────────
 app.post('/api/upload', authMiddleware, async c => {
   try {
@@ -6502,6 +7006,9 @@ app.get('/uploads/*', async c => {
 // ── Start server ──────────────────────────────────────────────────────────────
 const port = parseInt(process.env.PORT || '3001')
 console.log(`RUBBER MES Backend starting on port ${port}`)
-serve({ fetch: app.fetch, port }, info => {
+serve({ fetch: app.fetch, port }, (info) => {
   console.log(`✓ Server running at http://localhost:${info.port}`)
+  void ensureOrderItemIdBackfill().catch((e) => {
+    console.error('[order_item_id backfill] startup failed:', e)
+  })
 })
