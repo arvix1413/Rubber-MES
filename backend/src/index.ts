@@ -633,6 +633,8 @@ const ensureDeliveryNoteProgressIdColumn = async () => {
       await alterSafe('ALTER TABLE delivery_notes ADD COLUMN progress_id INT NULL AFTER customer_order_id')
       await alterSafe('ALTER TABLE delivery_notes ADD INDEX idx_delivery_notes_progress_id (progress_id)')
       await alterSafe('ALTER TABLE delivery_note_items MODIFY COLUMN po_ref TEXT')
+      await alterSafe('ALTER TABLE delivery_note_items ADD COLUMN order_item_id INT NULL AFTER dn_id')
+      await alterSafe('ALTER TABLE delivery_note_items ADD INDEX idx_delivery_note_items_order_item_id (order_item_id)')
     })().catch((e) => {
       ensureDeliveryNoteProgressIdColumnPromise = null
       throw e
@@ -1852,10 +1854,12 @@ const syncDeliveryNoteFromProgress = async (
     const itemName = String(lineType === 'bom' ? (item.bom_name || item.material_name || '') : (item.material_name || '')).trim()
     const materialId = lineType === 'bom' ? null : await resolveMaterialId(null, itemCode, db)
     const itemPoRef = String(item.order_po_number || progressPoRef || '').trim()
+    const orderItemId = Number(item.order_item_id || 0) || null
     await execute(
-      'INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
+      'INSERT INTO delivery_note_items (dn_id,order_item_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
       [
         dnId,
+        orderItemId,
         materialId,
         itemName,
         itemCode,
@@ -5389,8 +5393,9 @@ app.post('/api/delivery-notes', authMiddleware, requirePerm('delivery.create'), 
     if (b.items?.length) {
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
-        await execute('INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [dnId, materialId, item.item_name||'', item.material_code||'', item.spec||'', item.unit||'PCS', item.qty||0, item.remark||'', item.po_ref||'', item.thickness||null])
+        const orderItemId = Number(item.order_item_id || 0) || null
+        await execute('INSERT INTO delivery_note_items (dn_id,order_item_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [dnId, orderItemId, materialId, item.item_name||'', item.material_code||'', item.spec||'', item.unit||'PCS', item.qty||0, item.remark||'', item.po_ref||'', item.thickness||null])
       }
     }
     await audit(u, 'CREATE', '出貨單', dnId, `${dnNum} / ${customerName}`)
@@ -5409,8 +5414,9 @@ app.put('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.create'
     if (b.items?.length) {
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
-        await execute('INSERT INTO delivery_note_items (dn_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [id, materialId, item.item_name||'', item.material_code||'', item.spec||'', item.unit||'PCS', item.qty||0, item.remark||'', item.po_ref||'', item.thickness||null])
+        const orderItemId = Number(item.order_item_id || 0) || null
+        await execute('INSERT INTO delivery_note_items (dn_id,order_item_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
+          [id, orderItemId, materialId, item.item_name||'', item.material_code||'', item.spec||'', item.unit||'PCS', item.qty||0, item.remark||'', item.po_ref||'', item.thickness||null])
       }
     }
     await audit(u, 'UPDATE', '出貨單', id, `id=${id}`)
@@ -5435,7 +5441,74 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
 
     await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
 
-    // 客戶訂單數量回寫改為在「數量核對確認」階段執行，出貨確認僅更新出貨單狀態。
+    // 出貨確認時同步回寫客戶訂單 arrived_qty
+    if (status === 'shipped') {
+      const dnId = Number(id)
+      const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [dnId])
+      const customerOrderId = Number(dn?.customer_order_id || 0)
+      if (customerOrderId > 0) {
+        const dniRows = await query<any>(
+          `SELECT dni.id, dni.order_item_id, COALESCE(dni.qty, 0) as qty
+           FROM delivery_note_items dni
+           WHERE dni.dn_id = ? AND dni.deleted_at IS NULL AND dni.order_item_id IS NOT NULL`,
+          [dnId]
+        )
+        if (dniRows.length > 0) {
+          const arrivedCase: string[] = []
+          const balanceCase: string[] = []
+          const statusCase: string[] = []
+          const params: any[] = []
+          const orderItemIds: number[] = []
+
+          for (const dni of dniRows) {
+            const orderItemId = Number(dni.order_item_id)
+            const delta = toQty(dni.qty)
+            if (!orderItemId || delta <= 0) continue
+
+            const ciRow = await queryOne<any>(
+              'SELECT id, qty, arrived_qty FROM customer_order_items WHERE id=? AND deleted_at IS NULL',
+              [orderItemId]
+            )
+            if (!ciRow) continue
+
+            const totalQty = toQty(ciRow.qty)
+            const nextArrived = toQty(Math.min(totalQty, toQty(ciRow.arrived_qty) + delta))
+            const nextBalance = toQty(Math.max(0, totalQty - nextArrived))
+            const nextStatus = nextArrived >= totalQty && totalQty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
+
+            arrivedCase.push('WHEN ? THEN ?')
+            params.push(orderItemId, nextArrived)
+            balanceCase.push('WHEN ? THEN ?')
+            params.push(orderItemId, nextBalance)
+            statusCase.push('WHEN ? THEN ?')
+            params.push(orderItemId, nextStatus)
+            orderItemIds.push(orderItemId)
+          }
+
+          if (orderItemIds.length > 0) {
+            const inClause = orderItemIds.map(() => '?').join(',')
+            await execute(`
+              UPDATE customer_order_items
+              SET
+                arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
+                balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
+                status = CASE id ${statusCase.join(' ')} ELSE status END
+              WHERE id IN (${inClause})
+            `, [...params, ...orderItemIds])
+
+            // 更新客戶訂單整體狀態
+            const summary = await queryOne<any>(
+              'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
+              [customerOrderId]
+            )
+            const totalQty = toQty(summary?.total_qty || 0)
+            const arrivedQty = toQty(summary?.arrived_qty || 0)
+            const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
+            await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, customerOrderId])
+          }
+        }
+      }
+    }
 
     await audit(u, 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`)
     return c.json({ ok: true })

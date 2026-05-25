@@ -153,6 +153,7 @@ export default function DeliveryNotesPage() {
     if (!selectedCustomerId) { toast('請選擇客戶', 'error'); return }
     if (!selectedOrderId) { toast('請選擇訂單', 'error'); return }
     const items = orderItems.map(i => ({
+      order_item_id: i.id,
       bom_id: i.bom_id,
       item_name: i.product_name,
       material_code: i.product_sku,
