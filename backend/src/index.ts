@@ -3687,6 +3687,8 @@ app.get('/api/customer-orders/material-options', authMiddleware, async c => {
 app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
   const orderIds = uniqueNumberList(String(c.req.query('order_ids') || '').split(','))
   if (!orderIds.length) return c.json([])
+  const excludeProgressId = Number(c.req.query('exclude_progress_id') || 0) || null
+  const includeZeroRemaining = ['1', 'true', 'yes'].includes(String(c.req.query('include_zero_remaining') || '').trim().toLowerCase())
 
   const rows = await query<any>(`
     SELECT
@@ -3726,7 +3728,10 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
       AND ci.deleted_at IS NULL
     ORDER BY co.created_at DESC, ci.id ASC, bi.id ASC
   `, orderIds)
-  const allocatedByOrderItem = await loadAllocatedBomQtyByOrderItems(rows.map((row) => Number(row.order_item_id || 0)))
+  const allocatedByOrderItem = await loadAllocatedBomQtyByOrderItems(
+    rows.map((row) => Number(row.order_item_id || 0)),
+    excludeProgressId,
+  )
 
   const grouped = new Map<string, any>()
   for (const row of rows) {
@@ -3773,7 +3778,8 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
       customer_po_number: String(row.customer_po_number || '').trim(),
     })
   }
-  return c.json(Array.from(grouped.values()).filter((node) => toQty(node.remaining_qty) > 0))
+  const nodes = Array.from(grouped.values())
+  return c.json(includeZeroRemaining ? nodes : nodes.filter((node) => toQty(node.remaining_qty) > 0))
 })
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
   const orderId = Number(c.req.param('id') || 0)

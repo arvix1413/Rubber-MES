@@ -142,6 +142,31 @@ const STATUS_LABEL: Record<string, string> = {
   completed: '已完成',
 }
 
+const buildBomNodeId = (orderId: number, orderItemId: number, bomId: number) =>
+  `${orderId}::${orderItemId}::${bomId}`
+
+const bomNodeFromLine = (line: LineForm): OrderBomNode | null => {
+  const orderId = Number(line.customerOrderId || 0)
+  const orderItemId = Number(line.orderItemId || 0)
+  const bomId = Number(line.bomId || 0)
+  if (!orderId || !orderItemId || !bomId) return null
+  const plannedQty = Number(line.planned_qty || 0)
+  return {
+    id: buildBomNodeId(orderId, orderItemId, bomId),
+    order_id: orderId,
+    order_po_number: line.orderPoNumber,
+    order_status: '',
+    customer_name: '',
+    order_item_id: orderItemId,
+    order_qty: plannedQty,
+    remaining_qty: plannedQty,
+    bom_id: bomId,
+    bom_sku: line.bom_sku,
+    bom_name: line.bom_name,
+    materials: [],
+  }
+}
+
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
   lineType: 'bom',
@@ -280,9 +305,15 @@ export default function OrderIntakePage() {
 
   useRefreshOnFocus(() => refreshAll(status, false))
 
-  const fetchOrderBomNodes = async (orderIds: number[]) => {
+  const fetchOrderBomNodes = async (
+    orderIds: number[],
+    opts?: { excludeProgressId?: number; includeZeroRemaining?: boolean },
+  ) => {
     if (!orderIds.length) return []
-    return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?order_ids=${orderIds.join(',')}`)
+    const params = new URLSearchParams({ order_ids: orderIds.join(',') })
+    if (opts?.excludeProgressId) params.set('exclude_progress_id', String(opts.excludeProgressId))
+    if (opts?.includeZeroRemaining) params.set('include_zero_remaining', '1')
+    return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?${params}`)
   }
 
   useEffect(() => {
@@ -312,7 +343,10 @@ export default function OrderIntakePage() {
       return
     }
     setEditBomLoading(true)
-    fetchOrderBomNodes(editForm.linkedOrderIds)
+    fetchOrderBomNodes(editForm.linkedOrderIds, {
+      excludeProgressId: editing?.id,
+      includeZeroRemaining: true,
+    })
       .then((rows) => {
         if (!cancelled) setEditBomNodes(rows || [])
       })
@@ -323,7 +357,7 @@ export default function OrderIntakePage() {
         if (!cancelled) setEditBomLoading(false)
       })
     return () => { cancelled = true }
-  }, [editForm?.linkedOrderIds])
+  }, [editForm?.linkedOrderIds, editing?.id])
 
   const summary = useMemo(() => {
     const total = rows.length
@@ -530,13 +564,19 @@ export default function OrderIntakePage() {
 
   const editBomOptionsForLine = (lineKey: string) => {
     if (!editForm) return []
+    const line = editForm.lines.find((it) => it.key === lineKey)
     const selectedByOthers = new Set(
       editForm.lines
-        .filter((line) => line.key !== lineKey)
-        .map((line) => line.bomNodeId)
+        .filter((it) => it.key !== lineKey)
+        .map((it) => it.bomNodeId)
         .filter(Boolean),
     )
-    return editBomNodes.filter((node) => !selectedByOthers.has(node.id))
+    const options = editBomNodes.filter((node) => !selectedByOthers.has(node.id))
+    if (line?.lineType === 'bom' && line.bomNodeId && !options.some((node) => node.id === line.bomNodeId)) {
+      const stub = bomNodeFromLine(line)
+      if (stub) return [stub, ...options]
+    }
+    return options
   }
 
   const createProgress = async () => {
@@ -639,7 +679,9 @@ export default function OrderIntakePage() {
           key: `edit-${item.id || index}`,
           id: item.id,
           lineType: item.line_type === 'bom' ? 'bom' : 'material',
-          bomNodeId: item.line_type === 'bom' && item.order_item_id && item.bom_id ? `${item.customer_order_id || 0}::${item.order_item_id}::${item.bom_id}` : '',
+          bomNodeId: item.line_type === 'bom' && item.customer_order_id && item.order_item_id && item.bom_id
+            ? buildBomNodeId(item.customer_order_id, item.order_item_id, item.bom_id)
+            : '',
           customerOrderId: item.customer_order_id || null,
           orderItemId: item.order_item_id || null,
           bomId: item.bom_id || null,
