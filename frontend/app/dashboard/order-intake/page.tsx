@@ -145,28 +145,6 @@ const STATUS_LABEL: Record<string, string> = {
 const buildBomNodeId = (orderId: number, orderItemId: number, bomId: number) =>
   `${orderId}::${orderItemId}::${bomId}`
 
-const bomNodeFromLine = (line: LineForm): OrderBomNode | null => {
-  const orderId = Number(line.customerOrderId || 0)
-  const orderItemId = Number(line.orderItemId || 0)
-  const bomId = Number(line.bomId || 0)
-  if (!orderId || !orderItemId || !bomId) return null
-  const plannedQty = Number(line.planned_qty || 0)
-  return {
-    id: buildBomNodeId(orderId, orderItemId, bomId),
-    order_id: orderId,
-    order_po_number: line.orderPoNumber,
-    order_status: '',
-    customer_name: '',
-    order_item_id: orderItemId,
-    order_qty: plannedQty,
-    remaining_qty: plannedQty,
-    bom_id: bomId,
-    bom_sku: line.bom_sku,
-    bom_name: line.bom_name,
-    materials: [],
-  }
-}
-
 const createEmptyLine = (seed: number): LineForm => ({
   key: `line-${seed}`,
   lineType: 'bom',
@@ -305,14 +283,10 @@ export default function OrderIntakePage() {
 
   useRefreshOnFocus(() => refreshAll(status, false))
 
-  const fetchOrderBomNodes = async (
-    orderIds: number[],
-    opts?: { excludeProgressId?: number; includeZeroRemaining?: boolean },
-  ) => {
+  const fetchOrderBomNodes = async (orderIds: number[], excludeProgressId?: number) => {
     if (!orderIds.length) return []
     const params = new URLSearchParams({ order_ids: orderIds.join(',') })
-    if (opts?.excludeProgressId) params.set('exclude_progress_id', String(opts.excludeProgressId))
-    if (opts?.includeZeroRemaining) params.set('include_zero_remaining', '1')
+    if (excludeProgressId) params.set('exclude_progress_id', String(excludeProgressId))
     return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?${params}`)
   }
 
@@ -343,10 +317,7 @@ export default function OrderIntakePage() {
       return
     }
     setEditBomLoading(true)
-    fetchOrderBomNodes(editForm.linkedOrderIds, {
-      excludeProgressId: editing?.id,
-      includeZeroRemaining: true,
-    })
+    fetchOrderBomNodes(editForm.linkedOrderIds, editing?.id)
       .then((rows) => {
         if (!cancelled) setEditBomNodes(rows || [])
       })
@@ -451,7 +422,7 @@ export default function OrderIntakePage() {
   }
 
   const formatCreateBomNode = (node: OrderBomNode) =>
-    `剩餘 ${node.remaining_qty ?? node.order_qty} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.order_po_number || '-'} / 原數量 ${node.order_qty}`
+    `剩餘 ${Number(node.remaining_qty ?? 0)} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.order_po_number || '-'} / 原數量 ${node.order_qty}`
 
   const filterCreateBomNode = (node: OrderBomNode, search: string) => {
     const text = [
@@ -564,19 +535,13 @@ export default function OrderIntakePage() {
 
   const editBomOptionsForLine = (lineKey: string) => {
     if (!editForm) return []
-    const line = editForm.lines.find((it) => it.key === lineKey)
     const selectedByOthers = new Set(
       editForm.lines
         .filter((it) => it.key !== lineKey)
         .map((it) => it.bomNodeId)
         .filter(Boolean),
     )
-    const options = editBomNodes.filter((node) => !selectedByOthers.has(node.id))
-    if (line?.lineType === 'bom' && line.bomNodeId && !options.some((node) => node.id === line.bomNodeId)) {
-      const stub = bomNodeFromLine(line)
-      if (stub) return [stub, ...options]
-    }
-    return options
+    return editBomNodes.filter((node) => !selectedByOthers.has(node.id))
   }
 
   const createProgress = async () => {

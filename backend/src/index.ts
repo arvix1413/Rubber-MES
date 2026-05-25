@@ -3688,7 +3688,6 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
   const orderIds = uniqueNumberList(String(c.req.query('order_ids') || '').split(','))
   if (!orderIds.length) return c.json([])
   const excludeProgressId = Number(c.req.query('exclude_progress_id') || 0) || null
-  const includeZeroRemaining = ['1', 'true', 'yes'].includes(String(c.req.query('include_zero_remaining') || '').trim().toLowerCase())
 
   const rows = await query<any>(`
     SELECT
@@ -3778,8 +3777,7 @@ app.get('/api/customer-orders/bom-material-tree', authMiddleware, async c => {
       customer_po_number: String(row.customer_po_number || '').trim(),
     })
   }
-  const nodes = Array.from(grouped.values())
-  return c.json(includeZeroRemaining ? nodes : nodes.filter((node) => toQty(node.remaining_qty) > 0))
+  return c.json(Array.from(grouped.values()))
 })
 app.get('/api/customer-orders/:id', authMiddleware, async c => {
   const orderId = Number(c.req.param('id') || 0)
