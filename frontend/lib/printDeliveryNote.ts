@@ -36,6 +36,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       <tr>
         <td style="text-align:center">${i + 1}</td>
         <td class="col-material">${txt(item.material_code)}</td>
+        <td class="col-po-ref">${txt(item.po_ref)}</td>
         <td class="col-name">${txt(item.item_name)}</td>
         <td class="col-spec">${txt(item.spec)}</td>
         <td class="col-unit" style="text-align:center">${txt(item.unit) || 'PCS'}</td>
@@ -92,6 +93,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       <thead><tr>
         <th style="width:28px">ST</th>
         <th class="col-material">物料編號</th>
+        <th class="col-po-ref">來源訂單\nPO No.</th>
         <th class="col-name">品名</th>
         <th class="col-spec">規格</th>
         <th class="col-unit">單位</th>
@@ -100,7 +102,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       </tr></thead>
       <tbody>
         ${itemRows}
-        <tr class="total-row"><td colspan="5">總計</td><td>${fmt(totalQty)}</td><td></td></tr>
+        <tr class="total-row"><td colspan="6">總計</td><td>${fmt(totalQty)}</td><td></td></tr>
       </tbody>
     </table>
 

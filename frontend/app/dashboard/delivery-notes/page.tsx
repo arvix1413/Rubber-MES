@@ -276,7 +276,7 @@ export default function DeliveryNotesPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">出貨單</h1>
-          <p className="mt-1 text-xs text-slate-500">出貨單改由交期進度自動生成，不再從客戶訂單直接建立。</p>
+          <p className="mt-1 text-xs text-slate-500">出貨單由交期進度自動生成；明細「來源訂單 PO No.」對應交期進度每行 BOM 的來源 PO，便於多訂單合併出貨時追蹤。</p>
         </div>
         {canWrite && canManualCreate && <button onClick={() => setCreating(true)} className="btn-primary">+ 新增出貨單</button>}
       </div>
@@ -389,6 +389,7 @@ export default function DeliveryNotesPage() {
                 <thead><tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">品名</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">物料編號</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">來源訂單 PO No.</th>
                   <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">數量</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">備註</th>
                 </tr></thead>
@@ -397,6 +398,7 @@ export default function DeliveryNotesPage() {
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="px-3 py-2 text-slate-700">{item.item_name}</td>
                       <td className="px-3 py-2 font-mono text-xs text-blue-600">{item.material_code}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">{item.po_ref || '—'}</td>
                       <td className="px-3 py-2 text-right">
                         <input type="number" className="rubber-input text-xs py-1 w-20 text-right" min={0}
                           value={item.qty}
@@ -483,9 +485,9 @@ export default function DeliveryNotesPage() {
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                  <table className="w-full text-xs" style={{ minWidth: 980 }}>
+                                  <table className="w-full text-xs" style={{ minWidth: 1100 }}>
                                     <thead><tr className="layer-head-l2">
-                                      {['品名','物料編號','規格','單位','數量','備註'].map(h => (
+                                      {['品名','物料編號','來源訂單 PO No.','規格','單位','數量','備註'].map(h => (
                                         <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                       ))}
                                     </tr></thead>
@@ -494,6 +496,7 @@ export default function DeliveryNotesPage() {
                                         <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
                                           <td className="px-3 py-2 text-slate-700">{item.item_name}</td>
                                           <td className="px-3 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{item.material_code}</td>
+                                          <td className="px-3 py-2 font-mono text-xs text-slate-700 whitespace-nowrap">{item.po_ref || '—'}</td>
                                           <td className="px-3 py-2 text-slate-400">{(item as any).spec || '—'}</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit || 'PCS'}</td>
                                           <td className="px-3 py-2 text-right font-medium">{formatQuantity(Number(item.qty))}</td>
