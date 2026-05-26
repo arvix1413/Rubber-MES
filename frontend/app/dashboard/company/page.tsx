@@ -14,6 +14,7 @@ const DEFAULT: CompanySettings = {
   address: '',
   phone: '',
   contact_person: '',
+  ceo: '',
   email: '',
   tax_id: '',
   logo_url: null,
@@ -200,6 +201,7 @@ export default function CompanyPage() {
             { key: 'address', label: '地址', placeholder: '', wide: true },
             { key: 'phone', label: '電話', placeholder: '' },
             { key: 'contact_person', label: '聯絡人', placeholder: '' },
+            { key: 'ceo', label: 'CEO', placeholder: '' },
             { key: 'email', label: '電子郵件', placeholder: '' },
             { key: 'tax_id', label: '統編 / 稅號', placeholder: '' },
           ].map(({ key, label, placeholder, wide }) => (

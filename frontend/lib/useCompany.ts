@@ -8,6 +8,7 @@ export type CompanySettings = {
   address: string
   phone: string
   contact_person: string
+  ceo?: string
   email: string
   tax_id: string
   logo_url: string | null
