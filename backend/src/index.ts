@@ -2210,6 +2210,22 @@ const applyShippedQtyToOrderItems = async (
 const syncCustomerOrderArrivedFromShippedDns = async (customerOrderId: number, db?: DbExecutor) => {
   const orderId = Number(customerOrderId || 0)
   if (orderId <= 0) return
+  // 先補全該訂單關聯的 delivery_note_items 中缺失的 order_item_id
+  const missingRows = await query<any>(`
+    SELECT dni.id, dni.material_code, dni.item_name
+    FROM delivery_note_items dni
+    JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL
+    WHERE dn.customer_order_id=? AND dn.status='shipped' AND dni.deleted_at IS NULL
+      AND (dni.order_item_id IS NULL OR dni.order_item_id = 0)
+  `, [orderId], db)
+  for (const row of missingRows) {
+    const orderItemId = (await resolveOrderItemIdFromProgress(Number(row.id), db))
+      || (await resolveOrderItemIdForDnLine(orderId, { materialCode: row.material_code, itemName: row.item_name }, db))
+      || 0
+    if (orderItemId) {
+      await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, row.id], db)
+    }
+  }
   const shippedMap = await buildShippedQtyByOrderItemId(db)
   await applyShippedQtyToOrderItems(shippedMap, [orderId], db)
 }
@@ -3522,6 +3538,7 @@ app.get('/api/customer-orders', authMiddleware, async c => {
              co.payment_date, co.payment_note,
              COALESCE(SUM(ci.qty), 0) as order_total_qty,
              COALESCE(SUM(ci.arrived_qty), 0) as shipped_total_qty,
+             COALESCE(SUM(ci.arrived_qty), 0) as arrived_total_qty,
 	             GREATEST(0, COALESCE(SUM(ci.qty), 0) - COALESCE(SUM(ci.arrived_qty), 0)) as balance_total_qty,
 	             CASE
 	               WHEN COALESCE(SUM(ci.qty), 0) <= 0 THEN 0
@@ -6005,11 +6022,30 @@ app.put('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.create'
     if (existing.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的出貨單' }, 400)
     await execute('UPDATE delivery_notes SET delivery_date=?,remark=? WHERE id=?',
       [b.delivery_date||null, b.remark||'', id])
+    // 在 softDelete 前先保存舊 items 的 order_item_id（按 material_code 建立映射）
+    const oldItems = await query<any>(
+      'SELECT material_code, order_item_id FROM delivery_note_items WHERE dn_id=? AND deleted_at IS NULL AND order_item_id IS NOT NULL AND order_item_id > 0',
+      [id]
+    )
+    const oldOrderItemIdByCode = new Map<string, number>()
+    for (const oi of oldItems) {
+      if (oi.material_code && oi.order_item_id) oldOrderItemIdByCode.set(String(oi.material_code), Number(oi.order_item_id))
+    }
     await softDeleteByWhere('delivery_note_items', 'dn_id=?', [id], u?.userId)
     if (b.items?.length) {
+      const dnRow = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
+      const customerOrderId = Number(dnRow?.customer_order_id || 0)
       for (const item of b.items) {
         const materialId = await resolveMaterialId(item.material_id, item.material_code)
-        const orderItemId = Number(item.order_item_id || 0) || null
+        let orderItemId = Number(item.order_item_id || 0) || null
+        if (!orderItemId && item.material_code) {
+          // 嘗試從舊 items 中按 material_code 找回
+          orderItemId = oldOrderItemIdByCode.get(String(item.material_code)) || null
+        }
+        if (!orderItemId && customerOrderId > 0) {
+          // 嘗試自動解析
+          orderItemId = await resolveOrderItemIdForDnLine(customerOrderId, { materialCode: item.material_code, itemName: item.item_name }) || null
+        }
         await execute('INSERT INTO delivery_note_items (dn_id,order_item_id,material_id,item_name,material_code,spec,unit,qty,remark,po_ref,thickness) VALUES (?,?,?,?,?,?,?,?,?,?,?)',
           [id, orderItemId, materialId, item.item_name||'', item.material_code||'', item.spec||'', item.unit||'PCS', item.qty||0, item.remark||'', item.po_ref||'', item.thickness||null])
       }
@@ -6040,8 +6076,34 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
     if (status === 'shipped') {
       const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [Number(id)])
       const customerOrderId = Number(dn?.customer_order_id || 0)
+      // 原有邏輯：通過 customer_order_id sync
       if (customerOrderId > 0) {
         await syncCustomerOrderArrivedFromShippedDns(customerOrderId)
+      }
+      // 新增：通過 delivery_note_items 反查所有關聯訂單也執行 sync（多訂單出貨單 customer_order_id 可能為 null）
+      const dniRows = await query<any>(
+        'SELECT id, order_item_id, material_code, item_name FROM delivery_note_items WHERE dn_id=? AND deleted_at IS NULL',
+        [Number(id)]
+      )
+      const extraOrderIds = new Set<number>()
+      for (const dni of dniRows) {
+        let orderItemId = Number(dni.order_item_id || 0)
+        if (!orderItemId) {
+          orderItemId = (await resolveOrderItemIdFromProgress(Number(dni.id)))
+            || (await resolveOrderItemIdForDnLine(customerOrderId, { materialCode: dni.material_code, itemName: dni.item_name }))
+            || 0
+          if (orderItemId) {
+            await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, dni.id])
+          }
+        }
+        if (!orderItemId) continue
+        const oi = await queryOne<any>('SELECT order_id FROM customer_order_items WHERE id=? AND deleted_at IS NULL', [orderItemId])
+        const orderId = Number(oi?.order_id || 0)
+        if (orderId > 0 && orderId !== customerOrderId) extraOrderIds.add(orderId)
+      }
+      if (extraOrderIds.size > 0) {
+        const shippedMap = await buildShippedQtyByOrderItemId()
+        await applyShippedQtyToOrderItems(shippedMap, Array.from(extraOrderIds))
       }
     }
 
