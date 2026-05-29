@@ -29,7 +29,7 @@ function getCOActions(status: string) {
 }
 
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number; progress_created_qty?:number; progress_remaining_qty?:number; progress_created_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
+type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; arrived_total_qty?:number; balance_total_qty?:number; completion_rate?:number; progress_created_qty?:number; progress_remaining_qty?:number; progress_created_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
 type Customer = {
   id:number
@@ -695,7 +695,7 @@ export default function CustomerOrdersPage() {
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate whitespace-nowrap" title={o.customer_name}>{o.customer_name}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.po_date) || '—'}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.delivery_date) || '—'}</td>
-                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{formatInteger(qtyNum(o.shipped_total_qty))} / {formatInteger(qtyNum(o.order_total_qty))}</td>
+                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{formatInteger(qtyNum(o.arrived_total_qty))} / {formatInteger(qtyNum(o.order_total_qty))}</td>
 	                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{formatInteger(qtyNum(o.balance_total_qty))}</td>
 	                        <td className="px-4 py-3 text-right whitespace-nowrap">
 	                          <div className="text-xs font-semibold text-slate-700">
