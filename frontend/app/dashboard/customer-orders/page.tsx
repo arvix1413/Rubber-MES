@@ -298,6 +298,7 @@ export default function CustomerOrdersPage() {
           ? boms.find(b => b.id === i.bom_id)
           : undefined
         return {
+          id: i.id,
           bom_id: i.bom_id ?? null,
           qty: Number(i.qty),
           unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
@@ -320,6 +321,7 @@ export default function CustomerOrdersPage() {
         ? boms.find(b => b.id === i.bom_id)
         : undefined
       return {
+        id: i.id,
         bom_id: i.bom_id ?? null,
         qty: Number(i.qty),
         unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),

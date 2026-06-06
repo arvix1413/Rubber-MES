@@ -3860,7 +3860,20 @@ app.patch('/api/customer-orders/:id/status', authMiddleware, requirePerm('custom
     const { status } = await c.req.json()
     const valid = ['pending', 'partial', 'completed', 'delay']
     if (!valid.includes(status)) return c.json({ error: 'Invalid status' }, 400)
-    await execute('UPDATE customer_orders SET status=? WHERE id=?', [status, id])
+    const orderId = Number(id)
+    if (status === 'completed') {
+      // Mark all order items as fully arrived so metrics are consistent
+      await execute(
+        `UPDATE customer_order_items SET arrived_qty=qty, balance=0, status='completed' WHERE order_id=? AND deleted_at IS NULL`,
+        [orderId]
+      )
+      await execute('UPDATE customer_orders SET status=? WHERE id=?', [status, orderId])
+    } else {
+      // Revert: recompute arrived_qty from actual shipped DNs, then let recalc set order status
+      await syncCustomerOrderArrivedFromShippedDns(orderId)
+      // If no shipped DNs exist the sync leaves items at 0; honour the user's explicit status choice
+      await execute('UPDATE customer_orders SET status=? WHERE id=?', [status, orderId])
+    }
     const row = await queryOne<any>('SELECT po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [id])
     await audit(c.get('user'), 'STATUS_CHANGE', '客戶訂單', id, `${row?.po_number} → ${status}`)
     return c.json({ ok: true })
@@ -3883,15 +3896,36 @@ app.put('/api/customer-orders/:id', authMiddleware, requirePerm('customer_order.
     const firstItemRta = (b.items || []).find((i: any) => i?.rta_date)?.rta_date || null
     await execute('UPDATE customer_orders SET po_date=?,po_number=?,customer_id=?,customer_name=?,remark=?,tax_rate=?,tax_amount=?,total_amount=?,currency=?,delivery_date=?,delivery_address=?,person_in_charge=?,payment_terms=? WHERE id=?',
       [b.po_date||null, existing.po_number, b.customer_id, customerName, b.remark||'', taxRate, taxAmount, totalAmount, b.currency||'VND', b.delivery_date||firstItemRta, b.delivery_address||'', b.person_in_charge||'', b.payment_terms||cust?.payment_terms||'', id])
-    // Replace items
-    await softDeleteByWhere('customer_order_items', 'order_id=?', [id], u?.userId)
+    // Upsert items: UPDATE existing (preserve arrived_qty etc.), INSERT new, soft-delete removed
+    const submittedIds = new Set<number>()
     if (b.items?.length) {
       for (const item of b.items) {
         if (!item.bom_id) continue
-        await execute('INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,po_no,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
-          [id, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.po_no||'', item.remark||'', 0, item.qty||0, 'pending'])
+        if (item.id) {
+          // Existing item: update only editable fields, preserve arrival/settlement data
+          await execute(
+            `UPDATE customer_order_items SET bom_id=?,qty=?,unit_price=?,rta_date=?,po_no=?,remark=?,balance=GREATEST(0,qty-arrived_qty) WHERE id=? AND order_id=? AND deleted_at IS NULL`,
+            [item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.po_no||'', item.remark||'', item.id, id]
+          )
+          submittedIds.add(Number(item.id))
+        } else {
+          // New item
+          const result: any = await execute(
+            'INSERT INTO customer_order_items (order_id,bom_id,qty,unit_price,rta_date,po_no,remark,arrived_qty,balance,status) VALUES (?,?,?,?,?,?,?,?,?,?)',
+            [id, item.bom_id, item.qty||0, item.unit_price||0, item.rta_date||null, item.po_no||'', item.remark||'', 0, item.qty||0, 'pending']
+          )
+          if (result?.insertId) submittedIds.add(Number(result.insertId))
+        }
       }
     }
+    // Soft-delete items that were removed by the user
+    const dbItems = await query<any>('SELECT id FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL', [id])
+    for (const row of dbItems) {
+      if (!submittedIds.has(Number(row.id))) {
+        await softDeleteById('customer_order_items', row.id, u?.userId)
+      }
+    }
+    await recalcCustomerOrderStatus([Number(id)])
     await audit(u, 'UPDATE', '客戶訂單', id, existing.po_number)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
@@ -6113,9 +6147,27 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
 })
 app.delete('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.delete'), async c => {
   const id = c.req.param('id')
-  const row = await queryOne<any>('SELECT dn_number,customer_name FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
+  const row = await queryOne<any>('SELECT dn_number,customer_name,customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
   if (!row) return c.json({ error: 'Not found' }, 404)
+
+  // Collect all affected customer order IDs before deletion
+  const affectedOrderIds = new Set<number>()
+  if (Number(row.customer_order_id) > 0) affectedOrderIds.add(Number(row.customer_order_id))
+  const dniRows = await query<any>(
+    `SELECT ci.order_id FROM delivery_note_items dni
+     JOIN customer_order_items ci ON ci.id = dni.order_item_id AND ci.deleted_at IS NULL
+     WHERE dni.dn_id=? AND dni.deleted_at IS NULL AND dni.order_item_id IS NOT NULL AND dni.order_item_id > 0`,
+    [id]
+  )
+  for (const r of dniRows) if (Number(r.order_id) > 0) affectedOrderIds.add(Number(r.order_id))
+
   await softDeleteById('delivery_notes', id, c.get('user')?.userId)
+
+  // Re-sync arrived_qty for all affected orders
+  for (const orderId of affectedOrderIds) {
+    await syncCustomerOrderArrivedFromShippedDns(orderId)
+  }
+
   await audit(c.get('user'), 'DELETE', '出貨單', id, `${row?.dn_number} / ${row?.customer_name}`)
   return c.json({ ok: true })
 })
