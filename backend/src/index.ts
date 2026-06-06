@@ -7129,6 +7129,64 @@ app.post('/api/admin/backfill-order-item-ids', authMiddleware, isAdmin, async c 
   }
 })
 
+app.post('/api/admin/fix-completion-rates', authMiddleware, isAdmin, async c => {
+  try {
+    const orders = await query<any>(
+      `SELECT id, status FROM customer_orders WHERE deleted_at IS NULL ORDER BY id`,
+      []
+    )
+    const stats = { total: orders.length, completed: 0, partial: 0, pending_synced: 0, skipped: 0 }
+
+    for (let i = 0; i < orders.length; i++) {
+      const { id: orderId, status } = orders[i]
+
+      if (status === 'completed') {
+        const preview = await query<any>(
+          `SELECT id, qty, arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL`,
+          [orderId]
+        )
+        const toFix = preview.filter((r: any) => toQty(r.arrived_qty) !== toQty(r.qty))
+        if (toFix.length > 0) {
+          await execute(
+            `UPDATE customer_order_items SET arrived_qty=qty, balance=0, status='completed' WHERE order_id=? AND deleted_at IS NULL`,
+            [orderId]
+          )
+          stats.completed++
+          console.log(`[fix-completion] completed order ${orderId}: fixed ${toFix.length} items`)
+        } else {
+          stats.skipped++
+        }
+      } else if (status === 'partial') {
+        await syncCustomerOrderArrivedFromShippedDns(orderId)
+        stats.partial++
+        console.log(`[fix-completion] partial order ${orderId}: synced from shipped DNs`)
+      } else if (status === 'pending') {
+        const row = await queryOne<any>(
+          `SELECT COALESCE(SUM(arrived_qty),0) as total_arrived FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL`,
+          [orderId]
+        )
+        if (toQty(row?.total_arrived || 0) > 0) {
+          await syncCustomerOrderArrivedFromShippedDns(orderId)
+          stats.pending_synced++
+          console.log(`[fix-completion] pending order ${orderId}: had arrived_qty > 0, synced`)
+        } else {
+          stats.skipped++
+        }
+      }
+
+      if ((i + 1) % 10 === 0 || i === orders.length - 1) {
+        console.log(`[fix-completion] progress: ${i + 1}/${orders.length}`)
+      }
+    }
+
+    console.log('[fix-completion] done:', JSON.stringify(stats))
+    await audit(c.get('user'), 'FIX', 'completion_rates', 0, JSON.stringify(stats))
+    return c.json({ ok: true, ...stats })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 app.post('/api/admin/sync-shipped-arrived-qty', authMiddleware, isAdmin, async c => {
   try {
     const result = await syncAllCustomerOrdersArrivedFromShippedDns()
