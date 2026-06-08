@@ -59,7 +59,12 @@ jobs:
           username: ${{ env.TARGET_USER }}
           password: ${{ env.TARGET_PASSWORD }}
           port: ${{ env.TARGET_PORT }}
-          script: IMAGE_TAG=${{ env.DEPLOY_ENV }} /opt/rubber/deploy.sh
+          script: |
+            set -e
+            cd /opt/rubber
+            export IMAGE_TAG=${{ env.DEPLOY_ENV }}
+            docker compose pull rubber-backend rubber-frontend
+            docker compose up -d
 
       - name: Notify Telegram
         if: always()
