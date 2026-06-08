@@ -11,6 +11,8 @@
  */
 const FRONTEND = process.env.RUBBER_FRONTEND_URL || 'http://43.160.199.226:10101'
 const API = process.env.RUBBER_API_URL || 'http://43.160.199.226:10102'
+const EMAIL = process.env.RUBBER_PATROL_EMAIL || 'admin@rubber.local'
+const PASSWORD = process.env.RUBBER_PATROL_PASSWORD || ''
 const BOT_TOKEN = process.env.TELEGRAM_PATROL_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
 const CHAT_ID = process.env.TELEGRAM_PATROL_CHAT_ID || process.env.TELEGRAM_CHAT_ID
 
@@ -45,7 +47,37 @@ async function buildPatrolText() {
     ].join('\n')
   }
 
-  const patrol = await fetchJson(`${API}/api/daily-patrol-report`)
+  if (!PASSWORD) {
+    return [
+      '【ERP 每日巡檢報告】',
+      `巡檢日期：${date}`,
+      `巡檢時間：${time}`,
+      '',
+      '無法取得每日巡檢報告（未設定 RUBBER_PATROL_PASSWORD），請在 GitHub Secrets / 環境變數補齊登入資料。',
+    ].join('\n')
+  }
+
+  // /api/daily-patrol-report 有 authMiddleware，需要先登录取 token
+  const login = await fetchJson(`${API}/api/auth/login`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ email: EMAIL, password: PASSWORD }),
+  })
+  const token = login?.data?.token
+  if (!login.ok || !token) {
+    return [
+      '【ERP 每日巡檢報告】',
+      `巡檢日期：${date}`,
+      `巡檢時間：${time}`,
+      '',
+      '無法取得每日巡檢報告（登入失敗），請檢查 RUBBER_PATROL_EMAIL / RUBBER_PATROL_PASSWORD。',
+      `登入 HTTP 狀態：${login.status}`,
+    ].join('\n')
+  }
+
+  const patrol = await fetchJson(`${API}/api/daily-patrol-report`, {
+    headers: { Authorization: `Bearer ${token}` },
+  })
   if (!patrol.ok) {
     return [
       '【ERP 每日巡檢報告】',
