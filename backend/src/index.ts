@@ -1454,7 +1454,8 @@ const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
        ON dpi.order_item_id = ci.id AND dpi.deleted_at IS NULL
      WHERE ci.deleted_at IS NULL
      GROUP BY ci.id, ci.order_id, co.po_number, ci.qty
-     HAVING planned_qty - order_qty > 0.0001`,
+     HAVING planned_qty - order_qty > 0.0001
+     LIMIT 20`,
     [],
   )
   for (const row of progressOverRows) {
@@ -1539,7 +1540,7 @@ const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
      ) pb
      GROUP BY pb.material_code, pb.material_name
      HAVING SUM(pb.required_qty) - SUM(pb.purchased_qty) > 0.0001
-     LIMIT 50`,
+     LIMIT 20`,
     [],
   ).catch(() => [] as any[])
   for (const row of shortageRows) {
@@ -1559,7 +1560,7 @@ const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
        AND deleted_at IS NULL
        AND created_at < DATE_SUB(NOW(), INTERVAL 14 DAY)
      ORDER BY created_at ASC
-     LIMIT 20`,
+     LIMIT 5`,
     [],
   )
   for (const row of staleOrders) {
@@ -1580,7 +1581,7 @@ const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
        AND due_date IS NOT NULL
        AND due_date < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
      ORDER BY due_date ASC
-     LIMIT 20`,
+     LIMIT 5`,
     [],
   )
   for (const row of staleProgress) {
@@ -1638,9 +1639,10 @@ const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
     generated_at: time,
     date,
     time,
-    severe,
-    need_review: needReview,
-    stuck,
+    // Telegram 訊息可能過長：只回傳前 N 筆重點
+    severe: severe.slice(0, 5),
+    need_review: needReview.slice(0, 10),
+    stuck: stuck.slice(0, 10),
     consistency,
     normals,
     priorities,

@@ -230,7 +230,10 @@ async function main() {
   const text = await buildPatrolText()
   console.log(text)
   console.log('')
-  await sendTelegram(text)
+  const tg = await sendTelegram(text)
+  if (tg?.result?.message_id) {
+    console.log(`[Telegram] sent message_id=${tg.result.message_id}`)
+  }
 }
 
 main().catch((e) => {
