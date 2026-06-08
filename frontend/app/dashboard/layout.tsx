@@ -6,6 +6,7 @@ import { clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
 import { useReviewBadge } from '@/lib/useReviewBadge'
 import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
+import { getCompany, type CompanySettings } from '@/lib/useCompany'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; exact?: boolean }
 type NavGroup = { label: string; icon: React.ReactNode; children: NavItem[]; defaultOpen?: boolean }
@@ -110,6 +111,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
+  const [company, setCompany] = useState<CompanySettings | null>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
@@ -120,6 +122,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return
     }
     setUser(getUser())
+    // Load company settings for sidebar display
+    getCompany().then(setCompany).catch(() => {})
   }, [router])
 
   useEffect(() => {
@@ -239,10 +243,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="brand-font flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#d9853f_0%,#b55a1b_100%)] text-sm font-black text-[#fff6ed] shadow-[0_10px_20px_rgba(0,0,0,0.2)]">
-              R
+              {company?.company_name?.charAt(0) ?? 'R'}
             </div>
             <div>
-              <div className="brand-font text-sm font-bold tracking-wide text-[#fff3e3]">RUBBER MES</div>
+              <div className="brand-font text-sm font-bold tracking-wide text-[#fff3e3]">
+                {company?.company_name ?? 'RUBBER MES'}
+              </div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-[#b89f85]">Flow-Driven Workspace</div>
             </div>
           </div>
