@@ -1,0 +1,26 @@
+name: Daily Patrol (Rubber-MES)
+
+on:
+  schedule:
+    # 每天早上 8:00（台北时间）
+    - cron: '0 8 * * *'
+    timezone: Asia/Taipei
+  workflow_dispatch:
+
+jobs:
+  patrol:
+    runs-on: ubuntu-latest
+    env:
+      RUBBER_FRONTEND_URL: http://43.160.199.226:10101
+      RUBBER_API_URL: http://43.160.199.226:10102
+      RUBBER_PATROL_EMAIL: ${{ secrets.RUBBER_PATROL_EMAIL }}
+      RUBBER_PATROL_PASSWORD: ${{ secrets.RUBBER_PATROL_PASSWORD }}
+      TELEGRAM_PATROL_BOT_TOKEN: ${{ secrets.TELEGRAM_PATROL_BOT_TOKEN }}
+      TELEGRAM_PATROL_CHAT_ID: ${{ secrets.TELEGRAM_PATROL_CHAT_ID }}
+      TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Run daily patrol
+        run: node scripts/daily-patrol.mjs
