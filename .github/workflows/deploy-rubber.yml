@@ -63,6 +63,8 @@ jobs:
             set -e
             cd /opt/rubber
             export IMAGE_TAG=${{ env.DEPLOY_ENV }}
+            # 防止 container_name 固定导致的重建冲突：先完整 down 再 up
+            docker compose down --remove-orphans || true
             docker compose pull rubber-backend rubber-frontend
             docker compose up -d
 
