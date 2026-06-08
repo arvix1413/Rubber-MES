@@ -3587,24 +3587,34 @@ app.get('/api/customer-orders', authMiddleware, async c => {
       .map((o: any) => Number(o.id))
       .filter((id: number) => id > 0)
     if (staleIds.length) {
-      const placeholders = staleIds.map(() => '?').join(',')
-      const needsSync = await queryOne<any>(`
-        SELECT COUNT(*) as cnt FROM (
-          SELECT DISTINCT co.id
-          FROM customer_orders co
-          JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
-          JOIN delivery_note_items dni ON dni.order_item_id = ci.id AND dni.deleted_at IS NULL
-          JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.status='shipped' AND dn.deleted_at IS NULL
-          WHERE co.id IN (${placeholders}) AND co.deleted_at IS NULL
-          UNION
-          SELECT DISTINCT dn.customer_order_id
-          FROM delivery_notes dn
-          WHERE dn.status='shipped' AND dn.deleted_at IS NULL AND dn.customer_order_id IN (${placeholders})
-        ) t
-      `, [...staleIds, ...staleIds])
-      if (Number(needsSync?.cnt || 0) > 0) {
-        await syncAllCustomerOrdersArrivedFromShippedDns()
-        orders = await listCustomerOrders()
+      try {
+        const batchSize = 100
+        let needsSyncCount = 0
+        for (let i = 0; i < staleIds.length; i += batchSize) {
+          const batch = staleIds.slice(i, i + batchSize)
+          const placeholders = batch.map(() => '?').join(',')
+          const needsSync = await queryOne<any>(`
+            SELECT COUNT(*) as cnt FROM (
+              SELECT DISTINCT co.id
+              FROM customer_orders co
+              JOIN customer_order_items ci ON ci.order_id = co.id AND ci.deleted_at IS NULL
+              JOIN delivery_note_items dni ON dni.order_item_id = ci.id AND dni.deleted_at IS NULL
+              JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.status='shipped' AND dn.deleted_at IS NULL
+              WHERE co.id IN (${placeholders}) AND co.deleted_at IS NULL
+              UNION
+              SELECT DISTINCT dn.customer_order_id
+              FROM delivery_notes dn
+              WHERE dn.status='shipped' AND dn.deleted_at IS NULL AND dn.customer_order_id IN (${placeholders})
+            ) t
+          `, [...batch, ...batch])
+          needsSyncCount += Number(needsSync?.cnt || 0)
+        }
+        if (needsSyncCount > 0) {
+          await syncAllCustomerOrdersArrivedFromShippedDns()
+          orders = await listCustomerOrders()
+        }
+      } catch (syncError: any) {
+        console.error('Customer order shipped-qty sync skipped:', syncError?.message || syncError)
       }
     }
 
