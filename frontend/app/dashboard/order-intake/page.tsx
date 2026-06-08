@@ -245,6 +245,7 @@ export default function OrderIntakePage() {
   const [createOrderSearch, setCreateOrderSearch] = useState('')
   const [createBomNodes, setCreateBomNodes] = useState<OrderBomNode[]>([])
   const [createBomLoading, setCreateBomLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
   const [editing, setEditing] = useState<ProgressDetail | null>(null)
   const [editForm, setEditForm] = useState<EditForm | null>(null)
   const [editLineSeed, setEditLineSeed] = useState(1000)
@@ -545,6 +546,7 @@ export default function OrderIntakePage() {
   }
 
   const createProgress = async () => {
+    if (creating) return
     const selectedCustomer = customers.find((c) => String(c.id) === createForm.customerId)
     const customerName = (selectedCustomer?.customer_name || createForm.customerName || '').trim()
     if (!customerName) {
@@ -583,20 +585,27 @@ export default function OrderIntakePage() {
       toast('所選 BOM 無效，請重新選擇', 'error')
       return
     }
-    for (const line of lines) {
-      if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
-        toast(`BOM ${line.bom_code || line.bom_name || ''} 的數量需大於 0`, 'error')
-        return
-      }
-      const node = createBomNodes.find((it) => it.order_item_id === line.order_item_id && it.bom_id === line.bom_id)
-      const remainingQty = Number(node?.remaining_qty ?? node?.order_qty ?? 0)
-      if (remainingQty > 0 && Number(line.planned_qty) > remainingQty) {
-        toast(`BOM ${line.bom_code || line.bom_name || ''} 本次最多只能建立 ${remainingQty}`, 'error')
-        return
-      }
-    }
-
+    setCreating(true)
     try {
+      const freshBomNodes = await fetchOrderBomNodes(createForm.linkedOrderIds)
+      setCreateBomNodes(freshBomNodes || [])
+      for (const line of lines) {
+        if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 的數量需大於 0`, 'error')
+          return
+        }
+        const node = (freshBomNodes || []).find((it) => it.order_item_id === line.order_item_id && it.bom_id === line.bom_id)
+        const remainingQty = Number(node?.remaining_qty ?? node?.order_qty ?? 0)
+        if (remainingQty <= 0) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 已無剩餘可建立數量，請重新整理後再試`, 'error')
+          return
+        }
+        if (Number(line.planned_qty) > remainingQty) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 本次最多只能建立 ${remainingQty}`, 'error')
+          return
+        }
+      }
+
       const created = await apiFetch<{ id: number; progress_no: string; dn_id?: number | null; dn_number?: string | null; po_created?: Array<{ id: number; po_number: string; supplier_name: string }>; po_count?: number }>('/api/order-intake', {
         method: 'POST',
         body: JSON.stringify({
@@ -616,6 +625,8 @@ export default function OrderIntakePage() {
       await refreshAll(status, false)
     } catch (e: any) {
       toast(String(e?.message || '建立失敗'), 'error')
+    } finally {
+      setCreating(false)
     }
   }
 
@@ -1164,7 +1175,7 @@ export default function OrderIntakePage() {
 
             <div className="mt-5 flex justify-end gap-2">
               <button className="btn-ghost" onClick={closeCreate}>取消</button>
-              <button className="btn-primary" onClick={createProgress}>建立</button>
+              <button className="btn-primary" onClick={createProgress} disabled={creating}>{creating ? '建立中...' : '建立'}</button>
             </div>
           </div>
         </div>

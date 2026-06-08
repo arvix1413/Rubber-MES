@@ -75,7 +75,6 @@ function mapApiErrorMessage(raw: string, status: number): string {
     return '資料處理失敗，請檢查輸入內容或聯絡管理員'
   }
 
-  if (status >= 500) return '系統暫時異常，請稍後再試'
   return msg
 }
 

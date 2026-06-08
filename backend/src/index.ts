@@ -1192,6 +1192,13 @@ const toMoney = (value: any): number => {
   return Math.round(num * 100) / 100
 }
 
+const businessErrorStatus = (message: string): 400 | 500 => {
+  const msg = String(message || '').trim()
+  if (!msg) return 500
+  if (/sql|mysql|database|er_|syntax|econn|timeout|deadlock/i.test(msg)) return 500
+  return 400
+}
+
 const uniquePoNumbers = (values: any[]): string[] => {
   const seen = new Set<string>()
   const out: string[] = []
@@ -4669,7 +4676,8 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
     })
     return c.json(result, 201)
   } catch (e: any) {
-    return c.json({ error: String(e.message) }, 500)
+    const message = String(e.message)
+    return c.json({ error: message }, businessErrorStatus(message))
   }
 })
 
@@ -4737,7 +4745,8 @@ app.put('/api/order-intake/:id', authMiddleware, requirePerm('customer_order.cre
     await audit(c.get('user'), 'UPDATE', '交期進度', id, `id=${id}`)
     return c.json({ ok: true })
   } catch (e: any) {
-    return c.json({ error: String(e.message) }, 500)
+    const message = String(e.message)
+    return c.json({ error: message }, businessErrorStatus(message))
   }
 })
 
