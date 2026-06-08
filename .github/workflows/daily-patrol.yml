@@ -11,6 +11,7 @@ jobs:
   patrol:
     runs-on: ubuntu-latest
     env:
+      PATROL_PROJECT_NAME: Rubber-MES
       RUBBER_FRONTEND_URL: http://43.160.199.226:10101
       RUBBER_API_URL: http://43.160.199.226:10102
       RUBBER_PATROL_EMAIL: ${{ secrets.RUBBER_PATROL_EMAIL }}

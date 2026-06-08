@@ -276,7 +276,59 @@ cd ../backend && npm run build
 ### 列表和表格风格不要随意分叉
 这个项目已经在往“全局一致”方向整理，尤其是表头跟随、宽表阅读和页面密度。
 
-## 12. AI Handoff Checklist
+## 12. Daily Patrol (每日巡檢)
+
+Rubber-MES 每天早上 **7:00（Asia/Taipei）** 自动巡检 PRD 数据，并通过 Telegram 发送日报。
+
+### Architecture
+- **GitHub Actions**: [/.github/workflows/daily-patrol.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/daily-patrol.yml)
+- **Runner script**: [scripts/daily-patrol.mjs](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/scripts/daily-patrol.mjs)
+- **Backend API**: `GET /api/daily-patrol-report`（需登录 token，直接查 MySQL 业务表）
+
+流程：GitHub Actions 定时触发 → 脚本登录 PRD → 调用后端巡检 API → 按客户模板格式化 → 发到 Telegram 群。
+
+### Telegram Message Format
+报告标题带项目标识，例如：
+
+```text
+【ERP 每日巡檢報告 · Rubber-MES】
+```
+
+正文包含六段：严重异常、需人工确认、流程卡住、资料一致性检查、今日正常项目、今日优先处理事项。
+
+### GitHub Secrets
+| Secret | 说明 |
+|--------|------|
+| `TELEGRAM_PATROL_BOT_TOKEN` | DailyPatrolBot token |
+| `TELEGRAM_PATROL_CHAT_ID` | 目标 Telegram 群 chat_id |
+| `RUBBER_PATROL_EMAIL` | 巡检登录账号，默认 `admin@rubber.local` |
+| `RUBBER_PATROL_PASSWORD` | 巡检登录密码 |
+
+### Manual Run
+```bash
+# 本地手动跑一次（会发到 Telegram）
+PATROL_PROJECT_NAME=Rubber-MES \
+RUBBER_PATROL_PASSWORD='...' \
+TELEGRAM_PATROL_BOT_TOKEN='...' \
+TELEGRAM_PATROL_CHAT_ID='...' \
+node scripts/daily-patrol.mjs
+```
+
+或在 GitHub Actions 页面手动触发 `Daily Patrol (Rubber-MES)` workflow。
+
+### Patrol Scope (v1)
+后端直接查询以下异常：
+- 订单 vs 出货数量不一致 / 超量出货
+- 交期進度超过订单数量
+- BOM 缺材料、材料数量为 0
+- 负库存
+- 订单 / 交期進度流程卡住过久
+
+### Related Files
+- [scripts/telegram-get-chat-id.mjs](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/scripts/telegram-get-chat-id.mjs) — 获取 Telegram chat_id 的辅助脚本
+- `buildDailyPatrolReport()` in [backend/src/index.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/index.ts)
+
+## 13. AI Handoff Checklist
 
 建议阅读顺序：
 1. [README.md](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/README.md)

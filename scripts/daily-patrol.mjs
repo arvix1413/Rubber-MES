@@ -6,15 +6,19 @@
  *   RUBBER_FRONTEND_URL  默认 http://43.160.199.226:10101
  *   RUBBER_API_URL       默认 http://43.160.199.226:10102
  *   RUBBER_PATROL_EMAIL / RUBBER_PATROL_PASSWORD
+ *   PATROL_PROJECT_NAME    默认 Rubber-MES（用于 Telegram 区分项目）
  *   TELEGRAM_PATROL_BOT_TOKEN / TELEGRAM_BOT_TOKEN
  *   TELEGRAM_PATROL_CHAT_ID / TELEGRAM_CHAT_ID
  */
+const PROJECT = process.env.PATROL_PROJECT_NAME || 'Rubber-MES'
 const FRONTEND = process.env.RUBBER_FRONTEND_URL || 'http://43.160.199.226:10101'
 const API = process.env.RUBBER_API_URL || 'http://43.160.199.226:10102'
 const EMAIL = process.env.RUBBER_PATROL_EMAIL || 'admin@rubber.local'
 const PASSWORD = process.env.RUBBER_PATROL_PASSWORD || ''
 const BOT_TOKEN = process.env.TELEGRAM_PATROL_BOT_TOKEN || process.env.TELEGRAM_BOT_TOKEN
 const CHAT_ID = process.env.TELEGRAM_PATROL_CHAT_ID || process.env.TELEGRAM_CHAT_ID
+
+const reportTitle = () => `【ERP 每日巡檢報告 · ${PROJECT}】`
 
 async function fetchJson(url, opts = {}) {
   const res = await fetch(url, opts)
@@ -38,7 +42,7 @@ async function buildPatrolText() {
   const root = await fetchJson(`${API}/`)
   if (!root.ok) {
     return [
-      '【ERP 每日巡檢報告】',
+      reportTitle(),
       `巡檢日期：${date}`,
       `巡檢時間：${time}`,
       '',
@@ -49,7 +53,7 @@ async function buildPatrolText() {
 
   if (!PASSWORD) {
     return [
-      '【ERP 每日巡檢報告】',
+      reportTitle(),
       `巡檢日期：${date}`,
       `巡檢時間：${time}`,
       '',
@@ -66,7 +70,7 @@ async function buildPatrolText() {
   const token = login?.data?.token
   if (!login.ok || !token) {
     return [
-      '【ERP 每日巡檢報告】',
+      reportTitle(),
       `巡檢日期：${date}`,
       `巡檢時間：${time}`,
       '',
@@ -80,7 +84,7 @@ async function buildPatrolText() {
   })
   if (!patrol.ok) {
     return [
-      '【ERP 每日巡檢報告】',
+      reportTitle(),
       `巡檢日期：${date}`,
       `巡檢時間：${time}`,
       '',
@@ -100,7 +104,7 @@ async function buildPatrolText() {
   // 如果完全沒有異常，走客戶規格的「無異常」版本
   if (!severe.length && !needReview.length && !stuck.length && !consistency.some((c) => c && c.ok === false)) {
     return [
-      '【ERP 每日巡檢報告】',
+      reportTitle(),
       `巡檢日期：${date}`,
       `巡檢時間：${time}`,
       '',
@@ -110,7 +114,7 @@ async function buildPatrolText() {
   }
 
   const lines = []
-  lines.push('【ERP 每日巡檢報告】')
+  lines.push(reportTitle())
   lines.push(`巡檢日期：${date}`)
   lines.push(`巡檢時間：${time}`)
   lines.push('')
