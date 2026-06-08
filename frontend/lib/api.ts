@@ -23,19 +23,50 @@ function redirectToLoginOnUnauthorized() {
   }
 }
 
+const NETWORK_BUSY_MSG = '目前連線較忙碌，請稍後再試一次'
+
+const isInfraError = (msg: string): boolean => {
+  const lower = msg.toLowerCase()
+  return (
+    lower.includes('sql') ||
+    lower.includes('mysql') ||
+    lower.includes('database') ||
+    lower.includes('syntax') ||
+    lower.includes('econn') ||
+    lower.includes('timeout') ||
+    lower.includes('deadlock') ||
+    lower.includes('internal server error')
+  )
+}
+
+const softenBusinessMessage = (msg: string): string => {
+  const remainingMatch = msg.match(/BOM\s+(\S+)\s+剩餘可建立數量不足，最多\s*(\d+(?:\.\d+)?)/)
+  if (remainingMatch) {
+    const [, bom, max] = remainingMatch
+    if (Number(max) <= 0) {
+      return `BOM ${bom} 可建立數量已用完，請關閉視窗後重新選擇明細`
+    }
+    return `BOM ${bom} 本次最多可建立 ${max}，請調整數量後再試`
+  }
+  if (msg.includes('部分客戶訂單不存在')) return '部分關聯訂單已變更，請重新整理頁面後再試'
+  if (msg.includes('BOM 明細資料無效')) return '部分 BOM 明細已變更，請重新整理頁面後再選擇'
+  if (msg.includes('已採購完成')) return '此交期進度已完成採購，無需重複建立'
+  if (msg.includes('採購單號') && msg.includes('已存在')) return '採購單號重複，請更換編號後再試'
+  return msg
+}
+
 function mapApiErrorMessage(raw: string, status: number): string {
   const msg = String(raw || '').trim()
   const lower = msg.toLowerCase()
 
   if (!msg) {
-    if (status === 401) return '登入已失效，請重新登入'
-    if (status === 403) return '你沒有執行此操作的權限'
-    if (status >= 500) return '系統暫時異常，請稍後再試'
-    return '操作失敗，請稍後再試'
+    if (status === 401) return '登入狀態已過期，請重新登入'
+    if (status === 403) return '目前帳號沒有此操作權限'
+    return NETWORK_BUSY_MSG
   }
 
-  if (status === 401) return '登入已失效，請重新登入'
-  if (status === 403) return '你沒有執行此操作的權限'
+  if (status === 401) return '登入狀態已過期，請重新登入'
+  if (status === 403) return '目前帳號沒有此操作權限'
 
   if (msg.includes('無法刪除：此資料目前仍被其他業務單據或主檔引用。')) {
     return msg
@@ -43,39 +74,30 @@ function mapApiErrorMessage(raw: string, status: number): string {
 
   if (msg.includes('已經被使用了：')) {
     const usage = msg.replace('已經被使用了：', '').trim()
-    return `無法刪除：此資料目前仍被其他業務單據或主檔引用。使用情況：${usage}。請先解除關聯、刪除相關單據，或改用停用 / 封存後再操作。`
+    return `此資料仍被其他單據使用中（${usage}），請先解除關聯或改用封存後再操作`
   }
 
-  // MySQL duplicate key / unique constraint
   if (
     lower.includes('duplicate entry') ||
     lower.includes('er_dup_entry') ||
-    lower.includes('unique') && lower.includes('constraint')
+    (lower.includes('unique') && lower.includes('constraint'))
   ) {
-    return '資料重複：此編號或關鍵欄位已存在，請更換後再試'
+    return '此編號或關鍵欄位已存在，請更換後再試'
   }
 
-  // FK constraints
   if (
     lower.includes('foreign key') ||
     lower.includes('cannot delete or update a parent row') ||
     lower.includes('a foreign key constraint fails')
   ) {
-    return '此資料已被其他單據使用，無法修改或刪除'
+    return '此資料已被其他單據引用，暫時無法修改或刪除'
   }
 
-  // DB/infra generic
-  if (
-    lower.includes('sql') ||
-    lower.includes('mysql') ||
-    lower.includes('database') ||
-    lower.includes('constraint') ||
-    lower.includes('syntax')
-  ) {
-    return '資料處理失敗，請檢查輸入內容或聯絡管理員'
+  if (isInfraError(msg) || (status >= 500 && !/[\u4e00-\u9fff]/.test(msg))) {
+    return NETWORK_BUSY_MSG
   }
 
-  return msg
+  return softenBusinessMessage(msg)
 }
 
 /** Get the current user's full signature URL (handles relative paths) */
@@ -146,7 +168,7 @@ export async function apiFetchRaw(path: string, opts: RequestInit = {}): Promise
     return res
   } catch (e: any) {
     if (e?.name === 'TypeError' && String(e.message || '').toLowerCase().includes('fetch')) {
-      throw new Error('網路連線異常，請檢查網路後重試')
+      throw new Error(NETWORK_BUSY_MSG)
     }
     throw e
   }

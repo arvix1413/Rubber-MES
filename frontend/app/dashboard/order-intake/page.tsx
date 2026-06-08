@@ -271,7 +271,7 @@ export default function OrderIntakePage() {
       setCustomers(customerRows || [])
       setOrders((orderRows || []).filter((it) => it.status !== 'completed'))
     } catch (e: any) {
-      toast(String(e?.message || '交期進度載入失敗'), 'error')
+      toast(String(e?.message || '交期進度暫時無法載入，請稍後再試'), 'error')
     } finally {
       setLoading(false)
     }
@@ -597,7 +597,7 @@ export default function OrderIntakePage() {
         const node = (freshBomNodes || []).find((it) => it.order_item_id === line.order_item_id && it.bom_id === line.bom_id)
         const remainingQty = Number(node?.remaining_qty ?? node?.order_qty ?? 0)
         if (remainingQty <= 0) {
-          toast(`BOM ${line.bom_code || line.bom_name || ''} 已無剩餘可建立數量，請重新整理後再試`, 'error')
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 可建立數量已用完，請關閉視窗後重新選擇明細`, 'error')
           return
         }
         if (Number(line.planned_qty) > remainingQty) {
@@ -624,7 +624,7 @@ export default function OrderIntakePage() {
       closeCreate()
       await refreshAll(status, false)
     } catch (e: any) {
-      toast(String(e?.message || '建立失敗'), 'error')
+      toast(String(e?.message || '暫時無法建立，請稍後再試'), 'error')
     } finally {
       setCreating(false)
     }
@@ -676,7 +676,7 @@ export default function OrderIntakePage() {
       setEditLineSeed(2000)
       setEditOrderSearch('')
     } catch (e: any) {
-      toast(String(e?.message || '交期進度詳情載入失敗'), 'error')
+      toast(String(e?.message || '詳情暫時無法載入，請稍後再試'), 'error')
     } finally {
       setEditLoading(false)
     }
