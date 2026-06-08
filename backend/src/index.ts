@@ -1350,6 +1350,303 @@ const loadProgressItemMaterialSnapshots = async (progressItemIds: number[], db?:
   return out
 }
 
+// ── Daily Patrol (ERP 每日巡檢) ────────────────────────────────────────────────
+type PatrolIssue = {
+  type: string
+  ref: string
+  reason: string
+  impact: string
+  suggestion: string
+}
+
+type PatrolReview = {
+  type: string
+  ref: string
+  reason: string
+  suggestion: string
+}
+
+type PatrolStuck = {
+  flow: string
+  ref: string
+  status: string
+  cause: string
+  next: string
+}
+
+type PatrolConsistency = {
+  item: string
+  ok: boolean
+  detail: string
+  suggestion: string
+}
+
+type PatrolSummary = {
+  generated_at: string
+  date: string
+  time: string
+  severe: PatrolIssue[]
+  need_review: PatrolReview[]
+  stuck: PatrolStuck[]
+  consistency: PatrolConsistency[]
+  normals: string[]
+  priorities: PatrolIssue[]
+}
+
+const buildDailyPatrolReport = async (): Promise<PatrolSummary> => {
+  const now = new Date()
+  const date = toDateStr(now)
+  const time = now8()
+
+  const severe: PatrolIssue[] = []
+  const needReview: PatrolReview[] = []
+  const stuck: PatrolStuck[] = []
+  const consistency: PatrolConsistency[] = []
+
+  // 1) 訂單與出貨數量一致性（使用現有出貨回寫邏輯）
+  const shippedMap = await buildShippedQtyByOrderItemId()
+  const orderItemIds = Array.from(shippedMap.keys())
+  if (orderItemIds.length) {
+    const rows = await query<any>(
+      `SELECT ci.id, ci.order_id, co.po_number, ci.qty, ci.arrived_qty, ci.status
+       FROM customer_order_items ci
+       JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+       WHERE ci.id IN (${orderItemIds.map(() => '?').join(',')})
+         AND ci.deleted_at IS NULL`,
+      orderItemIds,
+    )
+    for (const row of rows) {
+      const totalQty = toQty(row.qty)
+      const arrived = toQty(row.arrived_qty)
+      const shipped = toQty(shippedMap.get(row.id) || 0)
+      if (Math.abs(arrived - shipped) > 0.0001) {
+        severe.push({
+          type: '訂單與出貨數量不一致',
+          ref: `訂單 ${row.order_id} / 客戶 PO ${row.po_number} / 明細 ${row.id}`,
+          reason: `出貨累計數量 ${shipped} 與訂單到貨數量 ${arrived} 不一致`,
+          impact: '可能導致訂單完成狀態錯誤，影響後續對帳與出貨判斷',
+          suggestion: '請核對出貨單與訂單明細數量，如為歷史資料問題可由管理者人工調整 arrived_qty',
+        })
+      }
+      if (shipped > totalQty + 0.0001) {
+        severe.push({
+          type: '出貨數量超過訂單數量',
+          ref: `訂單 ${row.order_id} / 客戶 PO ${row.po_number} / 明細 ${row.id}`,
+          reason: `訂單數量 ${totalQty}，出貨累計 ${shipped}`,
+          impact: '可能出現超量出貨或重複出貨的情況，導致客戶與庫存不一致',
+          suggestion: '請檢查關聯出貨單，確認是否有重複出貨或錯誤數量，必要時作退貨或更正',
+        })
+      }
+    }
+  }
+
+  // 2) 交期進度與訂單剩餘可建立數量
+  const progressOverRows = await query<any>(
+    `SELECT
+       ci.id as order_item_id,
+       ci.order_id,
+       co.po_number,
+       ci.qty as order_qty,
+       COALESCE(SUM(CASE WHEN dpi.deleted_at IS NULL THEN dpi.planned_qty ELSE 0 END), 0) as planned_qty
+     FROM customer_order_items ci
+     JOIN customer_orders co ON co.id = ci.order_id AND co.deleted_at IS NULL
+     LEFT JOIN delivery_progress_items dpi
+       ON dpi.order_item_id = ci.id AND dpi.deleted_at IS NULL
+     WHERE ci.deleted_at IS NULL
+     GROUP BY ci.id, ci.order_id, co.po_number, ci.qty
+     HAVING planned_qty - order_qty > 0.0001`,
+    [],
+  )
+  for (const row of progressOverRows) {
+    severe.push({
+      type: '交期進度超過訂單數量',
+      ref: `訂單 ${row.order_id} / 客戶 PO ${row.po_number} / 明細 ${row.order_item_id}`,
+      reason: `訂單數量 ${toQty(row.order_qty)}，交期進度累計 ${toQty(row.planned_qty)}`,
+      impact: '可能導致後續採購與出貨超量，影響成本與庫存',
+      suggestion: '請檢查交期進度設定，調整多餘的進度或確認是否為特殊分批需求',
+    })
+  }
+
+  // 3) BOM / 料號資料完整性
+  const missingBomItems = await queryOne<any>(
+    `SELECT COUNT(*) as cnt
+     FROM bom b
+     LEFT JOIN bom_items bi ON bi.bom_id = b.id AND bi.deleted_at IS NULL
+     WHERE b.deleted_at IS NULL
+     GROUP BY b.id
+     HAVING cnt = 0
+     LIMIT 1`,
+  ).catch(() => null as any)
+  if (missingBomItems?.cnt > 0) {
+    severe.push({
+      type: 'BOM 無任何材料',
+      ref: '部分 BOM',
+      reason: '存在至少 1 筆 BOM 沒有任何 bom_items 記錄',
+      impact: '無法正確展開材料需求，影響採購與缺料計算',
+      suggestion: '請檢查 BOM 設定，補齊對應商品的材料明細',
+    })
+  }
+
+  const bomQtyAnomalies = await queryOne<any>(
+    `SELECT COUNT(*) as cnt
+     FROM bom_items
+     WHERE deleted_at IS NULL
+       AND (quantity IS NULL OR quantity <= 0)`,
+  ).catch(() => null as any)
+  if (bomQtyAnomalies?.cnt > 0) {
+    severe.push({
+      type: 'BOM 材料數量為 0 或空值',
+      ref: '部分 BOM 材料',
+      reason: `至少 ${bomQtyAnomalies.cnt} 筆 BOM 材料數量異常`,
+      impact: '導致材料需求低估或無法正確生成採購與發料數量',
+      suggestion: '請過濾 BOM 材料清單，修正數量為正確值',
+    })
+  }
+
+  // 4) 庫存資料（負庫存與流水對帳）
+  const negativeStock = await queryOne<any>(
+    `SELECT COUNT(*) as cnt
+     FROM bom
+     WHERE deleted_at IS NULL
+       AND COALESCE(current_stock, 0) < 0`,
+  ).catch(() => null as any)
+  if (negativeStock?.cnt > 0) {
+    severe.push({
+      type: '庫存為負數',
+      ref: '部分 BOM.current_stock',
+      reason: `至少 ${negativeStock.cnt} 筆 BOM 現有庫存為負數`,
+      impact: '顯示系統庫存與實際狀態不一致，可能影響缺料判斷與出貨可行性',
+      suggestion: '請比對庫存調整、進貨與領料紀錄，修正異常庫存',
+    })
+  }
+
+  // 5) 採購 / 缺料：依進度材料需求與採購數量推估
+  const shortageRows = await query<any>(
+    `SELECT
+       pb.material_code,
+       pb.material_name,
+       SUM(pb.required_qty) as required_qty,
+       SUM(pb.purchased_qty) as purchased_qty
+     FROM (
+       SELECT
+         m.material_code,
+         m.material_name,
+         COALESCE(pm.planned_qty, 0) as required_qty,
+         0 as purchased_qty
+       FROM production_materials pm
+       JOIN materials m ON m.material_code = pm.material_code
+       WHERE pm.deleted_at IS NULL
+     ) pb
+     GROUP BY pb.material_code, pb.material_name
+     HAVING SUM(pb.required_qty) - SUM(pb.purchased_qty) > 0.0001
+     LIMIT 50`,
+    [],
+  ).catch(() => [] as any[])
+  for (const row of shortageRows) {
+    needReview.push({
+      type: '可能缺料（依生產領料需求推估）',
+      ref: `料號 ${row.material_code}`,
+      reason: `推估需求量 ${toQty(row.required_qty)}，已採購量 ${toQty(row.purchased_qty)}`,
+      suggestion: '請在缺料 / 採購頁面確認是否需補採，並核對實際庫存與 BOM 設定',
+    })
+  }
+
+  // 6) 流程卡住篩選（僅做輕量版，避免一次回傳過多）
+  const staleOrders = await query<any>(
+    `SELECT id, po_number, created_at
+     FROM customer_orders
+     WHERE status='pending'
+       AND deleted_at IS NULL
+       AND created_at < DATE_SUB(NOW(), INTERVAL 14 DAY)
+     ORDER BY created_at ASC
+     LIMIT 20`,
+    [],
+  )
+  for (const row of staleOrders) {
+    stuck.push({
+      flow: '客戶訂單',
+      ref: `訂單 ${row.id} / 客戶 PO ${row.po_number}`,
+      status: 'pending',
+      cause: '訂單建立已超過 14 天，仍未建立交期進度或後續作業',
+      next: '請與業務或客戶確認此訂單是否仍需生產 / 出貨，必要時更新狀態或取消',
+    })
+  }
+
+  const staleProgress = await query<any>(
+    `SELECT id, progress_no, customer_order_id, due_date, status
+     FROM delivery_progress
+     WHERE status IN ('pending','partial')
+       AND deleted_at IS NULL
+       AND due_date IS NOT NULL
+       AND due_date < DATE_SUB(CURDATE(), INTERVAL 3 DAY)
+     ORDER BY due_date ASC
+     LIMIT 20`,
+    [],
+  )
+  for (const row of staleProgress) {
+    stuck.push({
+      flow: '交期進度',
+      ref: `進度 ${row.progress_no} / 訂單 ${row.customer_order_id || '-'}`,
+      status: row.status || 'pending',
+      cause: '預計交期已超過 3 天，進度仍為未完成狀態',
+      next: '請確認此批次是否已實際完成 / 出貨，或需更新交期與後續流程',
+    })
+  }
+
+  // 7) 一致性檢查項目標記
+  consistency.push({
+    item: '訂單 vs 出貨數量',
+    ok: !severe.some((s) => s.type === '訂單與出貨數量不一致' || s.type === '出貨數量超過訂單數量'),
+    detail: severe.some((s) => s.type.startsWith('訂單與出貨') || s.type.startsWith('出貨數量超過'))
+      ? '發現訂單與出貨累計數量不一致或超量的情況'
+      : '訂單數量與出貨累計整體看起來合理',
+    suggestion: '如為異常，請由出貨對帳或歷史資料調整功能修正數量',
+  })
+
+  consistency.push({
+    item: 'BOM / 材料設定',
+    ok: !(missingBomItems?.cnt > 0) && !(bomQtyAnomalies?.cnt > 0),
+    detail:
+      missingBomItems?.cnt > 0 || bomQtyAnomalies?.cnt > 0
+        ? '部分 BOM 缺少材料或材料數量為 0 / 空值'
+        : '目前 BOM 與材料設定未發現明顯異常',
+    suggestion: '建議定期抽查主要產品的 BOM 結構，避免後續採購 / 生產流程出錯',
+  })
+
+  consistency.push({
+    item: '庫存現有量',
+    ok: !(negativeStock?.cnt > 0),
+    detail:
+      negativeStock?.cnt > 0
+        ? `有 ${negativeStock.cnt} 筆 BOM.current_stock 為負數`
+        : 'BOM.current_stock 未發現負數庫存',
+    suggestion: '如有負庫存，請檢查調整單、進貨與領料紀錄並修正',
+  })
+
+  // 8) 今日正常項目與優先處理清單
+  const normals: string[] = []
+  if (!severe.length) {
+    normals.push('訂單、生產進度、BOM、庫存、採購、出貨資料整體狀態：正常')
+  } else {
+    if (!negativeStock?.cnt) normals.push('庫存資料：未發現負庫存')
+    if (!missingBomItems?.cnt && !bomQtyAnomalies?.cnt) normals.push('BOM / 料號資料：主要結構正常')
+  }
+
+  const priorities = severe.slice(0, 5)
+
+  return {
+    generated_at: time,
+    date,
+    time,
+    severe,
+    need_review: needReview,
+    stuck,
+    consistency,
+    normals,
+    priorities,
+  }
+}
+
 const loadPurchasedQtyByProgressItemIds = async (progressItemIds: number[], db?: DbExecutor) => {
   const ids = uniqueNumberList(progressItemIds)
   const out = new Map<number, number>()
@@ -6764,6 +7061,17 @@ app.get('/api/process-health', authMiddleware, async c => {
       draft_reconciliations: Number(draftCounts?.draft_reconciliations || 0),
       draft_invoices: Number(draftCounts?.draft_invoices || 0),
     })
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
+app.get('/api/daily-patrol-report', authMiddleware, async c => {
+  try {
+    const user = c.get('user')
+    if (!user) return c.json({ error: 'Unauthorized' }, 401)
+    const report = await buildDailyPatrolReport()
+    return c.json(report)
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
   }
