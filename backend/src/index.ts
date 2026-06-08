@@ -7059,17 +7059,16 @@ app.delete('/api/stock-adjustments/:id', authMiddleware, requirePerm('stock.adju
 })
 
 // ── Company Settings ──────────────────────────────────────────────────────────
-app.get('/api/company', authMiddleware, async c => {
+app.get('/api/company', async c => {
   try {
     await ensureCompanySignatureColumn()
     await ensureCompanySignaturePrintColumns()
     const row = await queryOne<any>('SELECT * FROM company_settings WHERE id=1')
     if (!row) {
-      // Return defaults if not set
       return c.json({
         id: 1,
-        company_name: 'FAN YONG CO., LTD',
-        company_name_local: 'CÔNG TY TNHH FAN YONG VIỆT NAM',
+        company_name: '',
+        company_name_local: '',
         address: '',
         phone: '',
         contact_person: '',

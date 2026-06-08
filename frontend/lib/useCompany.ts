@@ -16,13 +16,13 @@ export type CompanySettings = {
   signature_print_height: number
 }
 
-const DEFAULT: CompanySettings = {
+export const EMPTY_COMPANY_SETTINGS: CompanySettings = {
   id: 1,
-  company_name: 'FAN YONG CO., LTD',
-  company_name_local: 'CÔNG TY TNHH FAN YONG VIỆT NAM',
-  address: '152 Hà Huy Tập, P. Tân Hưng, TP. HCM',
-  phone: '0909883372 Danny Lin / 0909042239 Mỹ Linh',
-  contact_person: 'Danny Lin / Mỹ Linh Ellachen',
+  company_name: '',
+  company_name_local: '',
+  address: '',
+  phone: '',
+  contact_person: '',
   email: '',
   tax_id: '',
   logo_url: null,
@@ -33,14 +33,40 @@ const DEFAULT: CompanySettings = {
 
 let _cache: CompanySettings | null = null
 
+export function getCompanyDisplayName(
+  company?: Partial<CompanySettings> | null,
+  fallback = '',
+): string {
+  const name = company?.company_name?.trim()
+  if (name) return name
+  const local = company?.company_name_local?.trim()
+  if (local) return local
+  return fallback
+}
+
+export function getCompanyInitial(
+  company?: Partial<CompanySettings> | null,
+  fallback = '',
+): string {
+  const name = getCompanyDisplayName(company)
+  if (!name) return fallback
+  return name.charAt(0).toUpperCase()
+}
+
+export function resolveCompanySettings(
+  company?: Partial<CompanySettings> | null,
+): CompanySettings {
+  return { ...EMPTY_COMPANY_SETTINGS, ...company }
+}
+
 export async function getCompany(): Promise<CompanySettings> {
   if (_cache) return _cache
   try {
     const data = await apiFetch<CompanySettings>('/api/company')
-    _cache = { ...DEFAULT, ...data }
+    _cache = resolveCompanySettings(data)
     return _cache
   } catch {
-    return DEFAULT
+    return EMPTY_COMPANY_SETTINGS
   }
 }
 

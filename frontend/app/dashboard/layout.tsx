@@ -6,7 +6,7 @@ import { clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
 import { useReviewBadge } from '@/lib/useReviewBadge'
 import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
-import { getCompany, type CompanySettings } from '@/lib/useCompany'
+import { getCompany, getCompanyDisplayName, getCompanyInitial, type CompanySettings } from '@/lib/useCompany'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; exact?: boolean }
 type NavGroup = { label: string; icon: React.ReactNode; children: NavItem[]; defaultOpen?: boolean }
@@ -127,6 +127,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [router])
 
   useEffect(() => {
+    const name = getCompanyDisplayName(company)
+    document.title = name ? `${name} — ERP` : 'ERP'
+  }, [company])
+
+  useEffect(() => {
     const syncUser = () => setUser(getUser())
     const onStorage = (e: StorageEvent) => {
       if (e.key === 'rubber_user') syncUser()
@@ -243,11 +248,11 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="brand-font flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#d9853f_0%,#b55a1b_100%)] text-sm font-black text-[#fff6ed] shadow-[0_10px_20px_rgba(0,0,0,0.2)]">
-              {company?.company_name?.charAt(0) ?? 'R'}
+              {getCompanyInitial(company) || '·'}
             </div>
             <div>
               <div className="brand-font text-sm font-bold tracking-wide text-[#fff3e3]">
-                {company?.company_name ?? 'RUBBER MES'}
+                {getCompanyDisplayName(company) || '載入中...'}
               </div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-[#b89f85]">Flow-Driven Workspace</div>
             </div>

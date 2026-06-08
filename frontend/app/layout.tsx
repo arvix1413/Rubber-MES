@@ -18,7 +18,7 @@ const brandFont = Noto_Serif_TC({
 })
 
 export const metadata: Metadata = {
-  title: 'Rubber MES',
+  title: 'ERP',
   description: '橡膠製造執行與訂單協同系統',
   icons: {
     icon: [

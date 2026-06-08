@@ -4,23 +4,10 @@ import { useDialog } from '@/components/Dialog'
 import { useEffect, useRef, useState } from 'react'
 import { apiFetch, apiFetchRaw, API } from '@/lib/api'
 import { useRouter } from 'next/navigation'
-import { clearCompanyCache, type CompanySettings } from '@/lib/useCompany'
+import { clearCompanyCache, EMPTY_COMPANY_SETTINGS, type CompanySettings } from '@/lib/useCompany'
 import { getUser } from '@/lib/permissions'
 
-const DEFAULT: CompanySettings = {
-  id: 1,
-  company_name: 'RUBBER MES CO., LTD',
-  company_name_local: '',
-  address: '',
-  phone: '',
-  contact_person: '',
-  email: '',
-  tax_id: '',
-  logo_url: null,
-  signature_url: null,
-  signature_print_width: 220,
-  signature_print_height: 72,
-}
+const DEFAULT = EMPTY_COMPANY_SETTINGS
 
 export default function CompanyPage() {
   const router = useRouter()
@@ -195,7 +182,7 @@ export default function CompanyPage() {
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { key: 'company_name', label: '公司名稱（英文）*', placeholder: 'RUBBER MES CO., LTD' },
+            { key: 'company_name', label: '公司名稱（英文）*', placeholder: '例如：KUN YI CO., LTD' },
             { key: 'company_name_local', label: '公司名稱（當地語言）', placeholder: '' },
             { key: 'address', label: '地址', placeholder: '', wide: true },
             { key: 'phone', label: '電話', placeholder: '' },

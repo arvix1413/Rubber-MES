@@ -1,4 +1,4 @@
-import { type CompanySettings } from './useCompany'
+import { resolveCompanySettings, type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
 import { SHARED_PRINT_PARTY_TABLE_CSS } from './printPartyTableStyles'
 import { formatDateYMD } from './datetime'
@@ -20,14 +20,7 @@ export function generateInvoiceHTML(data: any, signatureUrl?: string, company?: 
   const fmtMoney = (v: any) => formatDecimal(num(v))
   const fmtText = (v: any) => txt(v).replace(/\n/g, '<br/>')
 
-  const co = company || {
-    company_name: 'RUBBER MES COMPANY',
-    company_name_local: '',
-    address: '',
-    phone: '',
-    contact_person: '',
-    logo_url: null,
-  }
+  const co = resolveCompanySettings(company)
   const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.160.199.226:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
   const signatureConfig = getPrintSignatureConfig(co)

@@ -2,6 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { getCompany, getCompanyDisplayName } from '@/lib/useCompany'
 import { formatInteger } from '@/lib/numberFormat'
 import { useReviewBadge } from '@/lib/useReviewBadge'
 
@@ -21,11 +22,13 @@ const fmt = (n: number) => formatInteger(n || 0)
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
   const [health, setHealth] = useState<ProcessHealth | null>(null)
+  const [companyName, setCompanyName] = useState('')
   const { canApprovePo, poDraftCount } = useReviewBadge()
 
   useEffect(() => {
     apiFetch<any>('/api/stats').then(setStats).catch(() => {})
     apiFetch<ProcessHealth>('/api/process-health').then(setHealth).catch(() => {})
+    getCompany().then((c) => setCompanyName(getCompanyDisplayName(c))).catch(() => {})
   }, [])
 
   const flow = useMemo(() => {
@@ -75,7 +78,7 @@ export default function DashboardPage() {
             <div className="mb-2 inline-flex rounded-full border border-[#d8b58f] bg-[#fff2e1] px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-[#7d5832]">
               FLOW ONLY MODE
             </div>
-            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制臺</h1>
+            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">{companyName ? `${companyName} 流程控制臺` : '流程控制臺'}</h1>
             <p className="mt-2 text-sm text-[#6c5440]">
               僅保留與參考流程相關頁面：客戶訂單 → 交期進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
             </p>
