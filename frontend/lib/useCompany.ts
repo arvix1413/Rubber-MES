@@ -16,8 +16,8 @@ export type CompanySettings = {
   signature_print_height: number
 }
 
-export const DEFAULT_COMPANY_NAME = 'FAN YONG CO., LTD'
-export const DEFAULT_COMPANY_NAME_LOCAL = 'CÔNG TY TNHH FAN YONG VIỆT NAM'
+export const DEFAULT_COMPANY_NAME = 'KUNYI CO., LTD'
+export const DEFAULT_COMPANY_NAME_LOCAL = 'CÔNG TY TNHH KUNYI VIỆT NAM'
 
 export const EMPTY_COMPANY_SETTINGS: CompanySettings = {
   id: 1,
@@ -55,7 +55,7 @@ export function getCompanyDisplayName(
 
 export function getCompanyInitial(
   company?: Partial<CompanySettings> | null,
-  fallback = 'F',
+  fallback = 'K',
 ): string {
   const name = getCompanyDisplayName(company)
   if (!name) return fallback
