@@ -4,7 +4,7 @@ on:
   schedule:
     # 每天早上 8:00（台北时间）
     - cron: '0 8 * * *'
-    timezone: Asia/Taipei
+      timezone: Asia/Taipei
   workflow_dispatch:
 
 jobs:
