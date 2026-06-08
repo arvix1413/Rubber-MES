@@ -16,6 +16,9 @@ export type CompanySettings = {
   signature_print_height: number
 }
 
+export const DEFAULT_COMPANY_NAME = 'FAN YONG CO., LTD'
+export const DEFAULT_COMPANY_NAME_LOCAL = 'CÔNG TY TNHH FAN YONG VIỆT NAM'
+
 export const EMPTY_COMPANY_SETTINGS: CompanySettings = {
   id: 1,
   company_name: '',
@@ -31,11 +34,17 @@ export const EMPTY_COMPANY_SETTINGS: CompanySettings = {
   signature_print_height: 72,
 }
 
+export const FALLBACK_COMPANY_SETTINGS: CompanySettings = {
+  ...EMPTY_COMPANY_SETTINGS,
+  company_name: DEFAULT_COMPANY_NAME,
+  company_name_local: DEFAULT_COMPANY_NAME_LOCAL,
+}
+
 let _cache: CompanySettings | null = null
 
 export function getCompanyDisplayName(
   company?: Partial<CompanySettings> | null,
-  fallback = '',
+  fallback = DEFAULT_COMPANY_NAME,
 ): string {
   const name = company?.company_name?.trim()
   if (name) return name
@@ -46,7 +55,7 @@ export function getCompanyDisplayName(
 
 export function getCompanyInitial(
   company?: Partial<CompanySettings> | null,
-  fallback = '',
+  fallback = 'F',
 ): string {
   const name = getCompanyDisplayName(company)
   if (!name) return fallback
@@ -56,7 +65,10 @@ export function getCompanyInitial(
 export function resolveCompanySettings(
   company?: Partial<CompanySettings> | null,
 ): CompanySettings {
-  return { ...EMPTY_COMPANY_SETTINGS, ...company }
+  const merged = { ...EMPTY_COMPANY_SETTINGS, ...company }
+  if (!merged.company_name?.trim()) merged.company_name = DEFAULT_COMPANY_NAME
+  if (!merged.company_name_local?.trim()) merged.company_name_local = DEFAULT_COMPANY_NAME_LOCAL
+  return merged
 }
 
 export async function getCompany(): Promise<CompanySettings> {
@@ -66,7 +78,7 @@ export async function getCompany(): Promise<CompanySettings> {
     _cache = resolveCompanySettings(data)
     return _cache
   } catch {
-    return EMPTY_COMPANY_SETTINGS
+    return FALLBACK_COMPANY_SETTINGS
   }
 }
 

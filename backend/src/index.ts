@@ -7067,8 +7067,8 @@ app.get('/api/company', async c => {
     if (!row) {
       return c.json({
         id: 1,
-        company_name: '',
-        company_name_local: '',
+        company_name: 'FAN YONG CO., LTD',
+        company_name_local: 'CÔNG TY TNHH FAN YONG VIỆT NAM',
         address: '',
         phone: '',
         contact_person: '',
