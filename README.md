@@ -278,7 +278,7 @@ cd ../backend && npm run build
 
 ## 12. Daily Patrol (每日巡檢)
 
-Rubber-MES 每天 **13:45（Asia/Taipei，测试时段）** 自动巡检 PRD 数据，并通过 Telegram 发送日报。
+Rubber-MES 每天早上 **7:00（Asia/Taipei）** 自动巡检 PRD 数据，并通过 Telegram 发送日报。
 
 ### Architecture
 - **GitHub Actions**: [/.github/workflows/daily-patrol.yml](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/.github/workflows/daily-patrol.yml)
