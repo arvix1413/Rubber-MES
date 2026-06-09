@@ -2,8 +2,8 @@ name: Daily Patrol (Rubber-MES)
 
 on:
   schedule:
-    # 每天早上 7:00（台北时间 = UTC 23:00 前一天）
-    - cron: '0 23 * * *'
+    # 测试：11:42 台北时间（UTC 03:42）
+    - cron: '42 3 * * *'
   workflow_dispatch:
 
 jobs:
