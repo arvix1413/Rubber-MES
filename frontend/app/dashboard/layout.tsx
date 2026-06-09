@@ -4,6 +4,9 @@ import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
 import { clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
+import { useReviewBadge } from '@/lib/useReviewBadge'
+import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
+import { getCompany, getCompanyDisplayName, getCompanyInitial, type CompanySettings } from '@/lib/useCompany'
 
 type NavItem = { href: string; label: string; icon: React.ReactNode; exact?: boolean }
 type NavGroup = { label: string; icon: React.ReactNode; children: NavItem[]; defaultOpen?: boolean }
@@ -18,14 +21,14 @@ const NAV: NavEntry[] = [
     icon: <IconFlow />,
     defaultOpen: true,
     children: [
-      { href: '/dashboard/order-intake', label: '訂單收集', icon: <IconList /> },
       { href: '/dashboard/customer-orders', label: '客戶訂單', icon: <IconDoc /> },
+      { href: '/dashboard/order-intake', label: '交期進度', icon: <IconList /> },
       { href: '/dashboard/po', label: '採購下單', icon: <IconCart /> },
       { href: '/dashboard/delivery-notes', label: '出貨單', icon: <IconTruck /> },
+      { href: '/dashboard/quotations', label: '報價單', icon: <IconDoc /> },
       { href: '/dashboard/shipment-reconciliation', label: '數量核對', icon: <IconCheck /> },
       { href: '/dashboard/invoices', label: '發票管理', icon: <IconInvoice /> },
       { href: '/dashboard/payables', label: '供應商付款', icon: <IconPay /> },
-      { href: '/dashboard/inventory', label: '庫存扣減', icon: <IconWarehouse /> },
     ],
   },
   {
@@ -43,6 +46,7 @@ const NAV: NavEntry[] = [
     icon: <IconSetting />,
     children: [
       { href: '/dashboard/company', label: '公司設定', icon: <IconBuilding /> },
+      { href: '/dashboard/role-permissions', label: '權限設定', icon: <IconCheck /> },
       { href: '/dashboard/users', label: '使用者管理', icon: <IconUserCog /> },
     ],
   },
@@ -54,10 +58,10 @@ const BASE_DASHBOARD_ROUTES = new Set<string>([
   '/dashboard/customer-orders',
   '/dashboard/po',
   '/dashboard/delivery-notes',
+  '/dashboard/quotations',
   '/dashboard/shipment-reconciliation',
   '/dashboard/invoices',
   '/dashboard/payables',
-  '/dashboard/inventory',
   '/dashboard/materials',
   '/dashboard/bom',
   '/dashboard/customers',
@@ -67,6 +71,7 @@ const BASE_DASHBOARD_ROUTES = new Set<string>([
 
 const MANAGER_ONLY_ROUTES = new Set<string>([
   '/dashboard/company',
+  '/dashboard/role-permissions',
   '/dashboard/users',
 ])
 
@@ -79,7 +84,6 @@ function IconTruck() { return <svg viewBox="0 0 24 24" fill="none" stroke="curre
 function IconCheck() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><circle cx="12" cy="12" r="9" /><path d="M8 12l2.6 2.6L16 9.5" /></svg> }
 function IconInvoice() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M7 3h10a2 2 0 0 1 2 2v14l-2-1-2 1-2-1-2 1-2-1-2 1V5a2 2 0 0 1 2-2z" /><line x1="9" y1="8" x2="15" y2="8" /><line x1="9" y1="12" x2="15" y2="12" /></svg> }
 function IconPay() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M12 2v20" /><path d="M7 8c0-2 1.8-3 5-3s5 1 5 3-1.5 2.8-5 3-5 1.2-5 3 1.8 3 5 3 5-1 5-3" /></svg> }
-function IconWarehouse() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M22 8.35V20a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V8.35A2 2 0 0 1 3.26 6.5l8-3.2a2 2 0 0 1 1.48 0l8 3.2A2 2 0 0 1 22 8.35z" /><path d="M6 18h12" /><path d="M6 14h12" /></svg> }
 function IconBox() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z" /></svg> }
 function IconLayers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><polygon points="12 2 22 7 12 12 2 7 12 2" /><polyline points="2 17 12 22 22 17" /><polyline points="2 12 12 17 22 12" /></svg> }
 function IconUsers() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2" /><circle cx="9" cy="7" r="4" /></svg> }
@@ -107,8 +111,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const pathname = usePathname()
   const router = useRouter()
   const [user, setUser] = useState<any>(null)
+  const [company, setCompany] = useState<CompanySettings | null>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
 
   useEffect(() => {
     if (!getToken()) {
@@ -116,7 +122,27 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return
     }
     setUser(getUser())
+    // Load company settings for sidebar display
+    getCompany().then(setCompany).catch(() => {})
   }, [router])
+
+  useEffect(() => {
+    const name = getCompanyDisplayName(company)
+    document.title = name ? `${name} — ERP` : 'ERP'
+  }, [company])
+
+  useEffect(() => {
+    const syncUser = () => setUser(getUser())
+    const onStorage = (e: StorageEvent) => {
+      if (e.key === 'rubber_user') syncUser()
+    }
+    window.addEventListener('rubber:user-updated', syncUser as EventListener)
+    window.addEventListener('storage', onStorage)
+    return () => {
+      window.removeEventListener('rubber:user-updated', syncUser as EventListener)
+      window.removeEventListener('storage', onStorage)
+    }
+  }, [])
 
   useEffect(() => {
     if (!user) return
@@ -168,6 +194,52 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     return hit?.label || '流程總覽'
   }, [pathname])
 
+  const renderNavBadge = (href: string) => {
+    if (href === '/dashboard/po' && canApprovePo && poDraftCount > 0) {
+      return (
+        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
+          {poDraftCount > 99 ? '99+' : poDraftCount}
+        </span>
+      )
+    }
+    if (href === '/dashboard/quotations' && canReviewQuotation && quotationDraftCount > 0) {
+      return (
+        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#c46b1f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(196,107,31,0.35)] ring-2 ring-[#ffe2bf]">
+          {quotationDraftCount > 99 ? '99+' : quotationDraftCount}
+        </span>
+      )
+    }
+    return null
+  }
+
+  const renderTopReviewBadges = () => {
+    const badges = [
+      canApprovePo && poDraftCount > 0
+        ? { href: '/dashboard/po?status=draft', label: '採購單待審核', count: poDraftCount, tone: 'bg-[#d93d2f] text-white ring-[#ffd9cf]' }
+        : null,
+      canReviewQuotation && quotationDraftCount > 0
+        ? { href: '/dashboard/quotations?status=draft', label: '報價單待審核', count: quotationDraftCount, tone: 'bg-[#c46b1f] text-white ring-[#ffe2bf]' }
+        : null,
+    ].filter(Boolean) as Array<{ href: string; label: string; count: number; tone: string }>
+    if (!badges.length) return null
+    return (
+      <div className="flex flex-wrap items-center gap-2">
+        {badges.map((badge) => (
+          <Link
+            key={badge.href}
+            href={badge.href}
+            className={`inline-flex items-center gap-2.5 rounded-full px-4 py-2 text-[16px] font-black shadow-[0_10px_20px_rgba(41,30,20,0.12)] ring-2 ${badge.tone}`}
+          >
+            <span>{badge.label}</span>
+            <span className="rounded-full bg-white/18 px-2.5 py-1 text-[14px] font-black leading-none">
+              {badge.count > 99 ? '99+' : badge.count}
+            </span>
+          </Link>
+        ))}
+      </div>
+    )
+  }
+
   return (
     <div className="relative flex h-screen bg-[#f2ede4] text-[#2a241d]">
       {sidebarOpen && <button aria-label="close sidebar backdrop" onClick={() => setSidebarOpen(false)} className="fixed inset-0 z-30 bg-black/30 md:hidden" />}
@@ -176,10 +248,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         <div className="border-b border-white/10 px-5 py-4">
           <div className="flex items-center gap-3">
             <div className="brand-font flex h-9 w-9 items-center justify-center rounded-xl bg-[linear-gradient(135deg,#d9853f_0%,#b55a1b_100%)] text-sm font-black text-[#fff6ed] shadow-[0_10px_20px_rgba(0,0,0,0.2)]">
-              R
+              {getCompanyInitial(company) || '·'}
             </div>
             <div>
-              <div className="brand-font text-sm font-bold tracking-wide text-[#fff3e3]">RUBBER MES</div>
+              <div className="brand-font text-sm font-bold tracking-wide text-[#fff3e3]">
+                {getCompanyDisplayName(company) || '載入中...'}
+              </div>
               <div className="text-[10px] uppercase tracking-[0.16em] text-[#b89f85]">Flow-Driven Workspace</div>
             </div>
           </div>
@@ -206,7 +280,8 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                       {n.children.map((c) => (
                         <Link key={c.href} href={c.href} className={linkClass(isActive(c.href))}>
                           <span className={isActive(c.href) ? 'text-[#734613]' : 'text-[#a88f78]'}>{c.icon}</span>
-                          {c.label}
+                          <span>{c.label}</span>
+                          {renderNavBadge(c.href)}
                         </Link>
                       ))}
                     </div>
@@ -243,6 +318,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </aside>
 
       <main className="flex-1 overflow-auto bg-transparent">
+        <div className="sticky top-0 z-20 hidden border-b border-[#ccbca8] bg-[#f7f0e6]/95 px-6 py-3 backdrop-blur md:block">
+          <div className="flex items-center justify-between gap-4">
+            <div className="brand-font text-[12px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
+            {renderTopReviewBadges()}
+          </div>
+        </div>
         <div className="sticky top-0 z-20 border-b border-[#ccbca8] bg-[#f7f0e6]/95 px-4 py-2.5 backdrop-blur md:hidden">
           <div className="flex items-center justify-between">
             <button onClick={() => setSidebarOpen((v) => !v)} className="btn-ghost px-2.5 py-1.5">
@@ -250,8 +331,10 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               {sidebarOpen ? '關閉' : '選單'}
             </button>
             <div className="brand-font text-[11px] font-semibold tracking-[0.12em] text-[#4d3c2c]">{currentPageLabel}</div>
+            <div className="max-w-[46vw]">{renderTopReviewBadges()}</div>
           </div>
         </div>
+        <StickyTableHeaderBridge />
         <div className="dashboard-content p-5 md:p-6 xl:p-7">{children}</div>
       </main>
     </div>

@@ -1,7 +1,7 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
@@ -54,13 +54,14 @@ type ReconciliationDetail = ReconciliationHeader & {
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: '草稿', badge: 'badge-gray' },
-  confirmed: { label: '已確認', badge: 'badge-green' },
+  draft: { label: '尚未審核', badge: 'badge-gray' },
+  confirmed: { label: '已審核', badge: 'badge-green' },
 }
 
 export default function ShipmentReconciliationPage() {
   const { toast, confirm } = useDialog()
   const canWrite = can('delivery.create')
+  const canApprove = can('reconciliation.approve')
 
   const [pending, setPending] = useState<PendingItem[]>([])
   const [headers, setHeaders] = useState<ReconciliationHeader[]>([])
@@ -176,25 +177,27 @@ export default function ShipmentReconciliationPage() {
   }
 
   const confirmReconciliation = async (id: number) => {
-    if (!await confirm('確認核對完成？', '確認後將回寫客戶訂單已核對數量。', '確認核對')) return
+    if (!await confirm('審核核對單？', '審核後將回寫客戶訂單已核對數量。', '審核核對單')) return
     try {
       setSaving(id)
       await apiFetch(`/api/reconciliations/${id}/confirm`, { method: 'PATCH' })
-      toast('核對單已確認')
+      toast('核對單已審核')
       await loadAll()
       if (expandedId === id) {
         const latest = await apiFetch<ReconciliationDetail>(`/api/reconciliations/${id}`)
         setDetails((prev) => ({ ...prev, [id]: latest }))
       }
     } catch (e: any) {
-      toast(`確認失敗：${e.message}`, 'error')
+      toast(`審核失敗：${e.message}`, 'error')
     } finally {
       setSaving(null)
     }
   }
 
-  const removeDraft = async (id: number) => {
-    if (!await confirm('確定刪除草稿核對單？', '刪除後不可恢復。', '刪除')) return
+  const removeReconciliation = async (id: number, status: string) => {
+    const title = status === 'draft' ? '確定刪除草稿核對單？' : '確定刪除已審核核對單？'
+    const desc = status === 'draft' ? '刪除後不可恢復。' : '刪除後將回滾訂單已核對 / 到貨數量。若已開立發票，需先刪除發票。'
+    if (!await confirm(title, desc, '刪除')) return
     try {
       setSaving(id)
       await apiFetch(`/api/reconciliations/${id}`, { method: 'DELETE' })
@@ -210,10 +213,7 @@ export default function ShipmentReconciliationPage() {
 
   const exportCsv = async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API}/api/reconciliations/export/csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw('/api/reconciliations/export/csv')
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -230,7 +230,7 @@ export default function ShipmentReconciliationPage() {
   }
 
   const pendingPaged = usePagination(pending, 10)
-  const headerPaged = usePagination(headers, 15)
+  const headerPaged = usePagination(headers, 10)
 
   return (
     <div>
@@ -368,7 +368,7 @@ export default function ShipmentReconciliationPage() {
                 const sm = STATUS_MAP[h.status] || { label: h.status, badge: 'badge-gray' }
                 return (
                   <Fragment key={h.id}>
-                    <tr className="border-t border-slate-100">
+                    <tr className={`border-t border-slate-100 transition-colors ${expandedId === h.id ? 'layer-row-open' : 'layer-row-hover'}`}>
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.reconciliation_no}</td>
                       <td className="px-3 py-2">{formatDateYMD(h.reconcile_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
@@ -378,17 +378,18 @@ export default function ShipmentReconciliationPage() {
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
-                        {h.status === 'draft' && canWrite && (
-                          <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>確認</button>
+                        {h.status === 'draft' && canApprove && (
+                          <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>審核</button>
                         )}
-                        {h.status === 'draft' && canWrite && (
-                          <button className="btn-danger" disabled={saving === h.id} onClick={() => removeDraft(h.id)}>刪除</button>
+                        {canWrite && (
+                          <button className="btn-danger" disabled={saving === h.id} onClick={() => removeReconciliation(h.id, h.status)}>刪除</button>
                         )}
                       </td>
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={8} className="bg-slate-50 border-t border-slate-100 p-3">
+                        <td colSpan={8} className="px-0 py-0">
+                          <div className="expand-row-wrap layer-panel-l2">
                           <div className="grid md:grid-cols-3 gap-3 mb-3">
                             <div>
                               <label className="block text-xs text-slate-500 mb-1">核對日期</label>
@@ -413,7 +414,7 @@ export default function ShipmentReconciliationPage() {
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
                             <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
                               <thead>
-                                <tr>
+                                <tr className="layer-head-l2">
                                   <th className="px-3 py-2 text-left">出貨單/訂單</th>
                                   <th className="px-3 py-2 text-left">品項</th>
                                   <th className="px-3 py-2 text-right">出貨</th>
@@ -479,6 +480,7 @@ export default function ShipmentReconciliationPage() {
                               <button className="btn-primary" disabled={saving === h.id} onClick={() => saveDraftDetail(h.id)}>儲存草稿</button>
                             </div>
                           )}
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -495,7 +497,7 @@ export default function ShipmentReconciliationPage() {
 
       {!loading && headerPaged.total > 0 && (
         <div className="mt-4">
-          <Pagination page={headerPaged.page} totalPages={headerPaged.totalPages} setPage={headerPaged.setPage} total={headerPaged.total} pageSize={15} />
+          <Pagination page={headerPaged.page} totalPages={headerPaged.totalPages} setPage={headerPaged.setPage} total={headerPaged.total} pageSize={10} />
         </div>
       )}
     </div>

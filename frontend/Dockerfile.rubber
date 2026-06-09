@@ -3,7 +3,7 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --legacy-peer-deps
 COPY . .
-ARG NEXT_PUBLIC_API_URL=http://43.133.56.234:10102
+ARG NEXT_PUBLIC_API_URL=http://43.160.199.226:10101
 ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
 RUN npm run build
 

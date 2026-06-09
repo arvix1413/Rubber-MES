@@ -2,22 +2,12 @@
 
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useRef, useState } from 'react'
-import { apiFetch, API, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw, API } from '@/lib/api'
 import { useRouter } from 'next/navigation'
-import { clearCompanyCache, type CompanySettings } from '@/lib/useCompany'
+import { clearCompanyCache, EMPTY_COMPANY_SETTINGS, type CompanySettings } from '@/lib/useCompany'
 import { getUser } from '@/lib/permissions'
 
-const DEFAULT: CompanySettings = {
-  id: 1,
-  company_name: 'RUBBER MES CO., LTD',
-  company_name_local: '',
-  address: '',
-  phone: '',
-  contact_person: '',
-  email: '',
-  tax_id: '',
-  logo_url: null,
-}
+const DEFAULT = EMPTY_COMPANY_SETTINGS
 
 export default function CompanyPage() {
   const router = useRouter()
@@ -26,7 +16,9 @@ export default function CompanyPage() {
   const [loading, setLoading] = useState(true)
   const [saving, setSaving] = useState(false)
   const [uploading, setUploading] = useState(false)
+  const [uploadingSignature, setUploadingSignature] = useState(false)
   const fileRef = useRef<HTMLInputElement>(null)
+  const signatureFileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     const me = getUser()
@@ -46,11 +38,8 @@ export default function CompanyPage() {
     try {
       const fd = new FormData()
       fd.append('file', file)
-      const res = await fetch(`${API}/api/upload`, {
-        method: 'POST',
-        headers: { Authorization: `Bearer ${getToken()}` },
-        body: fd,
-      })
+      const res = await apiFetchRaw('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('上傳失敗')
       const data = await res.json()
       setForm((p) => ({ ...p, logo_url: data.url || null }))
       toast('Logo 已上傳')
@@ -58,6 +47,24 @@ export default function CompanyPage() {
       toast(`上傳失敗：${e.message}`, 'error')
     } finally {
       setUploading(false)
+    }
+  }
+
+  const uploadSignature = async (file: File) => {
+    if (!file.type.startsWith('image/')) { toast('請上傳圖片', 'error'); return }
+    setUploadingSignature(true)
+    try {
+      const fd = new FormData()
+      fd.append('file', file)
+      const res = await apiFetchRaw('/api/upload', { method: 'POST', body: fd })
+      if (!res.ok) throw new Error('上傳失敗')
+      const data = await res.json()
+      setForm((p) => ({ ...p, signature_url: data.url || null }))
+      toast('主管簽名已上傳')
+    } catch (e: any) {
+      toast(`上傳失敗：${e.message}`, 'error')
+    } finally {
+      setUploadingSignature(false)
     }
   }
 
@@ -77,6 +84,9 @@ export default function CompanyPage() {
 
   const logoFullUrl = form.logo_url
     ? (form.logo_url.startsWith('http') ? form.logo_url : `${API}${form.logo_url}`)
+    : null
+  const signatureFullUrl = form.signature_url
+    ? (form.signature_url.startsWith('http') ? form.signature_url : `${API}${form.signature_url}`)
     : null
 
   if (loading) return <div className="text-xs text-slate-500">載入中...</div>
@@ -109,9 +119,70 @@ export default function CompanyPage() {
           <input ref={fileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadLogo(f) }} />
         </div>
 
+        <div>
+          <label className="block text-xs font-semibold text-slate-600 mb-2">統一主管簽名</label>
+          <div className="flex items-center gap-4">
+            {signatureFullUrl ? (
+              <div
+                className="border border-slate-200 rounded-lg flex items-center justify-center bg-slate-50 overflow-hidden"
+                style={{
+                  width: `${Math.min(Math.max(Number(form.signature_print_width) || 220, 120), 320)}px`,
+                  height: `${Math.min(Math.max(Number(form.signature_print_height) || 72, 48), 140)}px`,
+                }}
+              >
+                <img src={signatureFullUrl} alt="Manager Signature" className="max-w-full max-h-full object-contain" />
+              </div>
+            ) : (
+              <div
+                className="border-2 border-dashed border-slate-200 rounded-lg flex items-center justify-center text-slate-300 text-xs"
+                style={{
+                  width: `${Math.min(Math.max(Number(form.signature_print_width) || 220, 120), 320)}px`,
+                  height: `${Math.min(Math.max(Number(form.signature_print_height) || 72, 48), 140)}px`,
+                }}
+              >
+                無主管簽名
+              </div>
+            )}
+            <div className="flex flex-col gap-2">
+              <button onClick={() => signatureFileRef.current?.click()} disabled={uploadingSignature} className="btn-ghost border border-slate-200 text-xs">
+                {uploadingSignature ? '上傳中...' : '上傳主管簽名'}
+              </button>
+              {form.signature_url && <button onClick={() => setForm((p) => ({ ...p, signature_url: null }))} className="text-xs text-red-500 hover:underline">移除</button>}
+            </div>
+          </div>
+          <input ref={signatureFileRef} type="file" accept="image/*" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadSignature(f) }} />
+        </div>
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">列印簽名寬度</label>
+            <input
+              type="number"
+              min={120}
+              max={320}
+              className="rubber-input"
+              value={form.signature_print_width || 220}
+              onChange={(e) => setForm((p) => ({ ...p, signature_print_width: Number(e.target.value || 220) }))}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">單位 px，建議 180 到 240</p>
+          </div>
+          <div>
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">列印簽名高度</label>
+            <input
+              type="number"
+              min={48}
+              max={140}
+              className="rubber-input"
+              value={form.signature_print_height || 72}
+              onChange={(e) => setForm((p) => ({ ...p, signature_print_height: Number(e.target.value || 72) }))}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">單位 px，建議 64 到 88</p>
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {[
-            { key: 'company_name', label: '公司名稱（英文）*', placeholder: 'RUBBER MES CO., LTD' },
+            { key: 'company_name', label: '公司名稱（英文）*', placeholder: '例如：KUN YI CO., LTD' },
             { key: 'company_name_local', label: '公司名稱（當地語言）', placeholder: '' },
             { key: 'address', label: '地址', placeholder: '', wide: true },
             { key: 'phone', label: '電話', placeholder: '' },

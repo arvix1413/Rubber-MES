@@ -2,6 +2,7 @@
 import { useEffect, useState } from 'react'
 import { apiFetch } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
+import { formatInteger } from '@/lib/numberFormat'
 
 type Inv = {
   id: number
@@ -47,7 +48,7 @@ export default function InventoryPage() {
     return matchSearch && matchStock
   })
 
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 30)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const totalStock = filtered.reduce((s, i) => s + (Number(i.closing_balance) || 0), 0)
   const lowStock = items.filter(i => Number(i.closing_balance) <= 0).length
 
@@ -77,7 +78,7 @@ export default function InventoryPage() {
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">篩選結果庫存總量</div>
-          <div className="text-2xl font-bold text-blue-600">{totalStock.toLocaleString()}</div>
+          <div className="text-2xl font-bold text-blue-600">{formatInteger(totalStock)}</div>
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">零庫存品項</div>
@@ -144,7 +145,7 @@ export default function InventoryPage() {
                         <td className="px-3 py-2.5 text-slate-500 whitespace-nowrap max-w-[140px] truncate" title={item.supplier_name}>{item.supplier_name || '—'}</td>
                         <td className="px-3 py-2.5 text-right whitespace-nowrap">
                           <span className={`font-bold text-base ${stock <= 0 ? 'text-red-500' : stock < 10 ? 'text-orange-500' : 'text-emerald-600'}`}>
-                            {stock.toLocaleString()}
+                            {formatInteger(stock)}
                           </span>
                           <span className="text-xs text-slate-400 ml-1">{item.unit}</span>
                         </td>
@@ -157,7 +158,7 @@ export default function InventoryPage() {
                 </tbody>
               </table>
             </div>
-            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={30} />
+            <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
           </>
         )}
       </div>

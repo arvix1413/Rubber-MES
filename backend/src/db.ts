@@ -13,17 +13,36 @@ const pool = mysql.createPool({
 
 export default pool
 
-export async function query<T = any>(sql: string, params?: any[]): Promise<T[]> {
-  const [rows] = await pool.execute(sql, params)
+export type DbExecutor = Pick<mysql.Pool, 'execute'> | mysql.PoolConnection
+
+const getExecutor = (db?: DbExecutor) => db || pool
+
+export async function query<T = any>(sql: string, params?: any[], db?: DbExecutor): Promise<T[]> {
+  const [rows] = await getExecutor(db).execute(sql, params)
   return rows as T[]
 }
 
-export async function queryOne<T = any>(sql: string, params?: any[]): Promise<T | null> {
-  const rows = await query<T>(sql, params)
+export async function queryOne<T = any>(sql: string, params?: any[], db?: DbExecutor): Promise<T | null> {
+  const rows = await query<T>(sql, params, db)
   return rows[0] || null
 }
 
-export async function execute(sql: string, params?: any[]): Promise<{ insertId: number; affectedRows: number }> {
-  const [result] = await pool.execute(sql, params) as any
+export async function execute(sql: string, params?: any[], db?: DbExecutor): Promise<{ insertId: number; affectedRows: number }> {
+  const [result] = await getExecutor(db).execute(sql, params) as any
   return { insertId: result.insertId, affectedRows: result.affectedRows }
+}
+
+export async function withTransaction<T>(fn: (tx: mysql.PoolConnection) => Promise<T>): Promise<T> {
+  const conn = await pool.getConnection()
+  try {
+    await conn.beginTransaction()
+    const result = await fn(conn)
+    await conn.commit()
+    return result
+  } catch (error) {
+    await conn.rollback()
+    throw error
+  } finally {
+    conn.release()
+  }
 }

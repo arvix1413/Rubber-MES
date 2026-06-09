@@ -1,14 +1,16 @@
 'use client'
 
 import { Fragment, useEffect, useMemo, useState } from 'react'
-import { API, apiFetch, getSignatureUrl, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { useDialog } from '@/components/Dialog'
 import { can } from '@/lib/usePermissions'
 import { usePagination, Pagination } from '@/lib/usePagination'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { generateInvoiceHTML } from '@/lib/printInvoice'
 import { useDebouncedValue } from '@/lib/useDebouncedValue'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
+import DecimalInput from '@/components/DecimalInput'
 
 type InvoiceType = 'customer' | 'supplier'
 
@@ -65,13 +67,14 @@ type InvoiceDetail = InvoiceHeader & {
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: '草稿', badge: 'badge-gray' },
-  confirmed: { label: '已確認', badge: 'badge-green' },
+  draft: { label: '尚未審核', badge: 'badge-gray' },
+  confirmed: { label: '已審核', badge: 'badge-green' },
 }
 
 export default function InvoicesPage() {
   const { toast, confirm } = useDialog()
   const canWrite = can('customer_order.create')
+  const canApprove = can('invoice.approve')
 
   const [invoiceType, setInvoiceType] = useState<InvoiceType>('customer')
   const [creating, setCreating] = useState(false)
@@ -80,7 +83,7 @@ export default function InvoicesPage() {
   const [headers, setHeaders] = useState<InvoiceHeader[]>([])
   const [selected, setSelected] = useState<Record<number, { qty: number; unit_price: number }>>({})
   const [invoiceDate, setInvoiceDate] = useState('')
-  const [taxRate, setTaxRate] = useState(0)
+  const [taxRate, setTaxRate] = useState<number | ''>('')
   const [remark, setRemark] = useState('')
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [details, setDetails] = useState<Record<number, InvoiceDetail>>({})
@@ -163,7 +166,7 @@ export default function InvoicesPage() {
         body: JSON.stringify({
           invoice_type: invoiceType,
           invoice_date: invoiceDate || null,
-          tax_rate: taxRate,
+          tax_rate: Number(taxRate || 0),
           remark,
           items: ids.map((id) => ({
             reconciliation_item_id: Number(id),
@@ -176,7 +179,7 @@ export default function InvoicesPage() {
       setCreating(false)
       setSelected({})
       setInvoiceDate('')
-      setTaxRate(0)
+      setTaxRate('')
       setRemark('')
       await Promise.all([loadHeaders(), loadPending()])
     } catch (e: any) {
@@ -224,7 +227,7 @@ export default function InvoicesPage() {
   }
 
   const confirmInvoice = async (id: number) => {
-    if (!await confirm('確認發票？', '確認後將鎖定發票資料並回寫結算進度。', '確認發票')) return
+    if (!await confirm('審核發票？', '審核後將鎖定發票資料並回寫結算進度。', '審核發票')) return
     try {
       setSaving(id)
       await apiFetch(`/api/invoices/${id}/confirm`, { method: 'PATCH' })
@@ -233,9 +236,9 @@ export default function InvoicesPage() {
         const latest = await apiFetch<InvoiceDetail>(`/api/invoices/${id}`)
         setDetails((prev) => ({ ...prev, [id]: latest }))
       }
-      toast('發票已確認')
+      toast('發票已審核')
     } catch (e: any) {
-      toast(`確認失敗：${e.message}`, 'error')
+      toast(`審核失敗：${e.message}`, 'error')
     } finally {
       setSaving(null)
     }
@@ -247,7 +250,8 @@ export default function InvoicesPage() {
         apiFetch<InvoiceDetail>(`/api/invoices/${id}`),
         getCompany(),
       ])
-      const html = generateInvoiceHTML(detail, getSignatureUrl() || undefined, company)
+      const signatureUrl = detail.status === 'confirmed' ? (getCompanySignatureUrl(company) || undefined) : undefined
+      const html = generateInvoiceHTML(detail, signatureUrl, company)
       const w = window.open('', '_blank', 'width=900,height=1100')
       if (!w) {
         toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')
@@ -265,10 +269,7 @@ export default function InvoicesPage() {
     try {
       const qs = new URLSearchParams()
       qs.set('type', invoiceType)
-      const token = getToken()
-      const res = await fetch(`${API}/api/invoices/export/csv?${qs.toString()}`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw(`/api/invoices/export/csv?${qs.toString()}`)
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -284,12 +285,18 @@ export default function InvoicesPage() {
     }
   }
 
-  const removeInvoice = async (id: number) => {
-    if (!await confirm('確定刪除草稿發票？', '刪除後不可恢復。', '刪除')) return
+  const removeInvoice = async (id: number, status: string, type: InvoiceType) => {
+    const title = status === 'draft' ? '確定刪除草稿發票？' : '確定刪除已審核發票？'
+    const desc = status === 'draft'
+      ? '刪除後不可恢復。'
+      : type === 'supplier'
+        ? '刪除後將同步移除對應的供應商付款記錄。'
+        : '刪除後將回滾客戶訂單已結算數量。'
+    if (!await confirm(title, desc, '刪除')) return
     try {
       await apiFetch(`/api/invoices/${id}`, { method: 'DELETE' })
       if (expandedId === id) setExpandedId(null)
-      toast('草稿已刪除')
+      toast('發票已刪除')
       await Promise.all([loadHeaders(), loadPending()])
     } catch (e: any) {
       toast(`刪除失敗：${e.message}`, 'error')
@@ -313,7 +320,7 @@ export default function InvoicesPage() {
   }
 
   const pendingPg = usePagination(pending, 10)
-  const headerPg = usePagination(headers, 20)
+  const headerPg = usePagination(headers, 10)
 
   return (
     <div>
@@ -337,8 +344,8 @@ export default function InvoicesPage() {
           <input className="rubber-input md:col-span-2" placeholder="搜尋發票號/對象/驗證碼" value={search} onChange={(e) => setSearch(e.target.value)} />
           <select className="rubber-input" value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}>
             <option value="">全部狀態</option>
-            <option value="draft">草稿</option>
-            <option value="confirmed">已確認</option>
+            <option value="draft">尚未審核</option>
+            <option value="confirmed">已審核</option>
           </select>
           <input type="date" className="rubber-input" value={dateFrom} onChange={(e) => setDateFrom(e.target.value)} />
           <input type="date" className="rubber-input" value={dateTo} onChange={(e) => setDateTo(e.target.value)} />
@@ -355,7 +362,7 @@ export default function InvoicesPage() {
             </div>
             <div>
               <label className="block text-xs text-slate-500 mb-1">稅率 %</label>
-              <input type="number" className="rubber-input" value={taxRate} onChange={(e) => setTaxRate(Number(e.target.value || 0))} />
+              <input type="number" className="rubber-input" value={taxRate} onChange={(e) => setTaxRate(e.target.value === '' ? '' : Number(e.target.value))} />
             </div>
             <div className="md:col-span-2">
               <label className="block text-xs text-slate-500 mb-1">備註</label>
@@ -401,18 +408,17 @@ export default function InvoicesPage() {
                         />
                       </td>
                       <td className="px-3 py-2 text-right">
-                        <input
-                          type="number"
+                        <DecimalInput
                           className="rubber-input text-right w-28 ml-auto"
                           disabled={!checked}
-                          value={row?.unit_price ?? ''}
-                          onChange={(e) => {
-                            const unitPrice = Number(e.target.value || 0)
+                          value={row?.unit_price}
+                          onValueChange={(value) => {
+                            const unitPrice = value ?? 0
                             setSelected((prev) => ({ ...prev, [p.reconciliation_item_id]: { qty: prev[p.reconciliation_item_id]?.qty ?? p.remaining_qty, unit_price: unitPrice } }))
                           }}
                         />
                       </td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-700">{amount.toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-700">{formatDecimal(amount)}</td>
                     </tr>
                   )
                 })}
@@ -424,7 +430,7 @@ export default function InvoicesPage() {
           {pendingPg.total > 0 && <Pagination page={pendingPg.page} totalPages={pendingPg.totalPages} setPage={pendingPg.setPage} total={pendingPg.total} pageSize={10} />}
 
           <div className="flex items-center justify-between text-sm">
-            <div className="text-slate-600">已選 {selectedCount} 筆，未稅小計 {selectedTotal.toLocaleString()}</div>
+            <div className="text-slate-600">已選 {selectedCount} 筆，未稅小計 {formatDecimal(selectedTotal)}</div>
             <button className="btn-primary" disabled={saving !== null} onClick={createInvoice}>建立發票草稿</button>
           </div>
         </div>
@@ -452,26 +458,27 @@ export default function InvoicesPage() {
                 const detail = details[h.id]
                 return (
                   <Fragment key={h.id}>
-                    <tr className="border-t border-slate-100">
+                    <tr className={`border-t border-slate-100 transition-colors ${expandedId === h.id ? 'layer-row-open' : 'layer-row-hover'}`}>
                       <td className="px-3 py-2 font-semibold text-slate-800">{h.invoice_no}</td>
                       <td className="px-3 py-2">{h.party_name || '-'}</td>
                       <td className="px-3 py-2">{formatDateYMD(h.invoice_date) || '-'}</td>
                       <td className="px-3 py-2 text-right">{h.item_count}</td>
-                      <td className="px-3 py-2 text-right">{Number(h.total_amount || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right">{Number(h.tax_amount || 0).toLocaleString()}</td>
-                      <td className="px-3 py-2 text-right font-semibold text-slate-800">{Number(h.grand_total || 0).toLocaleString()}</td>
+                      <td className="px-3 py-2 text-right">{formatDecimal(h.total_amount || 0)}</td>
+                      <td className="px-3 py-2 text-right">{formatDecimal(h.tax_amount || 0)}</td>
+                      <td className="px-3 py-2 text-right font-semibold text-slate-800">{formatDecimal(h.grand_total || 0)}</td>
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => printInvoice(h.id)}>列印</button>
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
                         <button className="btn-ghost" onClick={() => { setVerifyTargetId(h.id); setVerifyResult(null); setVerifyCodeInput('') }}>驗證</button>
-                        {h.status === 'draft' && canWrite && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>確認</button>}
-                        {h.status === 'draft' && canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id)}>刪除</button>}
+                        {h.status === 'draft' && canApprove && <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmInvoice(h.id)}>審核</button>}
+                        {canWrite && <button className="btn-danger" disabled={saving === h.id} onClick={() => removeInvoice(h.id, h.status, h.invoice_type)}>刪除</button>}
                       </td>
                     </tr>
                     {expandedId === h.id && detail && (
                       <tr>
-                        <td colSpan={9} className="bg-slate-50 border-t border-slate-100 p-3">
+                        <td colSpan={9} className="px-0 py-0">
+                          <div className="expand-row-wrap layer-panel-l2">
                           <div className="grid md:grid-cols-2 gap-3 mb-3">
                             <div className="text-xs text-slate-700">驗證碼：<span className="font-mono font-semibold">{detail.verification_code || '-'}</span></div>
                             <div className="text-xs text-slate-500 truncate">QR Payload：{detail.qr_payload || '-'}</div>
@@ -493,8 +500,8 @@ export default function InvoicesPage() {
                                 type="number"
                                 className="rubber-input"
                                 disabled={detail.status !== 'draft'}
-                                value={detail.tax_rate || 0}
-                                onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, tax_rate: Number(e.target.value || 0) } }))}
+                                value={detail.tax_rate === 0 ? '' : detail.tax_rate}
+                                onChange={(e) => setDetails((prev) => ({ ...prev, [h.id]: { ...detail, tax_rate: e.target.value === '' ? 0 : Number(e.target.value) } }))}
                               />
                             </div>
                             <div>
@@ -511,7 +518,7 @@ export default function InvoicesPage() {
                           <div className="table-scroll-x border border-slate-200 rounded-xl">
                             <table className="rubber-table bg-white" style={{ minWidth: 760 }}>
                               <thead>
-                                <tr>
+                                <tr className="layer-head-l2">
                                   <th className="px-3 py-2 text-left">PO</th>
                                   <th className="px-3 py-2 text-left">品項</th>
                                   <th className="px-3 py-2 text-right">數量</th>
@@ -538,18 +545,17 @@ export default function InvoicesPage() {
                                       />
                                     </td>
                                     <td className="px-3 py-2 text-right">
-                                      <input
-                                        type="number"
+                                      <DecimalInput
                                         className="rubber-input text-right w-28 ml-auto"
                                         disabled={detail.status !== 'draft'}
                                         value={i.unit_price}
-                                        onChange={(e) => {
-                                          const unitPrice = Number(e.target.value || 0)
+                                        onValueChange={(value) => {
+                                          const unitPrice = value ?? 0
                                           setDetails((prev) => ({ ...prev, [h.id]: { ...detail, items: detail.items.map((row) => row.id === i.id ? { ...row, unit_price: unitPrice, amount: Number(row.qty || 0) * unitPrice } : row) } }))
                                         }}
                                       />
                                     </td>
-                                    <td className="px-3 py-2 text-right">{Number(i.amount || 0).toLocaleString()}</td>
+                                    <td className="px-3 py-2 text-right">{formatDecimal(i.amount || 0)}</td>
                                   </tr>
                                 ))}
                               </tbody>
@@ -561,6 +567,7 @@ export default function InvoicesPage() {
                               <button className="btn-primary" disabled={saving === h.id} onClick={() => saveDraft(h.id)}>儲存草稿</button>
                             </div>
                           )}
+                          </div>
                         </td>
                       </tr>
                     )}
@@ -575,7 +582,7 @@ export default function InvoicesPage() {
 
       {!loading && headerPg.total > 0 && (
         <div className="mt-4">
-          <Pagination page={headerPg.page} totalPages={headerPg.totalPages} setPage={headerPg.setPage} total={headerPg.total} pageSize={20} />
+          <Pagination page={headerPg.page} totalPages={headerPg.totalPages} setPage={headerPg.setPage} total={headerPg.total} pageSize={10} />
         </div>
       )}
 

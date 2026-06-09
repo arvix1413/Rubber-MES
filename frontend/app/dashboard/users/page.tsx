@@ -90,7 +90,7 @@ export default function UsersPage() {
   const inp = 'rubber-input'
   const lockedInp = `${inp} bg-slate-100 text-slate-500 border-slate-200 cursor-not-allowed`
   const filtered = users.filter((u) => !search || u.name.toLowerCase().includes(search.toLowerCase()) || u.email.toLowerCase().includes(search.toLowerCase()))
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
   return (
     <div>

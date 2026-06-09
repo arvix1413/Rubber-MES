@@ -88,6 +88,7 @@ CREATE TABLE IF NOT EXISTS bom (
 CREATE TABLE IF NOT EXISTS bom_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   bom_id INT NOT NULL,
+  material_id INT NULL,
   material_code VARCHAR(100) NOT NULL,
   material_name VARCHAR(255) NOT NULL,
   spec TEXT,
@@ -98,6 +99,7 @@ CREATE TABLE IF NOT EXISTS bom_items (
   company_price DECIMAL(15,2) DEFAULT 0,
   currency VARCHAR(20) DEFAULT 'VND',
   remark TEXT,
+  INDEX idx_bom_items_material_id (material_id),
   FOREIGN KEY (bom_id) REFERENCES bom(id) ON DELETE CASCADE
 );
 
@@ -120,6 +122,7 @@ CREATE TABLE IF NOT EXISTS purchase_orders (
 CREATE TABLE IF NOT EXISTS po_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_id INT NOT NULL,
+  material_id INT NULL,
   material_code VARCHAR(100) NOT NULL,
   material_name VARCHAR(255) NOT NULL,
   spec TEXT,
@@ -130,13 +133,15 @@ CREATE TABLE IF NOT EXISTS po_items (
   total_price DECIMAL(15,2) DEFAULT 0,
   currency VARCHAR(20) DEFAULT 'VND',
   remark TEXT,
+  po_ref TEXT COMMENT '订单编号',
+  INDEX idx_po_items_material_id (material_id),
   FOREIGN KEY (po_id) REFERENCES purchase_orders(id) ON DELETE CASCADE
 );
 
 CREATE TABLE IF NOT EXISTS customer_orders (
   id INT AUTO_INCREMENT PRIMARY KEY,
   po_date DATE,
-  po_number VARCHAR(100) NOT NULL,
+  po_number VARCHAR(255) NOT NULL,
   customer_id INT,
   customer_name VARCHAR(255) NOT NULL,
   status VARCHAR(50) DEFAULT 'pending',
@@ -160,6 +165,7 @@ CREATE TABLE IF NOT EXISTS customer_order_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   order_id INT NOT NULL,
   bom_id INT COMMENT 'BOM ID',
+  po_no VARCHAR(255) NOT NULL DEFAULT '',
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
@@ -207,6 +213,7 @@ CREATE TABLE IF NOT EXISTS quotations (
 CREATE TABLE IF NOT EXISTS quotation_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   quotation_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
@@ -215,8 +222,9 @@ CREATE TABLE IF NOT EXISTS quotation_items (
   unit_price DECIMAL(15,2) DEFAULT 0,
   total_price DECIMAL(15,2) DEFAULT 0,
   remark TEXT,
-  moq DECIMAL(15,2) DEFAULT NULL,
+  moq TEXT DEFAULT NULL,
   image_url TEXT DEFAULT NULL,
+  INDEX idx_quotation_items_material_id (material_id),
   FOREIGN KEY (quotation_id) REFERENCES quotations(id) ON DELETE CASCADE
 );
 
@@ -236,14 +244,16 @@ CREATE TABLE IF NOT EXISTS delivery_notes (
 CREATE TABLE IF NOT EXISTS delivery_note_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   dn_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
   unit VARCHAR(50) DEFAULT 'PCS',
   qty DECIMAL(15,4) DEFAULT 0,
   remark TEXT,
-  po_ref VARCHAR(100) COMMENT '订单编号',
+  po_ref TEXT COMMENT '订单编号',
   thickness DECIMAL(10,2) COMMENT '厚度',
+  INDEX idx_delivery_note_items_material_id (material_id),
   FOREIGN KEY (dn_id) REFERENCES delivery_notes(id) ON DELETE CASCADE
 );
 
@@ -263,14 +273,16 @@ CREATE TABLE IF NOT EXISTS delivery_sheets (
 CREATE TABLE IF NOT EXISTS delivery_sheet_items (
   id INT AUTO_INCREMENT PRIMARY KEY,
   ds_id INT NOT NULL,
+  material_id INT NULL,
   item_name VARCHAR(255),
   material_code VARCHAR(100),
   spec TEXT,
   unit VARCHAR(50) DEFAULT 'PCS',
   qty DECIMAL(15,4) DEFAULT 0,
   remark TEXT,
-  po_ref VARCHAR(100) COMMENT '訂單編號',
+  po_ref TEXT COMMENT '訂單編號',
   thickness DECIMAL(10,2) COMMENT '厚度',
+  INDEX idx_delivery_sheet_items_material_id (material_id),
   FOREIGN KEY (ds_id) REFERENCES delivery_sheets(id) ON DELETE CASCADE
 );
 
@@ -335,6 +347,9 @@ CREATE TABLE IF NOT EXISTS company_settings (
   email VARCHAR(255) DEFAULT '',
   tax_id VARCHAR(100) DEFAULT '',
   logo_url TEXT,
+  signature_url TEXT,
+  signature_print_width INT NOT NULL DEFAULT 220,
+  signature_print_height INT NOT NULL DEFAULT 72,
   operating_cost_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '營運成本比例(%)',
   vat_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '營業稅比例(%)',
   cit_rate DECIMAL(8,4) NOT NULL DEFAULT 0 COMMENT '所得稅比例(%)',
@@ -580,7 +595,7 @@ CREATE TABLE IF NOT EXISTS shipment_reconciliation_items (
   delivery_note_item_id INT,
   customer_order_id INT,
   order_item_id INT NULL,
-  po_number VARCHAR(100),
+  po_number VARCHAR(255),
   material_code VARCHAR(100),
   material_name VARCHAR(255),
   supplier_id INT NULL,
@@ -629,7 +644,7 @@ CREATE TABLE IF NOT EXISTS invoice_items (
   reconciliation_item_id INT NULL,
   customer_order_id INT NULL,
   order_item_id INT NULL,
-  po_number VARCHAR(100),
+  po_number VARCHAR(255),
   delivery_note_id INT NULL,
   delivery_note_item_id INT NULL,
   material_code VARCHAR(100),

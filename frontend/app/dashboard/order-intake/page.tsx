@@ -1,138 +1,877 @@
 'use client'
 
 import { useEffect, useMemo, useState } from 'react'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
-import Link from 'next/link'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { useDialog } from '@/components/Dialog'
+import { SearchableSelect } from '@/components/SearchableSelect'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type IntakeItem = {
-  order_id: number
-  po_number: string
-  po_date: string
-  order_status: string
+  id: number
+  progress_no: string
+  customer_id: number | null
   customer_name: string
-  order_item_id: number
+  po_number: string
+  material_name: string
+  planned_qty: number
+  purchased_qty: number
+  purchase_gap_qty: number
+  order_count?: number
+  linked_po_count: number
+  item_count: number
+  due_date?: string | null
+  status: 'pending' | 'partial' | 'completed'
+  remark?: string
+}
+
+type ProgressItem = {
+  id?: number
+  line_type?: 'material' | 'bom'
+  customer_order_id?: number | null
+  order_item_id?: number | null
+  order_po_number?: string
+  customer_po_number?: string
+  bom_id?: number | null
+  bom_code?: string
+  bom_name?: string
+  material_id?: number | null
+  material_code?: string
+  material_name: string
+  spec?: string
+  unit?: string
+  planned_qty: number
+  purchased_qty?: number
+  purchase_gap_qty?: number
+  due_date?: string | null
+  status?: 'pending' | 'partial' | 'completed'
+  remark?: string
+}
+
+type ProgressDetail = IntakeItem & {
+  po_numbers?: string[]
+  customer_order_ids?: number[]
+  items: ProgressItem[]
+}
+
+type Customer = { id: number; customer_name: string; address?: string }
+type OrderSummary = { id: number; po_number: string; customer_id: number; customer_name?: string; status: string }
+
+type OrderBomMaterial = {
+  id: string
+  bom_item_id?: number | null
+  material_id?: number | null
   material_code: string
   material_name: string
   spec: string
   unit: string
-  ordered_qty: number
-  shipped_qty: number
-  reconciled_qty: number
-  pending_reconcile_qty: number
-  fulfillment_rate: number
-  reconcile_rate: number
-  linked_po_count: number
-  purchased_qty: number
-  purchase_gap_qty: number
-  procurement_status: 'pending' | 'partial' | 'procured'
+  bom_unit_qty: number
+  suggested_qty: number
+  supplier_id?: number | null
+  supplier_name?: string
+  due_date?: string | null
+  order_po_number?: string
+  customer_po_number?: string
+}
+
+type OrderBomNode = {
+  id: string
+  order_id: number
+  order_po_number: string
+  order_status: string
+  customer_name: string
+  order_item_id: number
+  order_qty: number
+  allocated_qty?: number
+  remaining_qty?: number
+  due_date?: string | null
+  customer_po_number?: string
+  bom_id: number
+  bom_sku: string
+  bom_name: string
+  materials: OrderBomMaterial[]
+}
+
+type LineForm = {
+  key: string
+  id?: number
+  lineType: 'material' | 'bom'
+  bomNodeId: string
+  customerOrderId: number | null
+  orderItemId: number | null
+  bomId: number | null
+  bom_sku: string
+  bom_name: string
+  material_id: number | null
+  orderPoNumber: string
+  material_code: string
+  material_name: string
+  spec: string
+  unit: string
+  planned_qty: string
+  remark: string
+}
+
+type CreateForm = {
+  customerId: string
+  customerName: string
+  dueDate: string
+  linkedOrderIds: number[]
+  remark: string
+  lines: LineForm[]
+}
+
+type EditForm = {
+  dueDate: string
+  linkedOrderIds: number[]
+  remark: string
+  status: 'pending' | 'partial' | 'completed'
+  lines: LineForm[]
+}
+
+type ResultNotice = {
+  title: string
+  desc: string
+  details: string[]
 }
 
 const STATUS_LABEL: Record<string, string> = {
   pending: '待處理',
   partial: '部分完成',
   completed: '已完成',
-  delay: '延遲',
 }
 
-const PROCUREMENT_LABEL: Record<string, string> = {
-  pending: '待採購',
-  partial: '部分已採購',
-  procured: '已採購完成',
+const buildBomNodeId = (orderId: number, orderItemId: number, bomId: number) =>
+  `${orderId}::${orderItemId}::${bomId}`
+
+const createEmptyLine = (seed: number): LineForm => ({
+  key: `line-${seed}`,
+  lineType: 'bom',
+  bomNodeId: '',
+  customerOrderId: null,
+  orderItemId: null,
+  bomId: null,
+  bom_sku: '',
+  bom_name: '',
+  material_id: null,
+  orderPoNumber: '',
+  material_code: '',
+  material_name: '',
+  spec: '',
+  unit: 'PCS',
+  planned_qty: '',
+  remark: '',
+})
+
+const createEmptyForm = (): CreateForm => ({
+  customerId: '',
+  customerName: '',
+  dueDate: '',
+  linkedOrderIds: [],
+  remark: '',
+  lines: [createEmptyLine(1)],
+})
+
+const normalizeYmdInput = (value: string) => {
+  const text = String(value || '').trim()
+  if (!text) return ''
+  const m = text.match(/^(\d{4})-(\d{2})-(\d{2})$/)
+  if (m) return `${m[1]}-${m[2]}-${m[3]}`
+  const dmy = text.match(/^(\d{2})\/(\d{2})\/(\d{4})$/)
+  if (dmy) return `${dmy[3]}-${dmy[2]}-${dmy[1]}`
+  return text
+}
+
+const summarizeTokens = (input: string, limit: number) => {
+  const values = Array.from(new Set(
+    String(input || '')
+      .split(/[\n,，;；]+/)
+      .map((it) => it.trim())
+      .filter(Boolean),
+  ))
+  if (!values.length) return { text: '未整理', hidden: 0 }
+  const shown = values.slice(0, limit)
+  return {
+    text: shown.join(', '),
+    hidden: Math.max(0, values.length - shown.length),
+  }
+}
+
+const summarizeItems = (input: string, limit: number) => {
+  const values = String(input || '')
+    .split(',')
+    .map((it) => it.trim())
+    .filter(Boolean)
+  if (!values.length) return { text: '-', hidden: 0 }
+  const shown = values.slice(0, limit)
+  return {
+    text: shown.join(', '),
+    hidden: Math.max(0, values.length - shown.length),
+  }
+}
+
+const filterOrdersByKeyword = (rows: OrderSummary[], keyword: string) => {
+  const search = keyword.trim().toLowerCase()
+  if (!search) return rows
+  return rows.filter((order) => {
+    const text = [
+      order.po_number,
+      order.customer_name || '',
+      order.status || '',
+    ].join(' ').toLowerCase()
+    return text.includes(search)
+  })
+}
+
+const statusBadgeClass = (status: string) => {
+  if (status === 'completed') return 'bg-emerald-100 text-emerald-700'
+  if (status === 'partial') return 'bg-amber-100 text-amber-700'
+  return 'bg-slate-100 text-slate-700'
 }
 
 export default function OrderIntakePage() {
+  const { toast, confirm } = useDialog()
   const [rows, setRows] = useState<IntakeItem[]>([])
+  const [customers, setCustomers] = useState<Customer[]>([])
+  const [orders, setOrders] = useState<OrderSummary[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [status, setStatus] = useState('')
-  const [creatingOrderId, setCreatingOrderId] = useState<number | null>(null)
-  const [poBaseNumber, setPoBaseNumber] = useState('')
-  const [splitBySupplier, setSplitBySupplier] = useState(true)
+  const [creatingId, setCreatingId] = useState<number | null>(null)
+  const [showCreate, setShowCreate] = useState(false)
+  const [createForm, setCreateForm] = useState<CreateForm>(createEmptyForm())
+  const [createLineSeed, setCreateLineSeed] = useState(2)
+  const [createOrderSearch, setCreateOrderSearch] = useState('')
+  const [createBomNodes, setCreateBomNodes] = useState<OrderBomNode[]>([])
+  const [createBomLoading, setCreateBomLoading] = useState(false)
+  const [creating, setCreating] = useState(false)
+  const [editing, setEditing] = useState<ProgressDetail | null>(null)
+  const [editForm, setEditForm] = useState<EditForm | null>(null)
+  const [editLineSeed, setEditLineSeed] = useState(1000)
+  const [editOrderSearch, setEditOrderSearch] = useState('')
+  const [editBomNodes, setEditBomNodes] = useState<OrderBomNode[]>([])
+  const [editBomLoading, setEditBomLoading] = useState(false)
+  const [editLoading, setEditLoading] = useState(false)
+  const [resultNotice, setResultNotice] = useState<ResultNotice | null>(null)
 
-  const load = async (nextStatus = status) => {
-    setLoading(true)
-    const params = new URLSearchParams()
-    if (search.trim()) params.set('search', search.trim())
-    if (nextStatus) params.set('status', nextStatus)
-    params.set('page_size', '1000')
-    const data = await apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`)
-    setRows(data)
-    setLoading(false)
+  const refreshAll = async (nextStatus = status, showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const params = new URLSearchParams()
+      if (search.trim()) params.set('search', search.trim())
+      if (nextStatus) params.set('status', nextStatus)
+      params.set('page_size', '1000')
+      const [progressRows, customerRows, orderRows] = await Promise.all([
+        apiFetch<IntakeItem[]>(`/api/order-intake${params.toString() ? `?${params.toString()}` : ''}`),
+        apiFetch<Customer[]>('/api/customers'),
+        apiFetch<OrderSummary[]>('/api/customer-orders'),
+      ])
+      setRows(progressRows || [])
+      setCustomers(customerRows || [])
+      setOrders((orderRows || []).filter((it) => it.status !== 'completed'))
+    } catch (e: any) {
+      toast(String(e?.message || '交期進度暫時無法載入，請稍後再試'), 'error')
+    } finally {
+      setLoading(false)
+    }
   }
 
   useEffect(() => {
-    load('')
+    void refreshAll('', true)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
+  useRefreshOnFocus(() => refreshAll(status, false))
+
+  const fetchOrderBomNodes = async (orderIds: number[], excludeProgressId?: number) => {
+    if (!orderIds.length) return []
+    const params = new URLSearchParams({ order_ids: orderIds.join(',') })
+    if (excludeProgressId) params.set('exclude_progress_id', String(excludeProgressId))
+    return apiFetch<OrderBomNode[]>(`/api/customer-orders/bom-material-tree?${params}`)
+  }
+
+  useEffect(() => {
+    let cancelled = false
+    if (!createForm.linkedOrderIds.length) {
+      setCreateBomNodes([])
+      return
+    }
+    setCreateBomLoading(true)
+    fetchOrderBomNodes(createForm.linkedOrderIds)
+      .then((rows) => {
+        if (!cancelled) setCreateBomNodes(rows || [])
+      })
+      .catch(() => {
+        if (!cancelled) setCreateBomNodes([])
+      })
+      .finally(() => {
+        if (!cancelled) setCreateBomLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [createForm.linkedOrderIds])
+
+  useEffect(() => {
+    let cancelled = false
+    if (!editForm?.linkedOrderIds.length) {
+      setEditBomNodes([])
+      return
+    }
+    setEditBomLoading(true)
+    fetchOrderBomNodes(editForm.linkedOrderIds, editing?.id)
+      .then((rows) => {
+        if (!cancelled) setEditBomNodes(rows || [])
+      })
+      .catch(() => {
+        if (!cancelled) setEditBomNodes([])
+      })
+      .finally(() => {
+        if (!cancelled) setEditBomLoading(false)
+      })
+    return () => { cancelled = true }
+  }, [editForm?.linkedOrderIds, editing?.id])
+
   const summary = useMemo(() => {
     const total = rows.length
-    const open = rows.filter(r => r.pending_reconcile_qty > 0 || r.shipped_qty < r.ordered_qty).length
-    const completed = total - open
-    return { total, open, completed }
+    const open = rows.filter((r) => r.status !== 'completed').length
+    return { total, open, completed: total - open }
   }, [rows])
 
-  const { page, setPage, totalPages, paged, total } = usePagination(rows, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(rows, 10)
+
+  const createLinkedOrders = useMemo(
+    () => orders.filter((order) => createForm.linkedOrderIds.includes(order.id)),
+    [orders, createForm.linkedOrderIds],
+  )
+
+  const createLockedCustomerId = useMemo(() => {
+    const first = createLinkedOrders[0]
+    const customerId = Number(first?.customer_id || 0)
+    return customerId > 0 ? customerId : 0
+  }, [createLinkedOrders])
+
+  const createSelectedBomIds = useMemo(
+    () => createForm.lines.map((line) => line.bomNodeId).filter(Boolean),
+    [createForm.lines],
+  )
+
+  const createOrderOptions = useMemo(() => {
+    const selectedId = createLockedCustomerId || (createForm.customerId ? Number(createForm.customerId) : 0)
+    const filtered = orders.filter((order) => {
+      if (!selectedId) return true
+      return Number(order.customer_id || 0) === selectedId
+    })
+    return filterOrdersByKeyword(filtered, createOrderSearch)
+  }, [orders, createForm.customerId, createLockedCustomerId, createOrderSearch])
+
+  const editLinkedOrders = useMemo(() => {
+    if (!editForm) return []
+    return orders.filter((order) => editForm.linkedOrderIds.includes(order.id))
+  }, [orders, editForm])
+
+  const editOrderOptions = useMemo(() => {
+    if (!editForm || !editing) return []
+    const filtered = orders.filter((order) => {
+      if (!editing.customer_id) return true
+      return Number(order.customer_id || 0) === Number(editing.customer_id)
+    })
+    return filterOrdersByKeyword(filtered, editOrderSearch)
+  }, [orders, editForm, editing, editOrderSearch])
 
   const exportCsv = async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API}/api/order-intake/export/csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw('/api/order-intake/export/csv')
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
       const url = URL.createObjectURL(blob)
       const a = document.createElement('a')
       a.href = url
-      a.download = `order_intake_${todayYMD()}.csv`
+      a.download = `delivery_progress_${todayYMD()}.csv`
       a.click()
       URL.revokeObjectURL(url)
-    } catch {}
+    } catch {
+      toast('匯出失敗', 'error')
+    }
   }
 
-  const generatePo = async (orderId: number) => {
-    if (creatingOrderId) return
-    setCreatingOrderId(orderId)
+  const resetCreate = () => {
+    setCreateForm(createEmptyForm())
+    setCreateLineSeed(2)
+    setCreateOrderSearch('')
+  }
+
+  const openCreate = () => {
+    resetCreate()
+    setShowCreate(true)
+  }
+
+  const closeCreate = () => {
+    setShowCreate(false)
+    resetCreate()
+  }
+
+  const updateCreateForm = (patch: Partial<CreateForm>) => {
+    setCreateForm((prev) => ({ ...prev, ...patch }))
+  }
+
+  const updateCreateLine = (key: string, patch: Partial<LineForm>) => {
+    setCreateForm((prev) => ({
+      ...prev,
+      lines: prev.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+    }))
+  }
+
+  const formatCreateBomNode = (node: OrderBomNode) =>
+    `剩餘 ${Number(node.remaining_qty ?? 0)} / ${node.bom_sku || '未設定 BOM SKU'} / PO ${node.order_po_number || '-'} / 原數量 ${node.order_qty}`
+
+  const filterCreateBomNode = (node: OrderBomNode, search: string) => {
+    const text = [
+      node.bom_sku,
+      node.bom_name,
+      node.order_po_number,
+      node.customer_po_number || '',
+      node.customer_name,
+    ].join(' ').toLowerCase()
+    return text.includes(search)
+  }
+
+  const applyCreateBomNode = (node: OrderBomNode): Partial<LineForm> => ({
+    lineType: 'bom',
+    bomNodeId: node.id,
+    customerOrderId: node.order_id || null,
+    orderItemId: node.order_item_id || null,
+    bomId: node.bom_id || null,
+    bom_sku: node.bom_sku || '',
+    bom_name: node.bom_name || '',
+    orderPoNumber: node.order_po_number || '',
+    material_code: node.bom_sku || '',
+    material_name: node.bom_name || '',
+    spec: '',
+    unit: 'PCS',
+    planned_qty: String(node.remaining_qty ?? node.order_qty ?? ''),
+    remark: node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : '',
+  })
+
+  const addCreateLine = () => {
+    setCreateForm((prev) => ({ ...prev, lines: [...prev.lines, createEmptyLine(createLineSeed)] }))
+    setCreateLineSeed((prev) => prev + 1)
+  }
+
+  const addBomToCreateLines = (node: OrderBomNode) => {
+    setCreateForm((prev) => {
+      if (prev.lines.some((line) => line.bomNodeId === node.id)) return prev
+      const emptyLineIndex = prev.lines.findIndex((line) => !line.bomNodeId && !line.orderPoNumber && !line.remark)
+      if (emptyLineIndex >= 0) {
+        const nextLines = [...prev.lines]
+        nextLines[emptyLineIndex] = { ...nextLines[emptyLineIndex], ...applyCreateBomNode(node) }
+        return { ...prev, lines: nextLines }
+      }
+      return {
+        ...prev,
+        lines: [
+          ...prev.lines,
+          {
+            ...createEmptyLine(createLineSeed),
+            ...applyCreateBomNode(node),
+          },
+        ],
+      }
+    })
+    setCreateLineSeed((prev) => prev + 1)
+    if (!createForm.dueDate && node.due_date) {
+      updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(node.due_date) || '') })
+    }
+  }
+
+  const removeCreateLine = (key: string) => {
+    setCreateForm((prev) => ({
+      ...prev,
+      lines: prev.lines.length <= 1 ? [createEmptyLine(createLineSeed)] : prev.lines.filter((line) => line.key !== key),
+    }))
+    setCreateLineSeed((prev) => prev + 1)
+  }
+
+  const toggleCreateLinkedOrder = (orderId: number) => {
+    const order = orders.find((it) => it.id === orderId)
+    if (!order) return
+    setCreateForm((prev) => ({
+      ...prev,
+      customerId: prev.customerId || String(order.customer_id || ''),
+      customerName: prev.customerName || order.customer_name || '',
+      linkedOrderIds: prev.linkedOrderIds.includes(orderId)
+        ? prev.linkedOrderIds.filter((id) => id !== orderId)
+        : [...prev.linkedOrderIds, orderId],
+      lines: prev.lines.map((line) => {
+        const node = createBomNodes.find((it) => it.id === line.bomNodeId)
+        return node && node.order_id === orderId ? line : { ...line, ...createEmptyLine(createLineSeed), key: line.key }
+      }),
+    }))
+  }
+
+  const removeCreateLinkedOrder = (orderId: number) => {
+    setCreateForm((prev) => {
+      const nextLinkedOrderIds = prev.linkedOrderIds.filter((id) => id !== orderId)
+      const nextNodes = createBomNodes.filter((node) => nextLinkedOrderIds.includes(node.order_id))
+      return {
+        ...prev,
+        linkedOrderIds: nextLinkedOrderIds,
+        lines: prev.lines.map((line) => {
+          const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
+          return stillExists ? line : { ...line, ...createEmptyLine(createLineSeed), key: line.key }
+        }),
+      }
+    })
+  }
+
+  const createBomOptionsForLine = (lineKey: string) => {
+    const selectedByOthers = new Set(
+      createForm.lines
+        .filter((line) => line.key !== lineKey)
+        .map((line) => line.bomNodeId)
+        .filter(Boolean),
+    )
+    return createBomNodes.filter((node) => !selectedByOthers.has(node.id))
+  }
+
+  const editBomOptionsForLine = (lineKey: string) => {
+    if (!editForm) return []
+    const selectedByOthers = new Set(
+      editForm.lines
+        .filter((it) => it.key !== lineKey)
+        .map((it) => it.bomNodeId)
+        .filter(Boolean),
+    )
+    return editBomNodes.filter((node) => !selectedByOthers.has(node.id))
+  }
+
+  const createProgress = async () => {
+    if (creating) return
+    const selectedCustomer = customers.find((c) => String(c.id) === createForm.customerId)
+    const customerName = (selectedCustomer?.customer_name || createForm.customerName || '').trim()
+    if (!customerName) {
+      toast('請先選擇客戶', 'error')
+      return
+    }
+    if (!createForm.linkedOrderIds.length) {
+      toast('請至少選擇一張關聯訂單', 'error')
+      return
+    }
+    const selectedLines = createForm.lines.filter((line) => line.bomNodeId)
+    if (!selectedLines.length) {
+      toast('請至少新增一筆 BOM 明細', 'error')
+      return
+    }
+    const lines = selectedLines.map((line) => {
+      const node = createBomNodes.find((it) => it.id === line.bomNodeId)
+      if (!node) return null
+      return {
+        line_type: 'bom' as const,
+        customer_order_id: node.order_id,
+        order_item_id: node.order_item_id,
+        bom_id: node.bom_id,
+        bom_code: node.bom_sku,
+        bom_name: node.bom_name,
+        order_po_number: line.orderPoNumber.trim() || node.order_po_number || '',
+        customer_po_number: node.customer_po_number || '',
+        planned_qty: Number(line.planned_qty),
+        due_date: createForm.dueDate || node.due_date || undefined,
+        unit: 'PCS',
+        remark: line.remark.trim() || (node.bom_sku ? `BOM ${node.bom_sku}${node.bom_name ? ` / ${node.bom_name}` : ''}` : ''),
+      }
+    })
+      .filter((line): line is NonNullable<typeof line> => !!line)
+    if (!lines.length) {
+      toast('所選 BOM 無效，請重新選擇', 'error')
+      return
+    }
+    setCreating(true)
     try {
-      const res = await apiFetch<{ created: Array<{ id: number; po_number: string; supplier_name: string }>; count: number }>(`/api/order-intake/${orderId}/generate-po`, {
+      const freshBomNodes = await fetchOrderBomNodes(createForm.linkedOrderIds)
+      setCreateBomNodes(freshBomNodes || [])
+      for (const line of lines) {
+        if (!Number.isFinite(line.planned_qty) || line.planned_qty <= 0) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 的數量需大於 0`, 'error')
+          return
+        }
+        const node = (freshBomNodes || []).find((it) => it.order_item_id === line.order_item_id && it.bom_id === line.bom_id)
+        const remainingQty = Number(node?.remaining_qty ?? node?.order_qty ?? 0)
+        if (remainingQty <= 0) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 可建立數量已用完，請關閉視窗後重新選擇明細`, 'error')
+          return
+        }
+        if (Number(line.planned_qty) > remainingQty) {
+          toast(`BOM ${line.bom_code || line.bom_name || ''} 本次最多只能建立 ${remainingQty}`, 'error')
+          return
+        }
+      }
+
+      const created = await apiFetch<{ id: number; progress_no: string; dn_id?: number | null; dn_number?: string | null; po_created?: Array<{ id: number; po_number: string; supplier_name: string }>; po_count?: number }>('/api/order-intake', {
         method: 'POST',
-        body: JSON.stringify({ split_by_supplier: splitBySupplier, po_number_base: poBaseNumber.trim() || undefined }),
+        body: JSON.stringify({
+          customer_id: createForm.customerId ? Number(createForm.customerId) : undefined,
+          customer_name: customerName,
+          customer_order_ids: createForm.linkedOrderIds,
+          remark: createForm.remark.trim(),
+          items: lines,
+        }),
       })
-      const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
-      window.alert(`已生成 ${res.count || lines.length} 張採購單\\n${lines.join('\\n')}`)
-      await load(status)
+      const deliveryNoteText = created.dn_number ? `，並自動建立出貨單 ${created.dn_number}` : ''
+      const poCreated = created.po_created || []
+      const poLines = poCreated.map((po) => `${po.po_number} / ${po.supplier_name || '未指定供應商'}`)
+      toast(`交期進度已建立${deliveryNoteText}，並生成 ${created.po_count || poLines.length} 張採購單`)
+      if (poLines.length) showResultNotice(`已生成 ${created.po_count || poLines.length} 張採購單`, '本次建立結果：', poLines)
+      closeCreate()
+      await refreshAll(status, false)
     } catch (e: any) {
-      const msg = String(e?.message || '生成採購單失敗')
-      window.alert(msg)
+      toast(String(e?.message || '暫時無法建立，請稍後再試'), 'error')
     } finally {
-      setCreatingOrderId(null)
+      setCreating(false)
+    }
+  }
+
+  const removeProgress = async (row: IntakeItem) => {
+    if (!(await confirm('確定刪除此交期進度？', row.progress_no || '', '刪除'))) return
+    try {
+      await apiFetch(`/api/order-intake/${row.id}`, { method: 'DELETE' })
+      toast('已刪除')
+      await refreshAll(status, false)
+    } catch (e: any) {
+      toast(String(e?.message || '刪除失敗'), 'error')
+    }
+  }
+
+  const startEdit = async (row: IntakeItem) => {
+    setEditLoading(true)
+    try {
+      const detail = await apiFetch<ProgressDetail>(`/api/order-intake/${row.id}`)
+      setEditing(detail)
+      setEditForm({
+        dueDate: normalizeYmdInput(formatDateYMD(detail.due_date) || formatDateYMD(detail.items?.[0]?.due_date) || ''),
+        linkedOrderIds: detail.customer_order_ids || [],
+        remark: detail.remark || '',
+        status: detail.status || 'pending',
+        lines: (detail.items || []).map((item, index) => ({
+          key: `edit-${item.id || index}`,
+          id: item.id,
+          lineType: item.line_type === 'bom' ? 'bom' : 'material',
+          bomNodeId: item.line_type === 'bom' && item.customer_order_id && item.order_item_id && item.bom_id
+            ? buildBomNodeId(item.customer_order_id, item.order_item_id, item.bom_id)
+            : '',
+          customerOrderId: item.customer_order_id || null,
+          orderItemId: item.order_item_id || null,
+          bomId: item.bom_id || null,
+          bom_sku: item.bom_code || '',
+          bom_name: item.bom_name || '',
+          material_id: item.material_id || null,
+          orderPoNumber: item.order_po_number || '',
+          material_code: item.material_code || '',
+          material_name: item.material_name || '',
+          spec: item.spec || '',
+          unit: item.unit || 'PCS',
+          planned_qty: String(item.planned_qty || ''),
+          remark: item.remark || '',
+        })),
+      })
+      setEditLineSeed(2000)
+      setEditOrderSearch('')
+    } catch (e: any) {
+      toast(String(e?.message || '詳情暫時無法載入，請稍後再試'), 'error')
+    } finally {
+      setEditLoading(false)
+    }
+  }
+
+  const closeEdit = () => {
+    setEditing(null)
+    setEditForm(null)
+    setEditOrderSearch('')
+  }
+
+  const updateEditLine = (key: string, patch: Partial<LineForm>) => {
+    if (!editForm) return
+    setEditForm({
+      ...editForm,
+      lines: editForm.lines.map((line) => (line.key === key ? { ...line, ...patch } : line)),
+    })
+  }
+
+  const addEditLine = () => {
+    if (!editForm) return
+    setEditForm({ ...editForm, lines: [...editForm.lines, createEmptyLine(editLineSeed)] })
+    setEditLineSeed((prev) => prev + 1)
+  }
+
+  const removeEditLine = (key: string) => {
+    if (!editForm) return
+    setEditForm({
+      ...editForm,
+      lines: editForm.lines.length <= 1 ? [createEmptyLine(editLineSeed)] : editForm.lines.filter((line) => line.key !== key),
+    })
+    setEditLineSeed((prev) => prev + 1)
+  }
+
+  const toggleEditLinkedOrder = (orderId: number) => {
+    if (!editForm) return
+    const order = orders.find((it) => it.id === orderId)
+    if (!order) return
+    const nextLinkedOrderIds = editForm.linkedOrderIds.includes(orderId)
+      ? editForm.linkedOrderIds.filter((id) => id !== orderId)
+      : [...editForm.linkedOrderIds, orderId]
+    const nextNodes = editBomNodes.filter((node) => nextLinkedOrderIds.includes(node.order_id))
+    setEditForm({
+      ...editForm,
+      linkedOrderIds: nextLinkedOrderIds,
+      lines: editForm.lines.map((line) => {
+        if (line.lineType !== 'bom') return line
+        const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
+        return stillExists ? line : { ...line, ...createEmptyLine(editLineSeed), key: line.key }
+      }),
+    })
+  }
+
+  const removeEditLinkedOrder = (orderId: number) => {
+    if (!editForm) return
+    const nextLinkedOrderIds = editForm.linkedOrderIds.filter((id) => id !== orderId)
+    const nextNodes = editBomNodes.filter((node) => nextLinkedOrderIds.includes(node.order_id))
+    setEditForm({
+      ...editForm,
+      linkedOrderIds: nextLinkedOrderIds,
+      lines: editForm.lines.map((line) => {
+        if (line.lineType !== 'bom') return line
+        const stillExists = nextNodes.some((node) => node.id === line.bomNodeId)
+        return stillExists ? line : { ...line, ...createEmptyLine(editLineSeed), key: line.key }
+      }),
+    })
+  }
+
+  const generatePoForProgress = async (id: number) => {
+    const res = await apiFetch<{ created: Array<{ id: number; po_number: string; supplier_name: string }>; count: number }>(`/api/order-intake/${id}/generate-po`, {
+      method: 'POST',
+    })
+    const lines = (res.created || []).map((it) => `${it.po_number}（${it.supplier_name || '未指定供應商'}）`)
+    return { res, lines }
+  }
+
+  const showResultNotice = (title: string, desc: string, details: string[]) => {
+    setResultNotice({ title, desc, details })
+  }
+
+  const saveEdit = async () => {
+    if (!editing || !editForm) return
+    const items = editForm.lines
+      .map((line) => {
+        const bomNode = line.bomNodeId ? editBomNodes.find((node) => node.id === line.bomNodeId) : null
+        if (line.lineType === 'bom') {
+          return {
+            id: line.id,
+            line_type: 'bom' as const,
+            customer_order_id: line.customerOrderId || bomNode?.order_id || null,
+            order_item_id: line.orderItemId || bomNode?.order_item_id || null,
+            bom_id: line.bomId || bomNode?.bom_id || null,
+            bom_code: line.bom_sku.trim() || bomNode?.bom_sku || '',
+            bom_name: line.bom_name.trim() || bomNode?.bom_name || '',
+            order_po_number: line.orderPoNumber.trim(),
+            customer_po_number: bomNode?.customer_po_number || '',
+            unit: line.unit.trim() || 'PCS',
+            planned_qty: Number(line.planned_qty),
+            due_date: editForm.dueDate || undefined,
+            remark: line.remark.trim(),
+          }
+        }
+        return {
+          id: line.id,
+          line_type: 'material' as const,
+          customer_order_id: line.customerOrderId,
+          order_po_number: line.orderPoNumber.trim(),
+          material_id: line.material_id,
+          material_code: line.material_code.trim(),
+          material_name: line.material_name.trim(),
+          spec: line.spec.trim(),
+          unit: line.unit.trim() || 'PCS',
+          planned_qty: Number(line.planned_qty),
+          due_date: editForm.dueDate || undefined,
+          remark: line.remark.trim(),
+        }
+      })
+      .filter((line) => (
+        line.line_type === 'bom'
+          ? Boolean(line.bom_id || line.bom_code || line.bom_name || line.planned_qty || line.remark)
+          : Boolean(line.material_name || line.material_code || line.planned_qty || line.remark)
+      ))
+
+    if (!items.length) {
+      toast('請至少保留一筆交貨明細', 'error')
+      return
+    }
+    for (const item of items) {
+      if (!Number.isFinite(item.planned_qty) || item.planned_qty <= 0) {
+        toast(`明細 ${item.line_type === 'bom' ? (item.bom_code || item.bom_name || '') : item.material_name} 的數量需大於 0`, 'error')
+        return
+      }
+      if (item.line_type === 'bom' && !item.bom_id) {
+        toast('請為每筆明細選擇 BOM', 'error')
+        return
+      }
+      if (item.line_type === 'material' && !item.material_name) {
+        toast('材料名稱不可空白', 'error')
+        return
+      }
+    }
+
+    try {
+      await apiFetch(`/api/order-intake/${editing.id}`, {
+        method: 'PUT',
+        body: JSON.stringify({
+          customer_order_ids: editForm.linkedOrderIds,
+          remark: editForm.remark.trim(),
+          status: editForm.status,
+          items,
+        }),
+      })
+      toast('交期進度已更新')
+      closeEdit()
+      await refreshAll(status, false)
+    } catch (e: any) {
+      toast(String(e?.message || '更新失敗'), 'error')
+    }
+  }
+
+  const generatePo = async (id: number) => {
+    if (creatingId) return
+    setCreatingId(id)
+    try {
+      const { res, lines } = await generatePoForProgress(id)
+      showResultNotice(`已生成 ${res.count || lines.length} 張採購單`, '本次建立結果：', lines)
+      await refreshAll(status, false)
+    } catch (e: any) {
+      toast(String(e?.message || '生成採購單失敗'), 'error')
+    } finally {
+      setCreatingId(null)
     }
   }
 
   return (
     <div>
-      <div className="flex items-center justify-between mb-6">
+      <div className="mb-6 flex items-center justify-between">
         <div>
-          <h1 className="text-xl font-bold text-slate-800">訂單收集池</h1>
-          <p className="text-xs text-slate-500 mt-1">彙總客戶訂單到出貨與核對的在製進度。</p>
+          <h1 className="text-xl font-bold text-slate-800">交期進度</h1>
+          <p className="mt-1 text-xs text-slate-500">一個交期進度可包含多筆訂單、多個 PO No，以及多筆交期明細。</p>
         </div>
         <div className="flex items-center gap-2 text-xs">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
-          <span className="badge-gray">總項目 {summary.total}</span>
-          <span className="badge-yellow">待處理 {summary.open}</span>
+          <button className="btn-primary" onClick={openCreate}>+ 建立交期進度</button>
+          <span className="badge-gray">總進度 {summary.total}</span>
+          <span className="badge-yellow">進行中 {summary.open}</span>
           <span className="badge-green">已完成 {summary.completed}</span>
         </div>
       </div>
 
-      <div className="rubber-card p-4 mb-4">
-        <div className="grid md:grid-cols-7 gap-3">
+      <div className="rubber-card mb-4 p-4">
+        <div className="grid gap-3 md:grid-cols-5">
           <input
             className="rubber-input md:col-span-3"
-            placeholder="搜尋客戶、訂單號、料號、品名"
+            placeholder="搜尋進度號、客戶、PO 編號、材料摘要"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
           />
@@ -141,97 +880,85 @@ export default function OrderIntakePage() {
             <option value="open">進行中</option>
             <option value="completed">已完成</option>
           </select>
-          <input
-            className="rubber-input"
-            placeholder="採購單基礎編號(選填)"
-            value={poBaseNumber}
-            onChange={(e) => setPoBaseNumber(e.target.value)}
-          />
-          <label className="inline-flex items-center gap-2 text-xs text-slate-600 px-2">
-            <input type="checkbox" checked={splitBySupplier} onChange={(e) => setSplitBySupplier(e.target.checked)} />
-            按供應商拆單
-          </label>
-          <button className="btn-primary" onClick={() => { setPage(1); load(status) }}>查詢</button>
+          <button className="btn-primary" onClick={() => { setPage(1); void refreshAll(status, true) }}>查詢</button>
         </div>
       </div>
 
       <div className="rubber-card overflow-hidden">
         <div className="table-scroll-x">
-          <table className="rubber-table" style={{ minWidth: 1280 }}>
+          <table className="rubber-table" style={{ minWidth: 1260 }}>
             <thead>
               <tr>
-                <th className="px-3 py-2 text-left">訂單</th>
-                <th className="px-3 py-2 text-left">客戶 / 品項</th>
-                <th className="px-3 py-2 text-right">訂單量</th>
-                <th className="px-3 py-2 text-right">已採購</th>
-                <th className="px-3 py-2 text-right">採購缺口</th>
-                <th className="px-3 py-2 text-right">已出貨</th>
-                <th className="px-3 py-2 text-right">已核對</th>
-                <th className="px-3 py-2 text-right">待核對</th>
-                <th className="px-3 py-2 text-left">進度</th>
+                <th className="px-3 py-2 text-left">進度單</th>
+                <th className="px-3 py-2 text-left">客戶</th>
+                <th className="px-3 py-2 text-left">PO 編號</th>
+                <th className="px-3 py-2 text-left">明細摘要</th>
+                <th className="px-3 py-2 text-right">總數量</th>
+                <th className="px-3 py-2 text-left">交期</th>
+                <th className="px-3 py-2 text-left">狀態</th>
                 <th className="px-3 py-2 text-left">操作</th>
               </tr>
             </thead>
             <tbody>
               {paged.map((r) => (
-                <tr key={r.order_item_id} className="border-t border-slate-100">
+                <tr key={r.id} className="border-t border-slate-100">
                   <td className="px-3 py-2 align-top">
-                    <div className="font-semibold text-slate-800">{r.po_number}</div>
-                    <div className="text-xs text-slate-500">{formatDateYMD(r.po_date) || '-'}</div>
-                    <div className="text-[11px] mt-1 inline-flex px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{STATUS_LABEL[r.order_status] || r.order_status}</div>
+                    <div className="font-medium text-slate-800">{r.progress_no}</div>
+                    <div className="mt-1 text-xs text-slate-500">
+                      {r.order_count || 0} 筆訂單 / {r.linked_po_count} 個 PO / {r.item_count} 筆明細
+                    </div>
+                  </td>
+                  <td className="px-3 py-2 align-top">{r.customer_name || '-'}</td>
+                  <td className="px-3 py-2 align-top">
+                    {(() => {
+                      const poSummary = summarizeTokens(r.po_number || '', 2)
+                      return (
+                        <>
+                          <div className="break-words">{poSummary.text}</div>
+                          <div className="mt-1 text-xs text-slate-500">
+                            {r.linked_po_count > 0 ? `共 ${r.linked_po_count} 個 PO` : '舊資料'}
+                            {poSummary.hidden > 0 ? ` / +${poSummary.hidden}` : ''}
+                          </div>
+                        </>
+                      )
+                    })()}
                   </td>
                   <td className="px-3 py-2 align-top">
-                    <div className="text-slate-700">{r.customer_name || '-'}</div>
-                    <div className="font-medium text-slate-800 mt-1">{r.material_code || '-'} {r.material_name || ''}</div>
-                    <div className="text-xs text-slate-500">{r.spec || '-'}</div>
+                    {(() => {
+                      const itemSummary = summarizeItems(r.material_name || '', 2)
+                      return (
+                        <>
+                          <div className="max-w-[280px] break-words">{itemSummary.text}</div>
+                          {itemSummary.hidden > 0 && <div className="mt-1 text-xs text-slate-500">+{itemSummary.hidden} 項</div>}
+                        </>
+                      )
+                    })()}
                   </td>
-                  <td className="px-3 py-2 text-right">{r.ordered_qty}</td>
-                  <td className="px-3 py-2 text-right">{r.purchased_qty}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-orange-700">{r.purchase_gap_qty}</td>
-                  <td className="px-3 py-2 text-right">{r.shipped_qty}</td>
-                  <td className="px-3 py-2 text-right">{r.reconciled_qty}</td>
-                  <td className="px-3 py-2 text-right font-semibold text-amber-700">{r.pending_reconcile_qty}</td>
-                  <td className="px-3 py-2 align-top min-w-[180px]">
-                    <div className="text-xs text-slate-600 mb-1">出貨 {r.fulfillment_rate}% / 核對 {r.reconcile_rate}%</div>
-                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full bg-blue-500" style={{ width: `${r.fulfillment_rate}%` }} />
-                    </div>
-                    <div className="w-full h-2 rounded-full bg-slate-100 overflow-hidden mt-1">
-                      <div className="h-full bg-emerald-500" style={{ width: `${r.reconcile_rate}%` }} />
-                    </div>
-                    <div className="mt-2 text-xs">
-                      <Link href="/dashboard/shipment-reconciliation" className="text-orange-700 hover:text-orange-800">前往出貨核對</Link>
-                    </div>
+                  <td className="px-3 py-2 text-right">{r.planned_qty}</td>
+                  <td className="px-3 py-2">{formatDateYMD(r.due_date) || '-'}</td>
+                  <td className="px-3 py-2">
+                    <span className={`inline-flex items-center rounded px-2 py-1 text-xs font-medium ${statusBadgeClass(r.status)}`}>
+                      {STATUS_LABEL[r.status] || r.status}
+                    </span>
                   </td>
-                  <td className="px-3 py-2 align-top min-w-[170px]">
-                    <div className="mb-2">
-                      <span className={`inline-flex items-center px-2 py-1 rounded text-xs font-medium ${
-                        r.procurement_status === 'procured'
-                          ? 'bg-emerald-100 text-emerald-700'
-                          : r.procurement_status === 'partial'
-                            ? 'bg-amber-100 text-amber-700'
-                            : 'bg-slate-100 text-slate-700'
-                      }`}>
-                        {PROCUREMENT_LABEL[r.procurement_status]}
-                      </span>
+                  <td className="min-w-[220px] px-3 py-2 align-top">
+                    <div className="flex flex-wrap gap-2">
+                      <button className="btn-ghost text-xs" onClick={() => startEdit(r)}>編輯</button>
+                      <button className="btn-ghost text-xs" onClick={() => removeProgress(r)}>刪除</button>
+                      {r.purchase_gap_qty > 0 ? (
+                        <button className="btn-primary text-xs" disabled={creatingId === r.id} onClick={() => generatePo(r.id)}>
+                          {creatingId === r.id ? '生成中...' : '生成採購單'}
+                        </button>
+                      ) : (
+                        <span className="text-xs text-slate-500">已無採購缺口</span>
+                      )}
                     </div>
-                    {r.purchase_gap_qty > 0 ? (
-                      <button
-                        className="btn-ghost text-xs"
-                        disabled={creatingOrderId === r.order_id}
-                        onClick={() => generatePo(r.order_id)}
-                      >
-                        {creatingOrderId === r.order_id ? '生成中...' : '生成採購單'}
-                      </button>
-                    ) : (
-                      <span className="text-xs text-slate-500">已無採購缺口</span>
-                    )}
                   </td>
                 </tr>
               ))}
               {!loading && paged.length === 0 && (
                 <tr>
-                  <td className="px-3 py-8 text-center text-slate-500" colSpan={10}>目前無資料</td>
+                  <td className="px-3 py-8 text-center text-slate-500" colSpan={8}>目前無資料</td>
                 </tr>
               )}
             </tbody>
@@ -239,10 +966,480 @@ export default function OrderIntakePage() {
         </div>
       </div>
 
-      {loading && <div className="text-xs text-slate-500 mt-3">載入中...</div>}
+      {loading && <div className="mt-3 text-xs text-slate-500">載入中...</div>}
       {!loading && total > 0 && (
         <div className="mt-4">
-          <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={20} />
+          <Pagination page={page} totalPages={totalPages} setPage={setPage} total={total} pageSize={10} />
+        </div>
+      )}
+
+      {showCreate && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/35" onClick={closeCreate} />
+          <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            <div className="mb-4 flex items-center justify-between">
+              <h2 className="text-base font-bold text-slate-800">建立交期進度</h2>
+              <button className="btn-ghost" onClick={closeCreate}>關閉</button>
+            </div>
+
+            <div className="grid gap-4 md:grid-cols-2">
+              <div>
+                <label className="mb-1 block text-xs text-slate-500">客戶</label>
+                <select
+                  className="rubber-input"
+                  value={createLockedCustomerId ? String(createLockedCustomerId) : createForm.customerId}
+                  disabled={createLockedCustomerId > 0}
+                  onChange={(e) => {
+                    const customerId = e.target.value
+                    const customer = customers.find((c) => String(c.id) === customerId)
+                    updateCreateForm({
+                      customerId,
+                      customerName: customer?.customer_name || '',
+                      linkedOrderIds: customerId
+                        ? createForm.linkedOrderIds.filter((id) => Number(orders.find((o) => o.id === id)?.customer_id || 0) === Number(customerId))
+                        : createForm.linkedOrderIds,
+                    })
+                    setCreateOrderSearch('')
+                  }}
+                >
+                  <option value="">-- 請選擇客戶 --</option>
+                  {customers.map((c) => (
+                    <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
+                  ))}
+                </select>
+                {createLockedCustomerId > 0 && (
+                  <p className="mt-1 text-xs text-slate-500">已依關聯訂單自動鎖定客戶，移除全部訂單後可重新選擇。</p>
+                )}
+              </div>
+
+              <div>
+                  <label className="mb-1 block text-xs text-slate-500">交期進度</label>
+                  <input
+                    type="date"
+                    className="rubber-input h-9"
+                    value={createForm.dueDate}
+                    onChange={(e) => updateCreateForm({ dueDate: e.target.value })}
+                  />
+                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交期明細。</p>
+              </div>
+
+              <div className="md:col-span-2">
+                <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
+                <input
+                  className="rubber-input h-9"
+                  value={createOrderSearch}
+                  onChange={(e) => setCreateOrderSearch(e.target.value)}
+                  placeholder="搜尋 PO / 客戶"
+                />
+                <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
+                  {createOrderOptions.length > 0 ? createOrderOptions.map((o) => {
+                    const checked = createForm.linkedOrderIds.includes(o.id)
+                    return (
+                      <label key={o.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
+                        <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleCreateLinkedOrder(o.id)} />
+                        <div className="min-w-0">
+                          <div className="font-medium text-slate-700">{o.po_number}</div>
+                          <div className="text-xs text-slate-500">{o.customer_name || '-'} / {STATUS_LABEL[o.status] || o.status}</div>
+                        </div>
+                      </label>
+                    )
+                  }) : (
+                    <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
+                  )}
+                </div>
+                <p className="mt-1 text-xs text-slate-500">已選 {createLinkedOrders.length} 張訂單，新增明細時可直接選這些訂單下的 BOM。</p>
+                {createLinkedOrders.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {createLinkedOrders.map((order) => (
+                      <span key={order.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                        {order.po_number}
+                        <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => removeCreateLinkedOrder(order.id)}>×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+            </div>
+
+              <div className="mt-5">
+                <div className="mb-2 flex items-center justify-between">
+                  <label className="block text-xs text-slate-500">交期明細</label>
+                  <button type="button" className="btn-ghost text-xs" onClick={addCreateLine}>+ 新增明細</button>
+                </div>
+                {createForm.linkedOrderIds.length > 0 && (
+                  <>
+                    <p className="mb-2 text-xs text-slate-500">
+                      下拉只顯示 BOM、對應 PO、原訂單數量與剩餘可建數量；本次建立多少由你輸入，下次只會剩下未建立的數量。
+                      {createBomLoading ? ' BOM 載入中...' : ` 共 ${createBomNodes.length} 個 BOM 候選，已選 ${createSelectedBomIds.length} 個`}
+                    </p>
+                    <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                      <label className="mb-1 block text-xs text-slate-500">快速新增 BOM</label>
+                      <SearchableSelect
+                        options={createBomNodes.filter((node) => !createSelectedBomIds.includes(node.id))}
+                        value=""
+                        onChange={(value) => {
+                          const node = createBomNodes.find((it) => it.id === value)
+                          if (!node) return
+                          addBomToCreateLines(node)
+                        }}
+                        placeholder={createBomLoading ? '-- BOM 載入中 --' : '-- 選一個 BOM，立即新增一條明細 --'}
+                        renderOption={formatCreateBomNode}
+                        filterFn={filterCreateBomNode}
+                        disabled={createBomLoading || createForm.linkedOrderIds.length === 0}
+                        className="h-9"
+                      />
+                    </div>
+                  </>
+                )}
+                <div className="overflow-hidden rounded-lg border border-slate-200">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="border-b border-slate-200 bg-slate-50">
+                        <th className="px-3 py-2 text-left">BOM</th>
+                        <th className="px-3 py-2 text-right">本次建立數量</th>
+                        <th className="px-3 py-2 text-left">來源訂單 PO No.</th>
+                        <th className="px-3 py-2 text-left">備註</th>
+                        <th className="px-3 py-2 text-left">操作</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {createForm.lines.map((line) => {
+                        const selectedNode = createBomNodes.find((node) => node.id === line.bomNodeId)
+                        const lineBomOptions = createBomOptionsForLine(line.key)
+                        return (
+                          <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                            <td className="px-3 py-2 align-top">
+                              <div className="space-y-1">
+                                <SearchableSelect
+                                  options={lineBomOptions}
+                                  value={line.bomNodeId}
+                                  onChange={(value) => {
+                                    const node = createBomNodes.find((it) => it.id === value)
+                                    if (!node) return
+                                    updateCreateLine(line.key, applyCreateBomNode(node))
+                                    if (!createForm.dueDate) {
+                                      updateCreateForm({ dueDate: normalizeYmdInput(formatDateYMD(node.due_date) || '') })
+                                    }
+                                  }}
+                                  placeholder={createBomLoading ? '-- BOM 載入中 --' : '-- 選擇關聯訂單對應 BOM --'}
+                                  renderOption={formatCreateBomNode}
+                                  filterFn={filterCreateBomNode}
+                                  disabled={createBomLoading || createForm.linkedOrderIds.length === 0}
+                                  className="h-9"
+                                />
+                                {(line.bom_sku || line.bom_name) && (
+                                  <div className="text-[11px] text-slate-500">
+                                    {line.bom_sku || '-'} / {line.bom_name || '-'}
+                                    {selectedNode ? ` / PO ${selectedNode.order_po_number || '-'} / 剩餘 ${selectedNode.remaining_qty ?? selectedNode.order_qty}` : ''}
+                                  </div>
+                                )}
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 align-top text-right">
+                              <div className="flex min-h-[56px] flex-col justify-between">
+                                <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateCreateLine(line.key, { planned_qty: e.target.value })} />
+                                <div className="h-[17px] text-[11px] text-slate-400">{selectedNode ? `原數量 ${selectedNode.order_qty} / 已建 ${selectedNode.allocated_qty ?? 0}` : ''}</div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div className="flex min-h-[56px] flex-col justify-between">
+                                <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateCreateLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入來源訂單 PO No." />
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div className="flex min-h-[56px] flex-col justify-between">
+                                <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateCreateLine(line.key, { remark: e.target.value })} />
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 align-top">
+                              <div className="flex min-h-[56px] flex-col justify-between">
+                                <button type="button" className="btn-ghost text-xs" onClick={() => removeCreateLine(line.key)}>刪除</button>
+                                <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+
+            <div className="mt-4">
+              <label className="mb-1 block text-xs text-slate-500">主單備註</label>
+              <textarea className="rubber-input" rows={3} value={createForm.remark} onChange={(e) => updateCreateForm({ remark: e.target.value })} />
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <button className="btn-ghost" onClick={closeCreate}>取消</button>
+              <button className="btn-primary" onClick={createProgress} disabled={creating}>{creating ? '建立中...' : '建立'}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {resultNotice && (
+        <div className="fixed bottom-6 right-6 z-[70] w-full max-w-md px-4 sm:px-0">
+          <div className="overflow-hidden rounded-3xl border border-[#d3c3b0] bg-[linear-gradient(160deg,#fffaf2_0%,#f5e8d6_65%,#ebd5bc_100%)] p-5 shadow-[0_24px_50px_rgba(63,35,8,0.24)]">
+            <div className="mb-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <h3 className="text-base font-bold tracking-wide text-[#3d2a18]">{resultNotice.title}</h3>
+                <p className="mt-1 text-sm text-[#6b4b31]">{resultNotice.desc}</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setResultNotice(null)}
+                className="rounded-full border border-[#d3c3b0] bg-white/70 px-2.5 py-1 text-xs font-semibold text-[#6b4b31] hover:bg-white"
+              >
+                關閉
+              </button>
+            </div>
+            {resultNotice.details.length > 0 && (
+              <div className="max-h-52 overflow-auto rounded-2xl border border-[#e3c7a5] bg-white/65 px-3 py-2">
+                <ul className="space-y-1.5 text-sm text-[#5c432e]">
+                  {resultNotice.details.map((line, idx) => (
+                    <li key={`${line}-${idx}`} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#b8682a]" />
+                      <span className="break-all">{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {(editing || editLoading) && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+          <div className="absolute inset-0 bg-black/35" onClick={closeEdit} />
+          <div className="relative max-h-[90vh] w-full max-w-5xl overflow-auto rounded-2xl border border-slate-200 bg-white p-6 shadow-2xl">
+            {editLoading || !editing || !editForm ? (
+              <div className="py-10 text-center text-sm text-slate-500">載入中...</div>
+            ) : (
+              <>
+                <div className="mb-4 flex items-center justify-between">
+                  <div>
+                    <h2 className="text-base font-bold text-slate-800">編輯交期進度 {editing.progress_no}</h2>
+                    <p className="mt-1 text-xs text-slate-500">{editing.customer_name || '-'}</p>
+                    <p className="mt-1 text-xs text-slate-500">
+                      {(editing.order_count || 0)} 筆訂單 / {editing.linked_po_count} 個 PO / {editing.item_count} 筆明細 / 總數量 {editing.planned_qty}
+                    </p>
+                  </div>
+                  <button className="btn-ghost" onClick={closeEdit}>關閉</button>
+                </div>
+
+                <div className="grid gap-4 md:grid-cols-2">
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">交期進度</label>
+                    <input
+                      type="date"
+                      className="rubber-input h-9"
+                      value={editForm.dueDate}
+                      onChange={(e) => setEditForm({ ...editForm, dueDate: e.target.value })}
+                    />
+                <p className="mt-1 text-xs text-slate-500">此日期會套用到全部交期明細。</p>
+                  </div>
+
+                  <div className="md:col-span-2">
+                    <label className="mb-1 block text-xs text-slate-500">關聯客戶訂單（可多選）</label>
+                    <input
+                      className="rubber-input h-9"
+                      value={editOrderSearch}
+                      onChange={(e) => setEditOrderSearch(e.target.value)}
+                      placeholder="搜尋 PO"
+                    />
+                    <div className="mt-2 max-h-44 overflow-auto rounded-lg border border-slate-200">
+                      {editOrderOptions.length > 0 ? editOrderOptions.map((o) => {
+                        const checked = editForm.linkedOrderIds.includes(o.id)
+                        return (
+                          <label key={o.id} className={`flex cursor-pointer items-start gap-3 border-b border-slate-100 px-3 py-2 text-sm last:border-0 ${checked ? 'bg-amber-50' : 'bg-white'}`}>
+                            <input type="checkbox" className="mt-1" checked={checked} onChange={() => toggleEditLinkedOrder(o.id)} />
+                            <div className="min-w-0">
+                              <div className="font-medium text-slate-700">{o.po_number}</div>
+                              <div className="text-xs text-slate-500">{o.customer_name || '-'} / {STATUS_LABEL[o.status] || o.status}</div>
+                            </div>
+                          </label>
+                        )
+                      }) : (
+                        <div className="px-3 py-4 text-xs text-slate-500">目前沒有可選訂單</div>
+                      )}
+                    </div>
+                    <p className="mt-1 text-xs text-slate-500">已選 {editLinkedOrders.length} 張訂單，勾選後會自動整合材料候選。</p>
+                    {editLinkedOrders.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {editLinkedOrders.map((order) => (
+                          <span key={order.id} className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1 text-xs text-slate-700">
+                            {order.po_number}
+                            <button type="button" className="text-slate-500 hover:text-red-600" onClick={() => removeEditLinkedOrder(order.id)}>×</button>
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-xs text-slate-500">狀態</label>
+                    <select className="rubber-input" value={editForm.status} onChange={(e) => setEditForm({ ...editForm, status: e.target.value as EditForm['status'] })}>
+                      <option value="pending">待處理</option>
+                      <option value="partial">部分完成</option>
+                      <option value="completed">已完成</option>
+                    </select>
+                  </div>
+                </div>
+
+                <div className="mt-5">
+                  <div className="mb-2 flex items-center justify-between">
+                    <label className="block text-xs text-slate-500">交期明細</label>
+                    <button type="button" className="btn-ghost text-xs" onClick={addEditLine}>+ 新增明細</button>
+                  </div>
+                  {editForm.linkedOrderIds.length > 0 && (
+                    <>
+                      <p className="mb-2 text-xs text-slate-500">
+                        編輯時同樣以 BOM 行處理；保存後會沿用原 BOM 快照，只有更換 BOM 時才改寫快照。
+                        {editBomLoading ? ' BOM 載入中...' : ` 共 ${editBomNodes.length} 個 BOM 候選`}
+                      </p>
+                      <div className="mb-3 rounded-lg border border-slate-200 bg-slate-50/60 p-3">
+                        <label className="mb-1 block text-xs text-slate-500">快速新增 BOM</label>
+                        <SearchableSelect
+                          options={editBomNodes.filter((node) => !editForm.lines.some((line) => line.bomNodeId === node.id))}
+                          value=""
+                          onChange={(value) => {
+                            const node = editBomNodes.find((it) => it.id === value)
+                            if (!node) return
+                            setEditForm({
+                              ...editForm,
+                              lines: [
+                                ...editForm.lines,
+                                {
+                                  ...createEmptyLine(editLineSeed),
+                                  ...applyCreateBomNode(node),
+                                  key: `line-${editLineSeed}`,
+                                },
+                              ],
+                            })
+                            setEditLineSeed((prev) => prev + 1)
+                          }}
+                          placeholder={editBomLoading ? '-- BOM 載入中 --' : '-- 選一個 BOM，立即新增一條明細 --'}
+                          renderOption={formatCreateBomNode}
+                          filterFn={filterCreateBomNode}
+                          disabled={editBomLoading || editForm.linkedOrderIds.length === 0}
+                          className="h-9"
+                        />
+                      </div>
+                    </>
+                  )}
+                  <div className="overflow-hidden rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="border-b border-slate-200 bg-slate-50">
+                          <th className="px-3 py-2 text-left">BOM</th>
+                          <th className="px-3 py-2 text-right">訂單數量</th>
+                          <th className="px-3 py-2 text-left">來源訂單 PO No.</th>
+                          <th className="px-3 py-2 text-right">已採購</th>
+                          <th className="px-3 py-2 text-right">缺口</th>
+                          <th className="px-3 py-2 text-left">備註</th>
+                          <th className="px-3 py-2 text-left">操作</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {editForm.lines.map((line, idx) => {
+                          const source = editing.items.find((item) => item.id === line.id) || editing.items[idx]
+                          const lineBomOptions = editBomOptionsForLine(line.key)
+                          const selectedNode = editBomNodes.find((node) => node.id === line.bomNodeId)
+                          return (
+                            <tr key={line.key} className="border-b border-slate-100 last:border-0">
+                              <td className="px-3 py-2 align-top">
+                                <div className="space-y-1">
+                                  {line.lineType === 'bom' ? (
+                                    <SearchableSelect
+                                      options={lineBomOptions}
+                                      value={line.bomNodeId}
+                                      onChange={(value) => {
+                                        const node = editBomNodes.find((it) => it.id === value)
+                                        if (!node) return
+                                        updateEditLine(line.key, applyCreateBomNode(node))
+                                        if (!editForm.dueDate) {
+                                          setEditForm({ ...editForm, dueDate: normalizeYmdInput(formatDateYMD(node.due_date) || '') })
+                                        }
+                                      }}
+                                      placeholder={editBomLoading ? '-- BOM 載入中 --' : '-- 選擇關聯訂單對應 BOM --'}
+                                      renderOption={formatCreateBomNode}
+                                      filterFn={filterCreateBomNode}
+                                      disabled={editBomLoading || editForm.linkedOrderIds.length === 0}
+                                      className="h-9"
+                                    />
+                                  ) : (
+                                    <input className="rubber-input h-9" value={line.material_name} onChange={(e) => updateEditLine(line.key, { material_name: e.target.value })} />
+                                  )}
+                                  <div className="text-[11px] text-slate-500">
+                                    {line.lineType === 'bom'
+                                      ? `${line.bom_sku || '-'} / ${line.bom_name || '-'}${selectedNode ? ` / ${selectedNode.materials.length} 筆材料` : ''}`
+                                      : `${line.material_code || '-'} / ${line.spec || '-'} / ${line.unit || 'PCS'}`}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <input type="number" min={0} className="rubber-input h-9 text-right" value={line.planned_qty} onChange={(e) => updateEditLine(line.key, { planned_qty: e.target.value })} />
+                                  <div className="h-[17px] text-[11px] text-slate-400">
+                                    {line.lineType === 'bom' && selectedNode ? `原訂單數量 ${selectedNode.order_qty}` : ''}
+                                  </div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <input className="rubber-input h-9" value={line.orderPoNumber} onChange={(e) => updateEditLine(line.key, { orderPoNumber: e.target.value })} placeholder="輸入來源訂單 PO No." />
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top text-right">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <div className="h-9 content-center text-slate-500">{source?.purchased_qty ?? 0}</div>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top text-right">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <div className="h-9 content-center text-amber-600">{source?.purchase_gap_qty ?? Math.max(0, Number(line.planned_qty || 0))}</div>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <input className="rubber-input h-9" value={line.remark} onChange={(e) => updateEditLine(line.key, { remark: e.target.value })} />
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                              <td className="px-3 py-2 align-top">
+                                <div className="flex min-h-[56px] flex-col justify-between">
+                                  <button type="button" className="btn-ghost text-xs" onClick={() => removeEditLine(line.key)}>刪除</button>
+                                  <div className="h-[17px] text-[11px] text-transparent select-none" aria-hidden="true">&nbsp;</div>
+                                </div>
+                              </td>
+                            </tr>
+                          )
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+
+                <div className="mt-4">
+                  <label className="mb-1 block text-xs text-slate-500">主單備註</label>
+                  <textarea className="rubber-input" rows={3} value={editForm.remark} onChange={(e) => setEditForm({ ...editForm, remark: e.target.value })} />
+                </div>
+
+                <div className="mt-5 flex justify-end gap-2">
+                  <button className="btn-ghost" onClick={closeEdit}>取消</button>
+                  <button className="btn-primary" onClick={saveEdit}>儲存</button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       )}
     </div>

@@ -1,6 +1,6 @@
 import { useState, useMemo, useEffect } from 'react'
 
-export function usePagination<T>(items: T[], pageSize = 20) {
+export function usePagination<T>(items: T[], pageSize = 10) {
   const [page, setPage] = useState(1)
   const totalPages = Math.max(1, Math.ceil(items.length / pageSize))
 
@@ -17,7 +17,7 @@ export function usePagination<T>(items: T[], pageSize = 20) {
   return { page: safePage, setPage, totalPages, paged, reset, total: items.length }
 }
 
-export function Pagination({ page, totalPages, setPage, total, pageSize = 20 }: {
+export function Pagination({ page, totalPages, setPage, total, pageSize = 10 }: {
   page: number; totalPages: number; setPage: (p: number) => void; total: number; pageSize?: number
 }) {
   const start = (page - 1) * pageSize + 1

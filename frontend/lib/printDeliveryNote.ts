@@ -1,5 +1,7 @@
-import { type CompanySettings } from './useCompany'
+import { resolveCompanySettings, type CompanySettings } from './useCompany'
 import { SHARED_PRINT_ITEM_TABLE_CSS } from './printItemTableStyles'
+import { formatQuantity } from './numberFormat'
+import { getPrintSignatureConfig } from './printSignature'
 
 export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, company?: CompanySettings): string {
   const txt = (v: any) => {
@@ -12,18 +14,12 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
     const n = Number(v)
     return Number.isFinite(n) ? n : 0
   }
-  const fmt = (v: any) => num(v).toLocaleString()
+  const fmt = (v: any) => formatQuantity(num(v))
 
-  const co = company || {
-    company_name: 'CÔNG TY TNHH ĐÔNG PHƯƠNG VŨNG TÀU (TO2)',
-    company_name_local: '',
-    address: '',
-    phone: '',
-    contact_person: '',
-    logo_url: null,
-  }
-  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.133.56.234:10102'
+  const co = resolveCompanySettings(company)
+  const API_BASE = process.env.NEXT_PUBLIC_API_URL || 'http://43.160.199.226:10102'
   const logoUrl = co.logo_url ? (String(co.logo_url).startsWith('http') ? co.logo_url : `${API_BASE}${co.logo_url}`) : null
+  const signatureConfig = getPrintSignatureConfig(co)
   const items: any[] = Array.isArray(data.items) ? data.items : []
   const orderRef = txt(data.po_ref || data.order_po_number || '')
   const totalQty = items.reduce((s: number, i: any) => s + num(i.qty), 0)
@@ -33,6 +29,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       <tr>
         <td style="text-align:center">${i + 1}</td>
         <td class="col-material">${txt(item.material_code)}</td>
+        <td class="col-po-ref">${txt(item.po_ref)}</td>
         <td class="col-name">${txt(item.item_name)}</td>
         <td class="col-spec">${txt(item.spec)}</td>
         <td class="col-unit" style="text-align:center">${txt(item.unit) || 'PCS'}</td>
@@ -60,7 +57,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
     .footer{display:grid;grid-template-columns:1fr 1fr;gap:8mm;margin-top:8mm}
     .sign-box{border:1px solid #bbb;padding:8px 10px;text-align:center;display:flex;flex-direction:column}
     .sign-label{font-weight:600;font-size:10px;color:#333;padding-bottom:4px;border-bottom:1px solid #eee}
-    .sign-area{flex:1;min-height:50px;display:flex;align-items:center;justify-content:center}
+    .sign-area{flex:1;min-height:${signatureConfig.areaMinHeight}px;display:flex;align-items:center;justify-content:center}
     .sign-line{border-top:1px solid #555;padding-top:4px;font-size:10px;font-weight:400;color:#333;margin-top:4px}
     @media print{@page{size:A4;margin:0}}
   `
@@ -89,6 +86,7 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       <thead><tr>
         <th style="width:28px">ST</th>
         <th class="col-material">物料編號</th>
+        <th class="col-po-ref">來源訂單\nPO No.</th>
         <th class="col-name">品名</th>
         <th class="col-spec">規格</th>
         <th class="col-unit">單位</th>
@@ -97,14 +95,14 @@ export function generateDeliveryNoteHTML(data: any, signatureUrl?: string, compa
       </tr></thead>
       <tbody>
         ${itemRows}
-        <tr class="total-row"><td colspan="5">總計</td><td>${fmt(totalQty)}</td><td></td></tr>
+        <tr class="total-row"><td colspan="6">總計</td><td>${fmt(totalQty)}</td><td></td></tr>
       </tbody>
     </table>
 
     ${data.remark ? `<div class="notes-box"><div class="notes-title">備註：</div><div>${txt(data.remark).replace(/\n/g, '<br/>')}</div></div>` : ''}
 
     <div class="footer">
-      <div class="sign-box"><div class="sign-label">我方簽章</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="max-height:44px;max-width:150px;object-fit:contain"/>` : ''}</div><div class="sign-line">${txt(co.company_name)}</div></div>
+      <div class="sign-box"><div class="sign-label">我方簽章</div><div class="sign-area">${signatureUrl ? `<img src="${signatureUrl}" style="${signatureConfig.imgStyle}"/>` : ''}</div><div class="sign-line">${txt(co.company_name)}</div></div>
       <div class="sign-box"><div class="sign-label">客戶簽收</div><div class="sign-area"></div><div class="sign-line">${txt(data.customer_name)}</div></div>
     </div>
   </body></html>`

@@ -1,18 +1,20 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { API, apiFetch, getToken } from '@/lib/api'
+import { apiFetch, apiFetchRaw } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { formatDateYMD, todayYMD } from '@/lib/datetime'
+import { formatDecimal } from '@/lib/numberFormat'
+import DecimalInput from '@/components/DecimalInput'
 
 type AP = {
-  id: number; po_number: string; supplier_name: string; total_amount: number
-  currency: string; status: string; paid_amount: number; payment_status: string | null
+  id: number; po_number: string; supplier_name: string; total_amount: number | string
+  currency: string; status: string; paid_amount: number | string; payment_status: string | null
   payment_date: string | null; payment_note: string; approved_at: string; created_at: string
 }
 
 const PO_STATUS: Record<string, string> = {
-  approved: '已核准', sent: '已送出', received: '已收貨', confirmed: '已確認'
+  approved: '已審核', sent: '已送出', received: '已收貨', confirmed: '已審核'
 }
 
 const PAY_STATUS = {
@@ -20,6 +22,11 @@ const PAY_STATUS = {
   pending: { label: '待付款', badge: 'badge-gray' },
   partial: { label: '部分付款', badge: 'badge-blue' },
   paid: { label: '已付款', badge: 'badge-green' },
+}
+
+const toAmount = (value: number | string | null | undefined) => {
+  const num = Number(value || 0)
+  return Number.isFinite(num) ? num : 0
 }
 
 export default function PayablesPage() {
@@ -39,7 +46,7 @@ export default function PayablesPage() {
     setEditing(item)
     setForm({
       payment_status: item.payment_status || 'paid',
-      paid_amount: item.total_amount,
+      paid_amount: toAmount(item.total_amount),
       payment_date: todayYMD(),
       payment_note: item.payment_note || '',
     })
@@ -55,6 +62,18 @@ export default function PayablesPage() {
     } catch (e: any) { toast('錯誤：' + e.message) }
   }
 
+  const removePayable = async (item: AP) => {
+    if (!await confirmDialog(`確定刪除供應商付款「${item.po_number}」？`, '這會同步刪除對應的供應商發票與付款記錄。')) return
+    try {
+      await apiFetch(`/api/payables/${item.id}`, { method: 'DELETE' })
+      toast('供應商付款已刪除')
+      if (editing?.id === item.id) setEditing(null)
+      load()
+    } catch (e: any) {
+      toast('刪除失敗：' + e.message, 'error')
+    }
+  }
+
   const filtered = items.filter(i => {
     const matchSearch = !search ||
       i.po_number.toLowerCase().includes(search.toLowerCase()) ||
@@ -62,18 +81,17 @@ export default function PayablesPage() {
     const matchPay = !payFilter || (i.payment_status || 'pending') === payFilter
     return matchSearch && matchPay
   })
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
-  const totalPayable = items.reduce((s, i) => s + (i.total_amount || 0), 0)
-  const totalPaid = items.filter(i => i.payment_status === 'paid').reduce((s, i) => s + (i.paid_amount || 0), 0)
+  const totalPayable = items.reduce((s, i) => s + toAmount(i.total_amount), 0)
+  const totalPaid = items
+    .filter(i => i.payment_status === 'paid' || i.payment_status === 'partial')
+    .reduce((s, i) => s + toAmount(i.paid_amount), 0)
   const totalPending = totalPayable - totalPaid
 
   const exportCsv = async () => {
     try {
-      const token = getToken()
-      const res = await fetch(`${API}/api/payables/export/csv`, {
-        headers: token ? { Authorization: `Bearer ${token}` } : {},
-      })
+      const res = await apiFetchRaw('/api/payables/export/csv')
       if (!res.ok) throw new Error('匯出失敗')
       const csv = await res.text()
       const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' })
@@ -102,15 +120,15 @@ export default function PayablesPage() {
       <div className="grid grid-cols-3 gap-4 mb-6">
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">應付總額</div>
-          <div className="text-xl font-bold text-slate-800">{totalPayable.toLocaleString()}</div>
+          <div className="text-xl font-bold text-slate-800">{formatDecimal(totalPayable)}</div>
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">已付款</div>
-          <div className="text-xl font-bold text-emerald-600">{totalPaid.toLocaleString()}</div>
+          <div className="text-xl font-bold text-emerald-600">{formatDecimal(totalPaid)}</div>
         </div>
         <div className="rubber-card p-4">
           <div className="text-xs text-slate-400 mb-1">待付款</div>
-          <div className="text-xl font-bold text-amber-500">{totalPending.toLocaleString()}</div>
+          <div className="text-xl font-bold text-amber-500">{formatDecimal(totalPending)}</div>
         </div>
       </div>
 
@@ -128,8 +146,12 @@ export default function PayablesPage() {
                 </select>
               </div>
               <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{Number(editing.total_amount||0).toLocaleString()} {editing.currency}）</label>
-                <input type="number" className="rubber-input" value={form.paid_amount} onChange={e => setForm(p => ({ ...p, paid_amount: Number(e.target.value) }))} />
+                <label className="block text-[11px] text-slate-500 mb-1.5">付款金額（應付：{formatDecimal(editing.total_amount||0)} {editing.currency}）</label>
+                <DecimalInput
+                  className="rubber-input"
+                  value={form.paid_amount === 0 ? undefined : Number(form.paid_amount)}
+                  onValueChange={(value) => setForm((p) => ({ ...p, paid_amount: value ?? 0 }))}
+                />
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">付款日期</label>
@@ -178,13 +200,16 @@ export default function PayablesPage() {
                       <td className="font-mono text-xs text-blue-600">{item.po_number}</td>
                       <td className="font-medium">{item.supplier_name}</td>
                       <td><span className="badge-blue">{PO_STATUS[item.status] || item.status}</span></td>
-                      <td className="text-right font-medium">{(item.total_amount || 0).toLocaleString()}</td>
+                      <td className="text-right font-medium">{formatDecimal(toAmount(item.total_amount))}</td>
                       <td className="text-slate-400 text-xs">{item.currency}</td>
-                      <td className="text-right text-emerald-600">{(item.paid_amount || 0).toLocaleString()}</td>
+                      <td className="text-right text-emerald-600">{formatDecimal(toAmount(item.paid_amount))}</td>
                       <td className="text-slate-400 text-xs">{formatDateYMD(item.payment_date) || '—'}</td>
                       <td><span className={st.badge}>{st.label}</span></td>
                       <td>
-                        <button onClick={() => openEdit(item)} className="btn-ghost">付款</button>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => openEdit(item)} className="btn-ghost">付款</button>
+                          <button onClick={() => removePayable(item)} className="btn-danger">刪除</button>
+                        </div>
                       </td>
                     </tr>
                   )

@@ -1,4 +1,5 @@
 import { formatDateYMD } from './datetime'
+import { formatDecimal, formatQuantity } from './numberFormat'
 
 export const cleanText = (value: any): string => {
   if (value === null || value === undefined) return ''
@@ -14,10 +15,10 @@ export const toNum = (value: any): number => {
 
 export const formatQty = (value: any): string => {
   const n = Math.round(toNum(value) * 10000) / 10000
-  return n.toLocaleString()
+  return formatQuantity(n)
 }
 
-export const formatMoney = (value: any): string => toNum(value).toLocaleString()
+export const formatMoney = (value: any): string => formatDecimal(toNum(value))
 
 export const formatDate = (value: any): string => {
   const s = cleanText(value)
@@ -46,10 +47,11 @@ body{
 .label{min-width:98px;font-weight:700;color:#1e293b}
 .row > span:last-child{flex:1;word-break:break-word;overflow-wrap:anywhere}
 .mono{font-family:inherit;font-variant-numeric:tabular-nums;letter-spacing:.2px}
-table{width:100%;border-collapse:collapse;margin-top:7px;table-layout:fixed}
-th,td{border:1px solid #334155;padding:4px 5px;vertical-align:middle;word-break:break-word;overflow-wrap:anywhere}
-th{background:#e2e8f0;text-align:center;font-size:12px;font-weight:700;color:#0f172a}
-td{text-align:center;font-size:12px}
+table{width:100%;border-collapse:collapse;margin-top:7px;table-layout:auto}
+th,td{border:1px solid #334155;padding:4px 5px;vertical-align:middle;overflow:visible;text-overflow:clip}
+th{background:#e2e8f0;text-align:center;font-size:12px;font-weight:700;color:#0f172a;white-space:pre-line;line-height:1.25;word-break:keep-all}
+td{text-align:center;font-size:12px;word-break:break-word;overflow-wrap:anywhere}
+td.num,td.r,td.right,.print-num{width:1%;white-space:nowrap !important;word-break:keep-all !important;overflow-wrap:normal !important;font-variant-numeric:tabular-nums}
 thead{display:table-header-group}
 tr{break-inside:avoid;page-break-inside:avoid}
 .c{text-align:center}

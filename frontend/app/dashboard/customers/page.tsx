@@ -71,7 +71,7 @@ export default function CustomersPage() {
   }
 
   const filtered = items.filter(c => !search || c.customer_name.toLowerCase().includes(search.toLowerCase()) || (c.customer_code||'').toLowerCase().includes(search.toLowerCase()))
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
   return (
     <div>

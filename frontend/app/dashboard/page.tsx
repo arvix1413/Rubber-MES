@@ -2,6 +2,9 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { apiFetch } from '@/lib/api'
+import { getCompany, getCompanyDisplayName } from '@/lib/useCompany'
+import { formatInteger } from '@/lib/numberFormat'
+import { useReviewBadge } from '@/lib/useReviewBadge'
 
 type ProcessHealth = {
   generated_at: string
@@ -14,42 +17,70 @@ type ProcessHealth = {
   overdue_payables: { invoice_count: number; outstanding_amount: number }
 }
 
-const fmt = (n: number) => Number(n || 0).toLocaleString()
+const fmt = (n: number) => formatInteger(n || 0)
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
   const [health, setHealth] = useState<ProcessHealth | null>(null)
+  const [companyName, setCompanyName] = useState('')
+  const { canApprovePo, poDraftCount } = useReviewBadge()
 
   useEffect(() => {
     apiFetch<any>('/api/stats').then(setStats).catch(() => {})
     apiFetch<ProcessHealth>('/api/process-health').then(setHealth).catch(() => {})
+    getCompany().then((c) => setCompanyName(getCompanyDisplayName(c))).catch(() => {})
   }, [])
 
   const flow = useMemo(() => {
     const invoicePending = (health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0)
     return [
       { step: '01', title: '客戶下單', desc: '建立客戶訂單與交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '訂單數' },
-      { step: '02', title: '收集訂單', desc: '統一訂單收集池追蹤', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
-      { step: '03', title: '採購下單', desc: '按客戶進度切分 PO', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
+      { step: '02', title: '交期進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
+      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
       { step: '04', title: '安排出貨', desc: '建立出貨單並回寫數量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出貨單' },
       { step: '05', title: '數量核對', desc: '核對實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核對' },
       { step: '06', title: '開立發票', desc: '客戶/供應商雙向發票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待開票' },
       { step: '07', title: '供應商付款', desc: '處理應付並追蹤狀態', href: '/dashboard/payables', metric: fmt(health?.overdue_payables?.invoice_count || 0), tag: '逾期筆數' },
-      { step: '08', title: '庫存扣減', desc: '依出貨數量更新庫存', href: '/dashboard/inventory', metric: fmt(stats?.low_stock_count || 0), tag: '低庫存' },
     ]
   }, [stats, health])
 
   return (
     <div className="space-y-6">
+      {canApprovePo && poDraftCount > 0 ? (
+        <Link
+          href="/dashboard/po"
+          className="block overflow-hidden rounded-3xl border border-[#f0b3a9] bg-[linear-gradient(135deg,#fff0ed_0%,#ffd7cf_52%,#ffc2b4_100%)] p-5 shadow-[0_18px_45px_rgba(163,48,25,0.18)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(163,48,25,0.24)]"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-white/70 px-3 py-1 text-[11px] font-black tracking-[0.14em] text-[#aa3722]">
+                REVIEW ALERT
+              </div>
+              <h2 className="mt-3 text-2xl font-extrabold text-[#6b2317]">你有 {fmt(poDraftCount)} 筆採購單待審核</h2>
+              <p className="mt-2 text-sm text-[#8f4330]">登入後優先處理尚未審核的 PO，避免後續送出與收貨流程卡住。</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white/70 bg-white/65 px-5 py-3 text-center">
+                <div className="text-[12px] font-semibold text-[#9b4b36]">尚未審核</div>
+                <div className="mt-1 text-4xl font-black leading-none text-[#c73622]">{fmt(poDraftCount)}</div>
+              </div>
+              <div className="inline-flex items-center rounded-2xl bg-[#c73622] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(199,54,34,0.28)]">
+                立即前往 →
+              </div>
+            </div>
+          </div>
+        </Link>
+      ) : null}
+
       <section className="overflow-hidden rounded-3xl border border-[#d7c8b4] bg-[linear-gradient(140deg,#fff7ec_0%,#f5e7d5_48%,#ecd6bd_100%)] p-6 shadow-[0_20px_50px_rgba(113,80,45,0.2)]">
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div>
             <div className="mb-2 inline-flex rounded-full border border-[#d8b58f] bg-[#fff2e1] px-3 py-1 text-[11px] font-semibold tracking-[0.12em] text-[#7d5832]">
               FLOW ONLY MODE
             </div>
-            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">Rubber 流程控制臺</h1>
+            <h1 className="brand-font text-3xl font-bold text-[#3a2b1d]">{companyName ? `${companyName} 流程控制臺` : '流程控制臺'}</h1>
             <p className="mt-2 text-sm text-[#6c5440]">
-              僅保留與參考流程相關頁面：客戶訂單 → 訂單收集 → PO 下單 → 出貨 → 核對 → 開票 → 付款 → 庫存扣減
+              僅保留與參考流程相關頁面：客戶訂單 → 交期進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
             </p>
           </div>
           <div className="grid grid-cols-2 gap-2 text-right">

@@ -1,16 +1,18 @@
 'use client'
 import { useDialog } from '@/components/Dialog'
-import { useEffect, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { Fragment, useEffect, useState } from 'react'
+import { apiFetch } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, CO_STEPS } from '@/components/StatusFlow'
 import { generateOrderHTML } from '@/lib/printOrder'
 import { SearchableSelect } from '@/components/SearchableSelect'
 import { getUser } from '@/lib/permissions'
 import { can } from '@/lib/usePermissions'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import FieldLockHint from '@/components/FieldLockHint'
 import { formatDateYMD } from '@/lib/datetime'
+import { formatDecimal, formatInteger } from '@/lib/numberFormat'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 // Customer order actions based on current status
 function getCOActions(status: string) {
@@ -27,9 +29,29 @@ function getCOActions(status: string) {
 }
 
 type OrderItem = { id?:number; bom_id:number|null; qty:number; unit_price:number; po_no?:string; rta_date?:string; remark:string; arrived_qty?:number; arrived_date?:string; balance?:number; status?:string; product_sku?:string; product_name?:string; spec?:string; unit?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; balance_total_qty?:number; completion_rate?:number }
+type Order = { id:number; po_date:string; po_number:string; customer_id:number; customer_name:string; customer_code:string; status:string; remark:string; created_at:string; items?:OrderItem[]; tax_rate?:number; tax_amount?:number; total_amount?:number; delivery_date?:string; person_in_charge?:string; payment_terms?:string; order_total_qty?:number; shipped_total_qty?:number; arrived_total_qty?:number; balance_total_qty?:number; completion_rate?:number; progress_created_qty?:number; progress_remaining_qty?:number; progress_created_rate?:number; has_delivery_progress?: number | boolean; schedule_status?: 'scheduled' | 'unscheduled' }
 type BOM = { id:number; product_sku:string; product_name:string; company_price?:number; unit?:string; spec?:string; image_url?:string; supplier_name?:string; lt?:string; moq?:number|null }
-type Customer = { id:number; customer_code:string; customer_name:string }
+type Customer = {
+  id:number
+  customer_code:string
+  customer_name:string
+  address?: string
+  contact?: string
+  payment_terms?: string
+}
+type BomMaterialItem = {
+  material_code?: string
+  material_name?: string
+  spec?: string
+  color?: string
+  unit?: string
+  supplier_name?: string
+  lt?: string
+  moq?: number | null
+  supplier_price?: number
+  company_price?: number
+  remark?: string
+}
 type ProfitOrderSummary = {
   id: number
   revenue: number
@@ -46,6 +68,7 @@ const emptyItem = (): OrderItem => ({ bom_id:null, qty:0, unit_price:0, po_no:''
 
 const STATUS_BADGE: Record<string,string> = { pending:'badge-yellow', completed:'badge-green', delay:'badge-red', partial:'badge-blue' }
 const STATUS_LABEL: Record<string,string> = { pending:'待出貨', completed:'已完成', delay:'延遲', partial:'部分到貨' }
+const SCHEDULE_LABEL: Record<'scheduled' | 'unscheduled', string> = { scheduled: '已排交期', unscheduled: '未排交期' }
 
 function ChevronIcon({ open }: { open: boolean }) {
   return (
@@ -67,6 +90,9 @@ export default function CustomerOrdersPage() {
   const [customers, setCustomers] = useState<Customer[]>([])
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, OrderItem[]>>({})
+  const [expandedItemRows, setExpandedItemRows] = useState<Set<string>>(new Set())
+  const [bomItemsByBomId, setBomItemsByBomId] = useState<Record<number, BomMaterialItem[]>>({})
+  const [loadingBomDetailIds, setLoadingBomDetailIds] = useState<Set<number>>(new Set())
   const [creating, setCreating] = useState(false)
   const [editingId, setEditingId] = useState<number | null>(null)
   const [form, setForm] = useState({
@@ -78,36 +104,138 @@ export default function CustomerOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
+  const [scheduleFilter, setScheduleFilter] = useState<'all' | 'scheduled' | 'unscheduled'>('all')
+  const [unitPriceInputs, setUnitPriceInputs] = useState<Record<number, string>>({})
   const canWrite = can('customer_order.create')
   const canDel = can('customer_order.delete')
 
-  const load = () => {
-    const requests: Promise<any>[] = [apiFetch<Order[]>('/api/customer-orders')]
-    if (canViewProfit) requests.push(apiFetch<{ orders: ProfitOrderSummary[] }>('/api/profit-tracking/orders'))
-    return Promise.all(requests)
-      .then(([orderList, profitResp]) => {
-        setOrders(orderList as Order[])
-        if (!canViewProfit) {
-          setProfitByOrderId({})
-          return
+  const loadOrderItems = async (id: number) => {
+    const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
+    const nextItems = data.items || []
+    setLoadedItems(p => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const loadBomMaterialItems = async (bomId: number) => {
+    setLoadingBomDetailIds((prev) => new Set(prev).add(bomId))
+    try {
+      const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+      const nextItems = detail?.items || []
+      setBomItemsByBomId((p) => ({ ...p, [bomId]: nextItems }))
+      return nextItems
+    } finally {
+      setLoadingBomDetailIds((prev) => {
+        const next = new Set(prev)
+        next.delete(bomId)
+        return next
+      })
+    }
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
+          return [id, data.items || []] as const
+        } catch {
+          return [id, []] as const
         }
-        const map: Record<number, ProfitOrderSummary> = {}
-        ;((profitResp as { orders?: ProfitOrderSummary[] } | undefined)?.orders || []).forEach((row) => {
-          map[Number(row.id)] = row
-        })
-        setProfitByOrderId(map)
       })
-      .catch(err => {
-        console.error('Failed to load orders:', err)
-        toast('載入訂單失敗：' + err.message, 'error')
+    )
+    const nextLoadedItems = Object.fromEntries(nextEntries)
+    setLoadedItems(nextLoadedItems)
+
+    const bomIds = new Set<number>()
+    for (const rowKey of Array.from(expandedItemRows)) {
+      const orderId = Number(String(rowKey).split('-')[0] || 0)
+      const orderItems = nextLoadedItems[orderId] || []
+      for (const item of orderItems) {
+        const itemKey = `${orderId}-${item.id || item.bom_id || item.product_sku || orderItems.indexOf(item)}`
+        if (itemKey === rowKey && item.bom_id) {
+          bomIds.add(item.bom_id)
+        }
+      }
+    }
+    if (!bomIds.size) {
+      setBomItemsByBomId({})
+      return
+    }
+    const bomEntries = await Promise.all(
+      Array.from(bomIds).map(async (bomId) => {
+        try {
+          const detail = await apiFetch<any>(`/api/bom/${bomId}`)
+          return [bomId, detail?.items || []] as const
+        } catch {
+          return [bomId, []] as const
+        }
       })
-      .finally(()=>setLoading(false))
+    )
+    setBomItemsByBomId(Object.fromEntries(bomEntries))
+  }
+
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const requests: Promise<any>[] = [
+        apiFetch<Order[]>('/api/customer-orders'),
+        apiFetch<BOM[]>('/api/bom'),
+        apiFetch<Customer[]>('/api/customers'),
+      ]
+      if (canViewProfit) requests.push(apiFetch<{ orders: ProfitOrderSummary[] }>('/api/profit-tracking/orders'))
+      const [orderList, bomList, customerList, profitResp] = await Promise.all(requests)
+      setOrders((orderList as Order[]) || [])
+      setBoms((bomList as BOM[]) || [])
+      setCustomers((customerList as Customer[]) || [])
+      await refreshExpandedRows(Array.from(expanded))
+      if (!canViewProfit) {
+        setProfitByOrderId({})
+        return
+      }
+      const map: Record<number, ProfitOrderSummary> = {}
+      ;((profitResp as { orders?: ProfitOrderSummary[] } | undefined)?.orders || []).forEach((row) => {
+        map[Number(row.id)] = row
+      })
+      setProfitByOrderId(map)
+    } catch (err: any) {
+      console.error('Failed to load orders:', err)
+      toast('載入訂單失敗：' + err.message, 'error')
+    } finally {
+      setLoading(false)
+    }
   }
   useEffect(()=>{
-    load()
-    apiFetch<BOM[]>('/api/bom').then(setBoms).catch(()=>{})
-    apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(()=>{})
+    void refreshAll(true)
   },[])
+
+  useRefreshOnFocus(() => refreshAll(false))
+
+  const buildUnitPriceInputs = (items: OrderItem[]) =>
+    Object.fromEntries(items.map((item, idx) => [idx, Number(item.unit_price || 0) ? formatDecimal(item.unit_price) : '']))
+
+  const parseMoney = (raw: string) => {
+    const text = raw.trim().replace(/,/g, '')
+    if (!text) return 0
+    if (!/^[+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?$/.test(text)) return null
+    const value = Number(text)
+    if (!Number.isFinite(value) || value < 0) return null
+    return value
+  }
+
+  const applyCustomerDefaults = (customerId: string) => {
+    const cust = customers.find((c) => String(c.id) === customerId)
+    setForm((p) => ({
+      ...p,
+      customer_id: customerId,
+      delivery_address: cust?.address || '',
+      person_in_charge: cust?.contact || '',
+      payment_terms: cust?.payment_terms || '',
+    }))
+  }
 
   const toggleExpand = async (id: number) => {
     const next = new Set(expanded)
@@ -115,9 +243,21 @@ export default function CustomerOrdersPage() {
     else {
       next.add(id); setExpanded(next)
       if (loadedItems[id] === undefined) {
-        const data = await apiFetch<Order>(`/api/customer-orders/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: data.items || [] }))
+        await loadOrderItems(id)
       }
+    }
+  }
+  const toggleItemExpand = async (rowKey: string, bomId?: number | null) => {
+    const next = new Set(expandedItemRows)
+    if (next.has(rowKey)) {
+      next.delete(rowKey)
+      setExpandedItemRows(next)
+      return
+    }
+    next.add(rowKey)
+    setExpandedItemRows(next)
+    if (bomId && bomItemsByBomId[bomId] === undefined) {
+      await loadBomMaterialItems(bomId)
     }
   }
 
@@ -136,7 +276,8 @@ export default function CustomerOrdersPage() {
         toast('建立成功'); setCreating(false)
       }
       setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] })
-      await load()
+      setUnitPriceInputs({})
+      await refreshAll(false)
     } catch(e:any){ toast('錯誤：'+e.message, 'error') }
   }
 
@@ -153,13 +294,14 @@ export default function CustomerOrdersPage() {
       person_in_charge: order.person_in_charge || '',
       payment_terms: order.payment_terms || '',
       items: (data.items || []).map(i => {
-        const matchedBom =
-          (i.bom_id ? boms.find(b => b.id === i.bom_id) : undefined) ||
-          (i.product_sku ? boms.find(b => b.product_sku === i.product_sku) : undefined)
+        const matchedBom = i.bom_id
+          ? boms.find(b => b.id === i.bom_id)
+          : undefined
         return {
-          bom_id: i.bom_id ?? matchedBom?.id ?? null,
+          id: i.id,
+          bom_id: i.bom_id ?? null,
           qty: Number(i.qty),
-          unit_price: Number(i.unit_price) || Number(matchedBom?.company_price) || 0,
+          unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
           po_no: (i as any).po_no || '',
           rta_date: formatDateYMD((i as any).rta_date),
           remark: (i as any).remark || '',
@@ -174,6 +316,28 @@ export default function CustomerOrdersPage() {
         }
       })
     })
+    setUnitPriceInputs(buildUnitPriceInputs((data.items || []).map(i => {
+      const matchedBom = i.bom_id
+        ? boms.find(b => b.id === i.bom_id)
+        : undefined
+      return {
+        id: i.id,
+        bom_id: i.bom_id ?? null,
+        qty: Number(i.qty),
+        unit_price: Number.isFinite(Number(i.unit_price)) ? Number(i.unit_price) : Number(matchedBom?.company_price ?? 0),
+        po_no: (i as any).po_no || '',
+        rta_date: formatDateYMD((i as any).rta_date),
+        remark: (i as any).remark || '',
+        spec: i.spec || matchedBom?.spec || '',
+        unit: i.unit || matchedBom?.unit || '',
+        product_sku: i.product_sku || matchedBom?.product_sku,
+        product_name: i.product_name || matchedBom?.product_name,
+        image_url: i.image_url || matchedBom?.image_url,
+        supplier_name: (i as any).supplier_name || matchedBom?.supplier_name || '',
+        lt: (i as any).lt || matchedBom?.lt || '',
+        moq: (i as any).moq ?? matchedBom?.moq ?? null,
+      }
+    })))
     setEditingId(order.id)
     setCreating(false)
     window.scrollTo({ top: 0, behavior: 'smooth' })
@@ -184,7 +348,7 @@ export default function CustomerOrdersPage() {
       apiFetch<any>(`/api/customer-orders/${orderId}`),
       getCompany(),
     ])
-    const html = generateOrderHTML(data, getSignatureUrl() || undefined, company)
+    const html = generateOrderHTML(data, getCompanySignatureUrl(company) || undefined, company)
     const w = window.open('', '_blank', 'width=800,height=1000')
     if (w) { w.document.write(html); w.document.close(); setTimeout(() => w.print(), 500) }
   }
@@ -194,7 +358,7 @@ export default function CustomerOrdersPage() {
     try {
       await apiFetch(`/api/customer-orders/${id}`, { method:'DELETE' })
       toast('已刪除')
-      await load()
+      await refreshAll(false)
     } catch(e:any){ toast('刪除失敗：'+e.message, 'error') }
   }
 
@@ -212,13 +376,40 @@ export default function CustomerOrdersPage() {
     try {
       await apiFetch(`/api/customer-orders/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       toast('狀態已更新')
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 
-  const addItem = () => setForm(p=>({...p, items:[...p.items, emptyItem()]}))
-  const removeItem = (i:number) => setForm(p=>({...p, items:p.items.filter((_,idx)=>idx!==i)}))
-  const updateItem = (i:number, f:keyof OrderItem, v:any) => setForm(p=>({...p, items:p.items.map((item,idx)=>idx===i?{...item,[f]:v}:item)}))
+  const addItem = () => setForm(p => {
+    const items = [...p.items, emptyItem()]
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const removeItem = (i:number) => setForm(p => {
+    const items = p.items.filter((_,idx)=>idx!==i)
+    setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const updateItem = (i:number, f:keyof OrderItem, v:any) => setForm(p => {
+    const items = p.items.map((item,idx)=>idx===i?{...item,[f]:v}:item)
+    if (f === 'qty') setUnitPriceInputs(buildUnitPriceInputs(items))
+    return { ...p, items }
+  })
+  const onUnitPriceChange = (i: number, raw: string) => {
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: raw }))
+    const parsed = parseMoney(raw)
+    if (parsed === null) return
+    updateItem(i, 'unit_price', parsed)
+  }
+  const onUnitPriceBlur = (i: number) => {
+    const current = unitPriceInputs[i] ?? ''
+    const parsed = parseMoney(current)
+    if (parsed === null) {
+      setUnitPriceInputs((prev) => ({ ...prev, [i]: Number(form.items[i]?.unit_price || 0) ? formatDecimal(form.items[i]?.unit_price) : '' }))
+      return
+    }
+    setUnitPriceInputs((prev) => ({ ...prev, [i]: parsed ? formatDecimal(parsed) : '' }))
+  }
 
   // When BOM selected, auto-fill unit_price, spec, unit, image_url from BOM
   const onSelectBom = (i:number, bomId:string) => {
@@ -226,7 +417,7 @@ export default function CustomerOrdersPage() {
     const updates: Partial<OrderItem> = { bom_id: bomId ? Number(bomId) : null }
     
     if (bom) {
-      if (bom.company_price) updates.unit_price = Number(bom.company_price)
+      updates.unit_price = Number(bom.company_price ?? 0)
       if (bom.spec) updates.spec = bom.spec
       if (bom.unit) updates.unit = bom.unit
       if (bom.image_url) updates.image_url = bom.image_url
@@ -247,10 +438,11 @@ export default function CustomerOrdersPage() {
       updates.moq = null
     }
     
-    setForm(p => ({
-      ...p,
-      items: p.items.map((item, idx) => idx === i ? { ...item, ...updates } : item)
-    }))
+    setForm(p => {
+      const items = p.items.map((item, idx) => idx === i ? { ...item, ...updates } : item)
+      setUnitPriceInputs(buildUnitPriceInputs(items))
+      return { ...p, items }
+    })
   }
 
   const filtered = orders.filter(o => {
@@ -258,13 +450,15 @@ export default function CustomerOrdersPage() {
       o.po_number.toLowerCase().includes(search.toLowerCase()) ||
       (o.customer_name||'').toLowerCase().includes(search.toLowerCase())
     const matchStatus = !statusFilter || o.status === statusFilter
-    return matchSearch && matchStatus
+    const scheduleStatus = o.schedule_status || (o.has_delivery_progress ? 'scheduled' : 'unscheduled')
+    const matchSchedule = scheduleFilter === 'all' || scheduleStatus === scheduleFilter
+    return matchSearch && matchStatus && matchSchedule
   })
   
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input text-xs py-1.5'
   const lockedInp = `${inp} bom-locked-field`
-  const money = (v?: number) => Number(v || 0).toLocaleString(undefined, { maximumFractionDigits: 2 })
+  const money = (v?: number) => formatDecimal(v || 0)
   const qtyNum = (v: any) => Number(v || 0)
   const pct = (v: any) => Number(v || 0)
 
@@ -275,13 +469,20 @@ export default function CustomerOrdersPage() {
           <h1 className="text-xl font-bold text-slate-800">客戶訂單（對齊單據）</h1>
           <p className="section-hint">點選訂單列展開檢視品項明細</p>
         </div>
-        {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-primary">+ 新增訂單</button>}
+        {canWrite && <button onClick={()=>{ setCreating(true); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }); setUnitPriceInputs({}) }} className="btn-primary">+ 新增訂單</button>}
       </div>
 
       {(creating || editingId !== null) && canWrite && (
-        <div className="rubber-card p-6 mb-5">
-          <h2 className="text-sm font-semibold text-slate-800 mb-4">{editingId ? '編輯客戶訂單' : '新增客戶訂單'}</h2>
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-5">
+        <div className="rubber-card mb-5 overflow-hidden p-0">
+          <div className="border-b border-slate-200 bg-white px-6 pt-6 pb-4 shadow-sm">
+          <div className="flex items-start justify-between gap-4 mb-4">
+            <div>
+              <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯客戶訂單' : '新增客戶訂單'}</h2>
+              <p className="mt-1 text-[11px] text-slate-400">訂單主資訊與新增品項固定顯示，檢查長明細時不需回到頂部。</p>
+            </div>
+            <button onClick={()=>{ setCreating(false); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }); setUnitPriceInputs({}) }} className="btn-ghost border border-slate-200 shrink-0">關閉</button>
+          </div>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">PO Date</label>
               <input type="date" className={inp} value={form.po_date} onChange={e=>setForm(p=>({...p,po_date:e.target.value}))} />
@@ -301,10 +502,7 @@ export default function CustomerOrdersPage() {
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">客戶 *</label>
-              <select className={inp} value={form.customer_id} onChange={e=>{
-                const cust = customers.find(c=>String(c.id)===e.target.value)
-                setForm(p=>({...p, customer_id:e.target.value, payment_terms: (cust as any)?.payment_terms||p.payment_terms }))
-              }}>
+              <select className={inp} value={form.customer_id} onChange={e=>applyCustomerDefaults(e.target.value)}>
                 <option value="">-- 選擇客戶 --</option>
                 {customers.map(c=>(
                   <option key={c.id} value={String(c.id)}>{c.customer_name}{c.customer_code?` (${c.customer_code})`:''}</option>
@@ -337,23 +535,25 @@ export default function CustomerOrdersPage() {
             </div>
           </div>
 
-          <div className="flex items-center justify-between mb-2">
+          <div className="flex items-center justify-between gap-3">
             <span className="text-xs font-semibold text-slate-600">Purchase Order Rows</span>
-            <button onClick={addItem} className="btn-ghost text-blue-600">+ 新增品項</button>
+            <button onClick={addItem} className="btn-ghost text-blue-600 shrink-0">+ 新增品項</button>
           </div>
-          <div className="table-scroll-x rounded-lg border border-slate-200">
-            <table className="w-full text-xs">
+          </div>
+          <div className="px-6 py-4">
+          <div className="table-scroll-x detail-scroll-panel rounded-lg border border-slate-200 bg-white">
+            <table className="w-full text-xs oms-table">
               <thead><tr className="bg-slate-50 border-b border-slate-200">
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">PO No</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Mtl No / BOM</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Description / Spec / Color</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Supplier / LT / MOQ</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Qty</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Unit</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Price</th>
-                <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">Amount</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">RTA</th>
-                <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">Remark</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">PO No</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Mtl No / BOM</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Description / Spec / Color</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Supplier / LT / MOQ</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Qty</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Unit</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Price</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Amount</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">RTA</th>
+                <th className="sticky top-0 z-10 bg-slate-50 px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase shadow-sm">Remark</th>
                 <th className="w-8" />
               </tr></thead>
               <tbody>
@@ -389,10 +589,10 @@ export default function CustomerOrdersPage() {
                       <input className={lockedInp} value={item.unit||''} onChange={e=>updateItem(i,'unit',e.target.value)} readOnly />
                     </td>
                     <td className="p-1.5 w-28">
-                      <input type="number" className={inp} value={item.unit_price||''} onChange={e=>updateItem(i,'unit_price',Number(e.target.value))} />
+                      <input type="text" inputMode="decimal" className={inp} value={unitPriceInputs[i] ?? ''} onChange={e=>onUnitPriceChange(i, e.target.value)} onBlur={()=>onUnitPriceBlur(i)} />
                     </td>
                     <td className="p-1.5 w-28 text-right">
-                      <span className="font-semibold text-slate-700">{((item.qty||0) * (item.unit_price||0)).toLocaleString()}</span>
+                      <span className="font-semibold text-slate-700">{formatDecimal((item.qty||0) * (item.unit_price||0))}</span>
                     </td>
                     <td className="p-1.5 w-36">
                       <input type="date" className={inp} value={item.rta_date || ''} onChange={e=>updateItem(i,'rta_date',e.target.value)} />
@@ -413,14 +613,20 @@ export default function CustomerOrdersPage() {
             const subtotal = form.items.reduce((s,i) => s + (i.qty||0)*(i.unit_price||0), 0)
             return (
               <div className="flex justify-end mt-3 text-xs text-slate-500 gap-6">
-                <span>小計：<span className="font-semibold text-slate-700">{subtotal.toLocaleString()}</span></span>
-                <span>總計：<span className="font-bold text-slate-900 text-sm">{subtotal.toLocaleString()}</span></span>
+                <span>小計：<span className="font-semibold text-slate-700">{formatDecimal(subtotal)}</span></span>
+                <span>總計：<span className="font-bold text-slate-900 text-sm">{formatDecimal(subtotal)}</span></span>
               </div>
             )
           })()}
-          <div className="flex gap-2 mt-4">
-            <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立訂單'}</button>
-            <button onClick={()=>{ setCreating(false); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }) }} className="btn-ghost border border-slate-200">取消</button>
+          </div>
+          <div className="border-t border-slate-200 bg-white px-6 py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              <div className="text-xs text-slate-500">目前品項 <span className="font-semibold text-slate-700">{form.items.length}</span></div>
+              <div className="flex gap-2">
+                <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立訂單'}</button>
+                <button onClick={()=>{ setCreating(false); setEditingId(null); setForm({ po_date:'', po_number:'', customer_id:'', remark:'', currency:'VND', delivery_date:'', delivery_address:'', person_in_charge:'', payment_terms:'', items:[emptyItem()] }); setUnitPriceInputs({}) }} className="btn-ghost border border-slate-200">取消</button>
+              </div>
+            </div>
           </div>
         </div>
       )}
@@ -429,10 +635,23 @@ export default function CustomerOrdersPage() {
         <>
           <div className="list-controls">
             <input className="list-search" placeholder="搜尋客戶訂單號或客戶..." value={search} onChange={e=>setSearch(e.target.value)} />
-            <div className="flex gap-1">
+            <div className="flex flex-wrap gap-2">
               {[['', '全部'], ['pending', '待出貨'], ['partial', '部分'], ['delay', '延遲'], ['completed', '已完成']].map(([val, label]) => (
                 <button key={val} onClick={() => setStatusFilter(val)}
                   className={`filter-chip ${statusFilter === val ? 'filter-chip-active' : ''}`}>
+                  {label}
+                </button>
+              ))}
+              {[
+                ['all', '交期全部'],
+                ['unscheduled', '未排交期'],
+                ['scheduled', '已排交期'],
+              ].map(([val, label]) => (
+                <button
+                  key={val}
+                  onClick={() => setScheduleFilter(val as 'all' | 'scheduled' | 'unscheduled')}
+                  className={`filter-chip ${scheduleFilter === val ? 'filter-chip-active' : ''}`}
+                >
                   {label}
                 </button>
               ))}
@@ -443,7 +662,7 @@ export default function CustomerOrdersPage() {
         {loading ? <div className="flex justify-center py-16"><div className="w-5 h-5 border-2 border-blue-200 border-t-blue-600 rounded-full animate-spin"/></div> : (
           <>
             <div className="table-scroll-x">
-            <table className="w-full text-sm" style={{ minWidth: canViewProfit ? 1820 : 1660 }}>
+	            <table className="w-full text-sm" style={{ minWidth: canViewProfit ? 1940 : 1780 }}>
               <thead>
                 <tr className="border-b border-slate-200">
                   <th className="w-8" />
@@ -452,10 +671,12 @@ export default function CustomerOrdersPage() {
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">訂單日期</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交貨日</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">已出/總數</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
-                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">結餘</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">交期進度</th>
+	                  <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">完成率</th>
                   <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">總計</th>
                   {canViewProfit && <th className="px-4 py-3 text-right text-[11px] font-semibold text-slate-500 uppercase tracking-wider">淨利</th>}
+                  <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">交期</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[200px]">狀態</th>
                   <th className="px-4 py-3 text-left text-[11px] font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap min-w-[250px]">操作</th>
                 </tr>
@@ -465,29 +686,43 @@ export default function CustomerOrdersPage() {
                   const isOpen = expanded.has(o.id)
                   const items = loadedItems[o.id]
                   const profit = profitByOrderId[o.id]
+                  const scheduleStatus = o.schedule_status || (o.has_delivery_progress ? 'scheduled' : 'unscheduled')
                   return (
-                    <>
+                    <Fragment key={o.id}>
                       <tr key={o.id}
-                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(o.id)}>
                         <td className="pl-4 py-3"><span className="text-slate-500"><ChevronIcon open={isOpen} /></span></td>
                         <td className="px-4 py-3 font-mono text-xs text-blue-600">{o.po_number}</td>
                         <td className="px-4 py-3 text-slate-800 font-medium max-w-[220px] truncate whitespace-nowrap" title={o.customer_name}>{o.customer_name}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.po_date) || '—'}</td>
                         <td className="px-4 py-3 text-slate-400 text-xs whitespace-nowrap">{formatDateYMD(o.delivery_date) || '—'}</td>
-                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{qtyNum(o.shipped_total_qty).toLocaleString()} / {qtyNum(o.order_total_qty).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{qtyNum(o.balance_total_qty).toLocaleString()}</td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap">
+                        <td className="px-4 py-3 text-right text-xs text-slate-600 whitespace-nowrap">{formatInteger(qtyNum(o.arrived_total_qty))} / {formatInteger(qtyNum(o.order_total_qty))}</td>
+	                        <td className="px-4 py-3 text-right text-xs font-semibold text-orange-700 whitespace-nowrap">{formatInteger(qtyNum(o.balance_total_qty))}</td>
+	                        <td className="px-4 py-3 text-right whitespace-nowrap">
+	                          <div className="text-xs font-semibold text-slate-700">
+	                            {formatInteger(qtyNum(o.progress_created_qty))} / {formatInteger(qtyNum(o.order_total_qty))}
+	                          </div>
+	                          <div className={`text-[11px] ${pct(o.progress_created_rate) >= 100 ? 'text-emerald-600' : 'text-slate-500'}`}>
+	                            {pct(o.progress_created_rate).toFixed(2)}%
+	                          </div>
+	                        </td>
+	                        <td className="px-4 py-3 text-right whitespace-nowrap">
                           <span className={`text-xs font-semibold ${pct(o.completion_rate) >= 100 ? 'text-emerald-600' : 'text-slate-700'}`}>
                             {pct(o.completion_rate).toFixed(2)}%
                           </span>
                         </td>
-                        <td className="px-4 py-3 text-right font-semibold text-slate-800">{o.total_amount ? Number(o.total_amount).toLocaleString() : '—'}</td>
+                        <td className="px-4 py-3 text-right font-semibold text-slate-800">{o.total_amount ? formatDecimal(o.total_amount) : '—'}</td>
                         {canViewProfit && (
                           <td className={`px-4 py-3 text-right font-semibold ${(profit?.net_profit || 0) >= 0 ? 'text-emerald-600' : 'text-red-500'}`}>
                             {profit ? money(profit.net_profit) : '—'}
                           </td>
                         )}
+                        <td className="px-4 py-3 whitespace-nowrap">
+                          <span className={`inline-flex items-center rounded-full px-2.5 py-1 text-[11px] font-semibold ${scheduleStatus === 'scheduled' ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-700'}`}>
+                            {SCHEDULE_LABEL[scheduleStatus]}
+                          </span>
+                        </td>
                         <td className="px-4 py-3 min-w-[200px] whitespace-nowrap">
                           <StatusFlow compact steps={CO_STEPS} current={o.status}
                             actions={getCOActions(o.status)}
@@ -507,10 +742,10 @@ export default function CustomerOrdersPage() {
                       </tr>
                       {isOpen && (
                         <tr key={`${o.id}-items`} className="border-b border-slate-100">
-                          <td colSpan={canViewProfit ? 12 : 11} className="px-0 py-0">
-                            <div className="expand-row-wrap">
+	                          <td colSpan={canViewProfit ? 14 : 13} className="px-0 py-0">
+                            <div className="expand-row-wrap layer-panel-l2">
                               {canViewProfit && profit && (
-                                <div className="px-4 py-3 border-b border-slate-100 bg-slate-50">
+                                <div className="px-4 py-3 border-b" style={{ borderColor: '#dccab2', background: '#f0e4d4' }}>
                                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 text-[11px]">
                                     <div><span className="text-slate-400">營收</span><div className="font-semibold text-slate-700">{money(profit.revenue)}</div></div>
                                     <div><span className="text-slate-400">成本</span><div className="font-semibold text-slate-700">{money(profit.cogs)}</div></div>
@@ -537,7 +772,8 @@ export default function CustomerOrdersPage() {
                                 <div className="expand-row-empty">尚無品項</div>
                               ) : (
                                 <table className="w-full text-xs">
-                                  <thead><tr className="border-b border-slate-100">
+                                  <thead><tr className="layer-head-l2">
+                                    <th className="w-8" />
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">PO No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Mtl No</th>
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">Description</th>
@@ -551,25 +787,82 @@ export default function CustomerOrdersPage() {
                                     <th className="px-4 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">狀態</th>
                                   </tr></thead>
                                   <tbody>
-                                    {items.map((item,i)=>(
-                                      <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
-                                        <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
-                                        <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
-                                        <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
-                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Number(item.qty).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.unit_price).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
-                                        <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
-                                        <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{Number(item.arrived_qty||0).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)).toLocaleString()}</td>
-                                        <td className="px-4 py-2 text-right whitespace-nowrap">
-                                          {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
-                                        </td>
-                                        <td className="px-4 py-2 whitespace-nowrap">
-                                          <span className={STATUS_BADGE[item.status||'pending']||'badge-gray'}>{STATUS_LABEL[item.status||'pending']||item.status}</span>
-                                        </td>
-                                      </tr>
-                                    ))}
+                                    {items.map((item,i)=>{
+                                      const rowKey = `${o.id}-${item.id || item.bom_id || item.product_sku || i}`
+                                      const rowOpen = expandedItemRows.has(rowKey)
+                                      const bomItems = item.bom_id ? (bomItemsByBomId[item.bom_id] || []) : []
+                                      const bomLoading = !!(item.bom_id && loadingBomDetailIds.has(item.bom_id))
+                                      return (
+                                        <Fragment key={rowKey}>
+                                          <tr className={`border-b border-[#e1cfb8] last:border-0 transition-colors ${rowOpen ? 'layer-row-l2-open' : 'layer-row-l2-hover'}`}>
+                                            <td className="px-2 py-2">
+                                              <button
+                                                type="button"
+                                                className={`text-slate-500 ${item.bom_id ? 'hover:text-slate-700' : 'opacity-30 cursor-not-allowed'}`}
+                                                disabled={!item.bom_id}
+                                                onClick={() => { if (item.bom_id) toggleItemExpand(rowKey, item.bom_id) }}
+                                                title={item.bom_id ? '展開 BOM 輔料明細' : '無 BOM 可展開'}
+                                              >
+                                                <ChevronIcon open={rowOpen} />
+                                              </button>
+                                            </td>
+                                            <td className="px-4 py-2 font-mono text-slate-600 whitespace-nowrap">{(item as any).po_no || '—'}</td>
+                                            <td className="px-4 py-2 font-mono text-blue-600 whitespace-nowrap">{item.product_sku}</td>
+                                            <td className="px-4 py-2 text-slate-700 whitespace-nowrap max-w-[200px] truncate" title={item.product_name}>{item.product_name}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{formatInteger(Number(item.qty))}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{formatDecimal(item.unit_price)}</td>
+                                            <td className="px-4 py-2 text-slate-500 whitespace-nowrap">{formatDateYMD((item as any).rta_date) || '—'}</td>
+                                            <td className="px-4 py-2 text-slate-400 whitespace-nowrap">{(item as any).remark || '—'}</td>
+                                            <td className="px-4 py-2 text-right text-slate-600 whitespace-nowrap">{formatInteger(Number(item.arrived_qty||0))}</td>
+                                            <td className="px-4 py-2 text-right font-medium whitespace-nowrap">{formatInteger(Math.max(0, Number(item.qty||0) - Number(item.arrived_qty||0)))}</td>
+                                            <td className="px-4 py-2 text-right whitespace-nowrap">
+                                              {Number(item.qty || 0) > 0 ? `${((Number(item.arrived_qty || 0) / Number(item.qty || 0)) * 100).toFixed(2)}%` : '0.00%'}
+                                            </td>
+                                            <td className="px-4 py-2 whitespace-nowrap">
+                                              <span className={STATUS_BADGE[item.status||'pending']||'badge-gray'}>{STATUS_LABEL[item.status||'pending']||item.status}</span>
+                                            </td>
+                                          </tr>
+                                          {rowOpen && (
+                                            <tr>
+                                              <td colSpan={12} className="px-0 py-0">
+                                                <div className="layer-panel-l3">
+                                                  {bomItems.length === 0 ? (
+                                                    <div className="px-4 py-2 text-[11px] text-slate-500">{bomLoading ? 'BOM 輔料明細載入中...' : '此 BOM 尚無輔料明細'}</div>
+                                                  ) : (
+                                                    <table className="w-full text-[11px]">
+                                                      <thead>
+                                                        <tr className="bg-[#e7d4bc] border-b border-[#ccb08f]">
+                                                          {['材料編號','材料名稱','規格','顏色','單位','供應商','Leadtime','MOQ','供應商單價','公司售價','備註'].map((h)=>(
+                                                            <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-600 uppercase whitespace-nowrap">{h}</th>
+                                                          ))}
+                                                        </tr>
+                                                      </thead>
+                                                      <tbody>
+                                                        {bomItems.map((bomItem, bomIdx) => (
+                                                          <tr key={bomIdx} className="border-b border-[#d6b995] last:border-0 hover:bg-[#ecdac3]">
+                                                            <td className="px-3 py-1.5 font-mono text-blue-700 whitespace-nowrap">{bomItem.material_code || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-700 whitespace-nowrap">{bomItem.material_name || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.spec || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.color || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.unit || 'PCS'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.supplier_name || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.lt || '—'}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap">{bomItem.moq != null ? formatInteger(Number(bomItem.moq)) : '—'}</td>
+                                                            <td className="px-3 py-1.5 text-right text-slate-700 whitespace-nowrap">{formatDecimal(bomItem.supplier_price || 0)}</td>
+                                                            <td className="px-3 py-1.5 text-right font-semibold text-slate-800 whitespace-nowrap">{formatDecimal(bomItem.company_price || 0)}</td>
+                                                            <td className="px-3 py-1.5 text-slate-600 whitespace-nowrap max-w-[220px] truncate" title={bomItem.remark || ''}>{bomItem.remark || '—'}</td>
+                                                          </tr>
+                                                        ))}
+                                                      </tbody>
+                                                    </table>
+                                                  )}
+                                                </div>
+                                              </td>
+                                            </tr>
+                                          )}
+                                        </Fragment>
+                                      )
+                                    })}
                                   </tbody>
                                 </table>
                               )}
@@ -577,7 +870,7 @@ export default function CustomerOrdersPage() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </Fragment>
                   )
                 })}
                 {paged.length===0 && <tr><td colSpan={canViewProfit ? 12 : 11} className="px-4 py-12 text-center text-slate-400">尚無訂單</td></tr>}

@@ -2,22 +2,24 @@
 import { generateDeliveryNoteHTML } from '@/lib/printDeliveryNote'
 import { useDialog } from '@/components/Dialog'
 import { useEffect, useState } from 'react'
-import { apiFetch, getSignatureUrl } from '@/lib/api'
+import { apiFetch } from '@/lib/api'
 import { usePagination, Pagination } from '@/lib/usePagination'
 import { StatusFlow, DN_STEPS, getDNActions } from '@/components/StatusFlow'
 import { can } from '@/lib/usePermissions'
-import { getCompany } from '@/lib/useCompany'
+import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { formatDateYMD } from '@/lib/datetime'
+import { formatQuantity } from '@/lib/numberFormat'
+import { useRefreshOnFocus } from '@/lib/useRefreshOnFocus'
 
 type DNItem = { bom_id?:number|null; item_name:string; material_code:string; qty:number; shipped_qty:number; remark:string; po_ref?: string; spec?: string; unit?: string }
 type DN = { id:number; dn_number:string; customer_name:string; delivery_date:string; status:string; remark:string; created_at:string; items?:DNItem[]; order_po_number?:string }
 type Customer = { id:number; customer_name:string; customer_code:string }
-type PendingOrder = { id:number; po_number:string; po_date:string; items_summary:string }
+type PendingOrder = { id:number; po_number:string; po_date:string; items_summary:string; customer_id:number; customer_name?:string }
 type OrderItem = { id:number; bom_id:number|null; qty:number; unit_price:number; product_name:string; product_sku:string }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:     { label:'草稿',   badge:'badge-gray'  },
-  confirmed: { label:'已確認', badge:'badge-blue'  },
+  draft:     { label:'尚未審核', badge:'badge-gray'  },
+  confirmed: { label:'已審核', badge:'badge-blue'  },
   shipped:   { label:'已出貨', badge:'badge-green' },
 }
 
@@ -35,7 +37,34 @@ export default function DeliveryNotesPage() {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
   const [loadedItems, setLoadedItems] = useState<Record<number, DNItem[]>>({})
   const canWrite = can('delivery.create')
+  const canApprove = can('delivery.approve')
   const canDel = can('delivery.delete')
+  const canManualCreate = false
+
+  const loadDnItems = async (id: number) => {
+    const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
+    const nextItems = d.items || []
+    setLoadedItems(p => ({ ...p, [id]: nextItems }))
+    return nextItems
+  }
+
+  const refreshExpandedRows = async (expandedIds: number[]) => {
+    if (!expandedIds.length) {
+      setLoadedItems({})
+      return
+    }
+    const nextEntries = await Promise.all(
+      expandedIds.map(async (id) => {
+        try {
+          const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
+          return [id, d.items || []] as const
+        } catch {
+          return [id, []] as const
+        }
+      })
+    )
+    setLoadedItems(Object.fromEntries(nextEntries))
+  }
 
   // Create form state
   const [selectedCustomerId, setSelectedCustomerId] = useState('')
@@ -47,11 +76,32 @@ export default function DeliveryNotesPage() {
   const [deliveryDate, setDeliveryDate] = useState('')
   const [remark, setRemark] = useState('')
 
-  const load = () => apiFetch<DN[]>('/api/delivery-notes').then(setDns).finally(() => setLoading(false))
+  const refreshAll = async (showSpinner = false) => {
+    if (showSpinner) setLoading(true)
+    try {
+      const [noteRows, customerRows] = await Promise.all([
+        apiFetch<DN[]>('/api/delivery-notes'),
+        apiFetch<Customer[]>('/api/customers'),
+      ])
+      setDns(noteRows || [])
+      setCustomers(customerRows || [])
+      await refreshExpandedRows(Array.from(expanded))
+    } finally {
+      setLoading(false)
+    }
+  }
+
   useEffect(() => {
-    load()
-    apiFetch<Customer[]>('/api/customers').then(setCustomers).catch(() => {})
+    void refreshAll(true)
   }, [])
+
+  useRefreshOnFocus(() => refreshAll(false))
+
+  const lockedCustomerId = (() => {
+    const selectedOrder = pendingOrders.find((order) => String(order.id) === selectedOrderId)
+    const customerId = Number(selectedOrder?.customer_id || 0)
+    return customerId > 0 ? String(customerId) : ''
+  })()
 
   const onSelectCustomer = async (customerId: string) => {
     setSelectedCustomerId(customerId)
@@ -81,6 +131,10 @@ export default function DeliveryNotesPage() {
     setOrderItems([])
     setShippedQtys({})
     if (!orderId) return
+    const selectedOrder = pendingOrders.find((order) => String(order.id) === orderId)
+    if (selectedOrder?.customer_id) {
+      setSelectedCustomerId(String(selectedOrder.customer_id))
+    }
     const data = await apiFetch<any>(`/api/customer-orders/${orderId}`)
     const items: OrderItem[] = (data.items || []).map((i: any) => ({
       id: i.id, bom_id: i.bom_id, qty: Number(i.qty),
@@ -99,6 +153,7 @@ export default function DeliveryNotesPage() {
     if (!selectedCustomerId) { toast('請選擇客戶', 'error'); return }
     if (!selectedOrderId) { toast('請選擇訂單', 'error'); return }
     const items = orderItems.map(i => ({
+      order_item_id: i.id,
       bom_id: i.bom_id,
       item_name: i.product_name,
       material_code: i.product_sku,
@@ -120,7 +175,7 @@ export default function DeliveryNotesPage() {
       toast('出貨單建立成功')
       setCreating(false)
       resetForm()
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('錯誤：' + e.message, 'error') }
   }
 
@@ -136,8 +191,7 @@ export default function DeliveryNotesPage() {
     else {
       next.add(id); setExpanded(next)
       if (!loadedItems[id]) {
-        const d = await apiFetch<DN>(`/api/delivery-notes/${id}`)
-        setLoadedItems(p => ({ ...p, [id]: d.items || [] }))
+        await loadDnItems(id)
       }
     }
   }
@@ -158,22 +212,22 @@ export default function DeliveryNotesPage() {
       await apiFetch(`/api/delivery-notes/${editing.id}`, { method: 'PUT', body: JSON.stringify(editForm) })
       toast('出貨單已更新')
       setEditing(null)
-      load()
+      await refreshAll(false)
     } catch (e: any) { toast('更新失敗：' + e.message, 'error') }
   }
 
   const changeStatus = async (id: number, status: string) => {
     const labels: Record<string, string> = {
-      confirmed: '確認此出貨單？',
-      shipped: '確認出貨？出貨後狀態不可撤銷，並將自動扣減庫存',
+      confirmed: '審核此出貨單？',
+      shipped: '確認出貨？出貨後狀態不可撤銷',
     }
-    const btnLabels: Record<string, string> = { confirmed: '確認', shipped: '確認出貨' }
+    const btnLabels: Record<string, string> = { confirmed: '審核', shipped: '確認出貨' }
     if (!await confirmDialog(labels[status] || '確認變更狀態？', '', btnLabels[status] || '確認')) return
     setActionLoading(id)
     try {
       await apiFetch(`/api/delivery-notes/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
       toast('狀態已更新')
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('操作失敗：' + e.message, 'error') }
     finally { setActionLoading(null) }
   }
@@ -182,13 +236,16 @@ export default function DeliveryNotesPage() {
     if (!await confirmDialog('確定刪除？')) return
     try {
       await apiFetch(`/api/delivery-notes/${id}`, { method: 'DELETE' })
-      await load()
+      await refreshAll(false)
     } catch (e: any) { toast('刪除失敗：' + e.message, 'error') }
   }
 
   const printDN = async (dn: DN) => {
     const detail = await apiFetch<DN & { po_ref?: string; address?: string }>(`/api/delivery-notes/${dn.id}`)
     const company = await getCompany()
+    const signatureUrl = (detail.status === 'confirmed' || detail.status === 'shipped')
+      ? (getCompanySignatureUrl(company) || undefined)
+      : undefined
     const html = generateDeliveryNoteHTML({
       dn_number: dn.dn_number,
       customer_name: dn.customer_name,
@@ -197,7 +254,7 @@ export default function DeliveryNotesPage() {
       address: detail.address || '',
       remark: dn.remark,
       items: detail.items || dn.items || []
-    }, getSignatureUrl() || undefined, company)
+    }, signatureUrl, company)
     const w = window.open('', '_blank', 'width=800,height=1000')
     if (!w) {
       toast('瀏覽器已封鎖彈出視窗，請允許後再列印', 'error')
@@ -211,17 +268,20 @@ export default function DeliveryNotesPage() {
   const filtered = dns.filter(d => !search ||
     d.dn_number.toLowerCase().includes(search.toLowerCase()) ||
     (d.customer_name||'').toLowerCase().includes(search.toLowerCase()))
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
   const inp = 'rubber-input text-xs py-1.5'
 
   return (
     <div>
       <div className="flex items-center justify-between mb-6">
-        <h1 className="text-xl font-bold text-slate-800">出貨單</h1>
-        {canWrite && <button onClick={() => setCreating(true)} className="btn-primary">+ 新增出貨單</button>}
+        <div>
+          <h1 className="text-xl font-bold text-slate-800">出貨單</h1>
+          <p className="mt-1 text-xs text-slate-500">出貨單由交期進度自動生成；明細「來源訂單 PO No.」對應交期進度每行 BOM 的來源 PO，便於多訂單合併出貨時追蹤。</p>
+        </div>
+        {canWrite && canManualCreate && <button onClick={() => setCreating(true)} className="btn-primary">+ 新增出貨單</button>}
       </div>
 
-      {creating && canWrite && (
+      {creating && canWrite && canManualCreate && (
         <div className="rubber-card p-6 mb-5">
           <h2 className="font-semibold text-slate-800 mb-5">新增出貨單</h2>
 
@@ -229,12 +289,15 @@ export default function DeliveryNotesPage() {
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-5">
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">客戶</label>
-              <select className="rubber-input" value={selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)}>
+              <select className="rubber-input" value={lockedCustomerId || selectedCustomerId} onChange={e => onSelectCustomer(e.target.value)} disabled={!!lockedCustomerId}>
                 <option value="">-- 選擇客戶 --</option>
                 {customers.map(c => (
                   <option key={c.id} value={String(c.id)}>{c.customer_name}</option>
                 ))}
               </select>
+              {lockedCustomerId && (
+                <p className="mt-1 text-xs text-slate-500">已依所選訂單自動鎖定客戶，清空訂單後可重新選擇。</p>
+              )}
             </div>
             <div>
               <label className="block text-[11px] text-slate-500 mb-1.5">Số đơn đặt hàng（Order No）</label>
@@ -283,7 +346,7 @@ export default function DeliveryNotesPage() {
                       <tr key={item.id} className="border-b border-slate-100 last:border-0">
                         <td className="px-3 py-2 text-slate-700 font-medium">{item.product_name}</td>
                         <td className="px-3 py-2 font-mono text-blue-600">{item.product_sku}</td>
-                        <td className="px-3 py-2 text-right text-slate-500">{item.qty.toLocaleString()}</td>
+                        <td className="px-3 py-2 text-right text-slate-500">{formatQuantity(item.qty)}</td>
                         <td className="px-3 py-2 text-right">
                           <input type="number" className={`${inp} w-24 text-right`}
                             min={0} max={item.qty}
@@ -326,6 +389,7 @@ export default function DeliveryNotesPage() {
                 <thead><tr className="bg-slate-50 border-b border-slate-200">
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">品名</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">物料編號</th>
+                  <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">來源訂單 PO No.</th>
                   <th className="px-3 py-2 text-right text-[10px] font-semibold text-slate-500 uppercase">數量</th>
                   <th className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase">備註</th>
                 </tr></thead>
@@ -334,6 +398,7 @@ export default function DeliveryNotesPage() {
                     <tr key={i} className="border-b border-slate-100 last:border-0">
                       <td className="px-3 py-2 text-slate-700">{item.item_name}</td>
                       <td className="px-3 py-2 font-mono text-xs text-blue-600">{item.material_code}</td>
+                      <td className="px-3 py-2 font-mono text-xs text-slate-600 whitespace-nowrap">{item.po_ref || '—'}</td>
                       <td className="px-3 py-2 text-right">
                         <input type="number" className="rubber-input text-xs py-1 w-20 text-right" min={0}
                           value={item.qty}
@@ -381,7 +446,7 @@ export default function DeliveryNotesPage() {
                   return (
                     <>
                       <tr key={dn.id}
-                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'bg-slate-50' : 'hover:bg-slate-50'}`}
+                        className={`border-b border-slate-100 cursor-pointer transition-colors ${isOpen ? 'layer-row-open' : 'layer-row-hover'}`}
                         onClick={() => toggleExpand(dn.id)}>
                         <td className="pl-3 py-2.5">
                           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
@@ -398,7 +463,11 @@ export default function DeliveryNotesPage() {
                         <td className="px-3 py-2.5 whitespace-nowrap" onClick={e => e.stopPropagation()}>
                           <div className="flex gap-1 items-center">
                             <StatusFlow compact steps={DN_STEPS} current={dn.status}
-                              actions={actionLoading === dn.id ? [] : getDNActions(dn.status)}
+                              actions={actionLoading === dn.id ? [] : getDNActions(dn.status).filter((a) => {
+                                if (a.toStatus === 'confirmed') return canApprove
+                                if (a.toStatus === 'shipped') return canWrite
+                                return true
+                              })}
                               onAction={(toStatus) => changeStatus(dn.id, toStatus)} />
                             {actionLoading === dn.id && <span className="text-xs text-slate-400 px-1">處理中...</span>}
                             <button onClick={e => { e.stopPropagation(); printDN(dn) }} className="btn-ghost" title="列印">🖨 列印</button>
@@ -410,33 +479,32 @@ export default function DeliveryNotesPage() {
                       {isOpen && (
                         <tr key={`${dn.id}-items`} className="border-b border-slate-100">
                           <td colSpan={8} className="px-0 py-0">
-                            <div className="expand-row-wrap">
+                            <div className="expand-row-wrap layer-panel-l2">
                               {items.length === 0 ? (
                                 <div className="expand-row-loading">
                                   <div className="w-3 h-3 border border-slate-300 border-t-slate-500 rounded-full animate-spin"/>載入中...
                                 </div>
                               ) : (
-                                <div className="table-scroll-x">
-                                  <table className="w-full text-xs" style={{minWidth:500}}>
-                                    <thead><tr className="border-b border-slate-100">
-                                      {['品名','物料編號','規格','單位','數量','備註'].map(h => (
+                                  <table className="w-full text-xs" style={{ minWidth: 1100 }}>
+                                    <thead><tr className="layer-head-l2">
+                                      {['品名','物料編號','來源訂單 PO No.','規格','單位','數量','備註'].map(h => (
                                         <th key={h} className="px-3 py-2 text-left text-[10px] font-semibold text-slate-500 uppercase whitespace-nowrap">{h}</th>
                                       ))}
                                     </tr></thead>
                                     <tbody>
                                       {items.map((item, i) => (
-                                        <tr key={i} className="border-b border-slate-100 last:border-0 hover:bg-slate-50">
+                                        <tr key={i} className="border-b border-[#e1cfb8] last:border-0 hover:bg-[#f5e8d7]">
                                           <td className="px-3 py-2 text-slate-700">{item.item_name}</td>
                                           <td className="px-3 py-2 font-mono text-xs text-blue-600 whitespace-nowrap">{item.material_code}</td>
+                                          <td className="px-3 py-2 font-mono text-xs text-slate-700 whitespace-nowrap">{item.po_ref || '—'}</td>
                                           <td className="px-3 py-2 text-slate-400">{(item as any).spec || '—'}</td>
                                           <td className="px-3 py-2 text-slate-500 whitespace-nowrap">{item.unit || 'PCS'}</td>
-                                          <td className="px-3 py-2 text-right font-medium">{Number(item.qty).toLocaleString()}</td>
+                                          <td className="px-3 py-2 text-right font-medium">{formatQuantity(Number(item.qty))}</td>
                                           <td className="px-3 py-2 text-slate-400">{item.remark}</td>
                                         </tr>
                                       ))}
                                     </tbody>
                                   </table>
-                                </div>
                               )}
                             </div>
                           </td>

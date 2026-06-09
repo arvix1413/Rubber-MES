@@ -70,7 +70,7 @@ export default function SuppliersPage() {
   }
 
   const filtered = items.filter(s => !search || s.name.toLowerCase().includes(search.toLowerCase()) || (s.supplier_code||'').toLowerCase().includes(search.toLowerCase()))
-  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 20)
+  const { page, setPage, totalPages, paged, total } = usePagination(filtered, 10)
 
   return (
     <div>

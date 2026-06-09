@@ -1,5 +1,6 @@
 'use client'
-import { createContext, useContext, useState, useCallback, ReactNode } from 'react'
+import { createContext, useContext, useState, useCallback, ReactNode, useEffect } from 'react'
+import { usePathname } from 'next/navigation'
 
 // ── Toast ─────────────────────────────────────────────────────────────────────
 type ToastType = 'success' | 'error' | 'info'
@@ -7,20 +8,26 @@ type Toast = { id: number; msg: string; type: ToastType }
 
 // ── Confirm ───────────────────────────────────────────────────────────────────
 type ConfirmState = { open: boolean; title: string; desc: string; confirmLabel: string; resolve: (v: boolean) => void }
+type NoticeState = { open: boolean; title: string; desc: string; details: string[] }
 
 type DialogCtx = {
   toast: (msg: string, type?: ToastType) => void
   confirm: (title: string, desc?: string, confirmLabel?: string) => Promise<boolean>
+  notice: (title: string, desc?: string, details?: string[]) => void
 }
 
-const Ctx = createContext<DialogCtx>({ toast: () => {}, confirm: async () => false })
+const Ctx = createContext<DialogCtx>({ toast: () => {}, confirm: async () => false, notice: () => {} })
 
 export function useDialog() { return useContext(Ctx) }
 
 export function DialogProvider({ children }: { children: ReactNode }) {
+  const pathname = usePathname()
   const [toasts, setToasts] = useState<Toast[]>([])
   const [confirmState, setConfirmState] = useState<ConfirmState>({
     open: false, title: '', desc: '', confirmLabel: '確認', resolve: () => {}
+  })
+  const [noticeState, setNoticeState] = useState<NoticeState>({
+    open: false, title: '', desc: '', details: []
   })
 
   const toast = useCallback((msg: string, type: ToastType = 'success') => {
@@ -35,10 +42,46 @@ export function DialogProvider({ children }: { children: ReactNode }) {
     })
   }, [])
 
+  const notice = useCallback((title: string, desc = '', details: string[] = []) => {
+    setNoticeState({ open: true, title, desc, details })
+  }, [])
+
   const handleConfirm = (val: boolean) => {
     confirmState.resolve(val)
     setConfirmState(p => ({ ...p, open: false }))
   }
+
+  const dismissAll = useCallback(() => {
+    if (confirmState.open) {
+      handleConfirm(false)
+      return
+    }
+    if (noticeState.open) {
+      setNoticeState((p) => ({ ...p, open: false }))
+    }
+  }, [confirmState.open, noticeState.open])
+
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return
+      if (confirmState.open) {
+        handleConfirm(false)
+        return
+      }
+      if (noticeState.open) {
+        setNoticeState((p) => ({ ...p, open: false }))
+      }
+    }
+    window.addEventListener('keydown', onKeyDown)
+    return () => window.removeEventListener('keydown', onKeyDown)
+  }, [confirmState, noticeState])
+
+  useEffect(() => {
+    if (confirmState.open) handleConfirm(false)
+    if (noticeState.open) setNoticeState((p) => ({ ...p, open: false }))
+    // Close any global dialog overlay when route changes to avoid stale full-screen backdrops.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pathname])
 
   const ICONS = {
     success: (
@@ -65,7 +108,7 @@ export function DialogProvider({ children }: { children: ReactNode }) {
   }
 
   return (
-    <Ctx.Provider value={{ toast, confirm }}>
+    <Ctx.Provider value={{ toast, confirm, notice }}>
       {children}
 
       {/* Toast stack - errors top center, success bottom right */}
@@ -92,6 +135,13 @@ export function DialogProvider({ children }: { children: ReactNode }) {
       {confirmState.open && (
         <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
           <div className="absolute inset-0 bg-black/30 backdrop-blur-[2px]" onClick={() => handleConfirm(false)} />
+          <button
+            type="button"
+            onClick={dismissAll}
+            className="absolute right-4 top-4 z-[9999] rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-black/70"
+          >
+            關閉遮罩
+          </button>
           <div className="relative bg-white rounded-2xl shadow-2xl shadow-slate-300/50 w-full max-w-sm p-6 border border-slate-200">
             <div className="flex items-start gap-4 mb-5">
               <div className="w-10 h-10 rounded-full bg-red-50 flex items-center justify-center flex-shrink-0 mt-0.5">
@@ -112,6 +162,55 @@ export function DialogProvider({ children }: { children: ReactNode }) {
               <button onClick={() => handleConfirm(true)}
                 className="flex-1 px-4 py-2.5 rounded-xl bg-red-500 hover:bg-red-600 text-sm font-semibold text-white transition-colors shadow-sm">
                 {confirmState.confirmLabel}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {noticeState.open && (
+        <div className="fixed inset-0 z-[9998] flex items-center justify-center p-4">
+          <div
+            className="absolute inset-0 bg-[radial-gradient(circle_at_20%_10%,rgba(29,78,216,0.16),transparent_45%),radial-gradient(circle_at_80%_90%,rgba(180,83,9,0.16),transparent_45%),rgba(15,23,42,0.35)] backdrop-blur-[3px]"
+            onClick={() => setNoticeState((p) => ({ ...p, open: false }))}
+          />
+          <button
+            type="button"
+            onClick={dismissAll}
+            className="absolute right-4 top-4 z-[9999] rounded-full border border-white/30 bg-black/55 px-3 py-1.5 text-xs font-semibold text-white shadow-lg backdrop-blur hover:bg-black/70"
+          >
+            關閉遮罩
+          </button>
+          <div className="relative w-full max-w-lg overflow-hidden rounded-3xl border border-[#d3c3b0] bg-[linear-gradient(160deg,#fffaf2_0%,#f5e8d6_65%,#ebd5bc_100%)] p-6 shadow-[0_28px_60px_rgba(63,35,8,0.28)]">
+            <div className="mb-4 flex items-start gap-3">
+              <div className="mt-0.5 flex h-10 w-10 items-center justify-center rounded-2xl bg-[#fce9d0] text-[#8b4d13] shadow-inner">
+                <svg className="h-5 w-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2}>
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 8v5m0 4h.01M10.29 3.86L1.82 18a2 2 0 001.71 3h16.94a2 2 0 001.71-3L13.71 3.86a2 2 0 00-3.42 0z"/>
+                </svg>
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-lg font-bold tracking-wide text-[#3d2a18]">{noticeState.title}</h3>
+                {noticeState.desc && <p className="mt-1 text-sm leading-6 text-[#6b4b31]">{noticeState.desc}</p>}
+              </div>
+            </div>
+            {noticeState.details.length > 0 && (
+              <div className="mb-5 max-h-52 overflow-auto rounded-2xl border border-[#e3c7a5] bg-white/65 px-3 py-2">
+                <ul className="space-y-1.5 text-sm text-[#5c432e]">
+                  {noticeState.details.map((line, idx) => (
+                    <li key={`${line}-${idx}`} className="flex gap-2">
+                      <span className="mt-1 h-1.5 w-1.5 flex-shrink-0 rounded-full bg-[#b8682a]" />
+                      <span className="break-all">{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+            <div className="flex justify-end">
+              <button
+                onClick={() => setNoticeState((p) => ({ ...p, open: false }))}
+                className="rounded-2xl border border-[#b47a45] bg-[#f7d7af] px-6 py-2 text-sm font-semibold text-[#603613] shadow-sm transition-colors hover:bg-[#f2ca97]"
+              >
+                我知道了
               </button>
             </div>
           </div>

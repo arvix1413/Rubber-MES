@@ -2,13 +2,15 @@ import { chromium } from 'playwright'
 import fs from 'fs'
 import path from 'path'
 
-const WEB = process.env.PW43_WEB || 'http://43.133.56.234:10101'
-const API = process.env.PW43_API || 'http://43.133.56.234:10102'
+const WEB = process.env.PW43_WEB || 'http://43.160.199.226:10101'
+const API = process.env.PW43_API || 'http://43.160.199.226:10102'
 const ADMIN_EMAIL = process.env.PW43_ADMIN_EMAIL || 'admin@rubber.local'
 const ADMIN_PASSWORD = process.env.PW43_ADMIN_PASSWORD || 'admin123'
 const HEADLESS = process.env.PW43_HEADLESS !== 'false'
 const OUT_DIR = process.env.PW43_OUT_DIR || '/tmp'
 const OUT_FILE = process.env.PW43_OUT_FILE || path.join(OUT_DIR, `regression-43-${Date.now()}.json`)
+const DEPLOY_WAIT_MS = Number(process.env.PW43_DEPLOY_WAIT_MS || 150000)
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
 
 const report = {
   tag: `RG${Date.now().toString().slice(-6)}`,
@@ -308,6 +310,10 @@ async function runUiSweep() {
 async function main() {
   fs.mkdirSync(OUT_DIR, { recursive: true })
   try {
+    if (DEPLOY_WAIT_MS > 0) {
+      console.log(`[deploy-wait] waiting ${DEPLOY_WAIT_MS}ms before regression starts`)
+      await sleep(DEPLOY_WAIT_MS)
+    }
     const login = await apiReq('POST', '/api/auth/login', null, { email: ADMIN_EMAIL, password: ADMIN_PASSWORD })
     const token = login.token
     pushOk('api_checks', 'auth.login')
