@@ -9,6 +9,7 @@ jobs:
   build-and-deploy-rubber:
     runs-on: ubuntu-latest
     env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
       DEPLOY_ENV: main
       TARGET_HOST: 43.160.199.226
       TARGET_PORT: ${{ secrets.RUBBER_PRD_SERVER_PORT || secrets.SERVER_PORT }}
