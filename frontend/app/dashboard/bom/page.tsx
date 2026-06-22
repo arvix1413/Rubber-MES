@@ -385,7 +385,7 @@ export default function BomPage() {
             <div className="border-b border-slate-100 bg-white px-6 py-4 shadow-sm">
               <div className="flex items-start justify-between gap-4">
                 <div>
-                  <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯材料' : '建立材料'}</h2>
+                  <h2 className="text-base font-semibold text-slate-800">{editing.id ? '編輯 BOM' : '建立 BOM'}</h2>
                   <p className="mt-1 text-[11px] text-slate-400">BOM 主資料與新增列固定顯示，長材料明細可直接往下編輯。</p>
                 </div>
                 <button onClick={()=>{ setEditing(null); setHeaderMaterialId('') }} className="text-slate-400 hover:text-slate-600 text-xl leading-none shrink-0">✕</button>
@@ -613,7 +613,7 @@ export default function BomPage() {
               <div className="text-xs text-slate-500">明細列數 <span className="font-semibold text-slate-700">{(editing.items || []).length}</span></div>
               <div className="flex items-center gap-3">
               <button onClick={()=>{ setEditing(null); setHeaderMaterialId('') }} className="btn-ghost">取消</button>
-              <button onClick={save} className="btn-primary">{editing.id ? '儲存修改' : '建立材料'}</button>
+              <button onClick={save} className="btn-primary">{editing.id ? '儲存修改' : '建立 BOM'}</button>
               </div>
             </div>
           </div>
