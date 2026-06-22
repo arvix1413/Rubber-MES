@@ -410,30 +410,6 @@ export default function BomPage() {
                 <input className={inp} value={editing.product_name||''} onChange={e=>setEditing(p=>({...p,product_name:e.target.value}))} />
               </div>
               <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">主料（面料）</label>
-                <SearchableSelect
-                  options={materials}
-                  value={headerMaterialId}
-                  onChange={applyMaterialToHeader}
-                  placeholder="-- 選擇主料（自動帶入資料）--"
-                  renderOption={(m) => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
-                  filterFn={(m, search) =>
-                    m.material_code.toLowerCase().includes(search) ||
-                    m.material_name.toLowerCase().includes(search) ||
-                    (m.spec || '').toLowerCase().includes(search)
-                  }
-                />
-                <p className="text-[10px] text-slate-400 mt-1">選擇後會自動帶入名稱/規格/供應商/單價/Leadtime/MOQ</p>
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">規格</label>
-                <input className={headerMaterialLocked ? lockedInp : inp} value={editing.spec||''} onChange={e=>setEditing(p=>({...p,spec:e.target.value}))} readOnly={headerMaterialLocked} />
-              </div>
-              <div>
-                <label className="block text-[11px] text-slate-500 mb-1.5">顏色</label>
-                <input className={headerMaterialLocked ? lockedInp : inp} value={editing.color||''} onChange={e=>setEditing(p=>({...p,color:e.target.value}))} readOnly={headerMaterialLocked} />
-              </div>
-              <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">單位</label>
                 <select
                   className={headerMaterialLocked ? lockedInp : inp}
