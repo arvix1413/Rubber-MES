@@ -182,7 +182,6 @@ export default function BomPage() {
     const editingId = editing.id ? Number(editing.id) : null
     if (!String(editing.product_sku || '').trim()) { toast('請填寫物料編號', 'error'); return }
     if (!String(editing.product_name || '').trim()) { toast('請填寫產品名稱', 'error'); return }
-    if (!editing.material_id) { toast('請選擇主料（面料）', 'error'); return }
     if (!String(editing.unit || '').trim()) { toast('請選擇單位', 'error'); return }
     if (!String(editing.currency || '').trim()) { toast('請選擇幣別', 'error'); return }
     if ((editing.items || []).some((item) => !item.material_id)) { toast('BOM 組合材料必須選擇有效材料', 'error'); return }
