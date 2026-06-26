@@ -74,16 +74,18 @@ const findBomForQuotationItem = (boms: BOM[], item: Partial<QItem> & { material_
   return undefined
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:    { label:'尚未審核', badge:'badge-gray'  },
-  approved: { label:'已審核', badge:'badge-green' },
-  sent:     { label:'已送出', badge:'badge-blue'  },
-  accepted: { label:'已接受', badge:'badge-green' },
-  rejected: { label:'已拒絕', badge:'badge-red'   },
+  draft:          { label:'草稿',   badge:'badge-gray'   },
+  pending_review: { label:'待審核', badge:'badge-yellow' },
+  approved:       { label:'已審核', badge:'badge-green'  },
+  sent:           { label:'已送出', badge:'badge-blue'   },
+  accepted:       { label:'已接受', badge:'badge-green'  },
+  rejected:       { label:'已拒絕', badge:'badge-red'    },
 }
 
 const STATUS_FILTERS = [
   { value: '', label: '全部' },
-  { value: 'draft', label: '尚未審核' },
+  { value: 'draft', label: '草稿' },
+  { value: 'pending_review', label: '待審核' },
   { value: 'approved', label: '已審核' },
   { value: 'sent', label: '已送出' },
   { value: 'accepted', label: '已接受' },
@@ -602,7 +604,10 @@ export default function QuotationsPage() {
                           <div className="flex items-center gap-1">
                             <button onClick={e=>{ e.stopPropagation(); printQuotation(q.id, q) }} className="rounded-lg px-2 py-1 text-xs text-[#7f5b36] transition hover:bg-[#f3e6d7]" title="列印">🖨 列印</button>
                             {q.status==='draft' && canWrite && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
-                            {q.status==='draft' && canApprove && <button onClick={e=>changeStatus(q.id,'approved',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">審核</button>}
+                            {q.status==='draft' && canWrite && <button onClick={e=>changeStatus(q.id,'pending_review',e)} className="rounded-lg px-2 py-1 text-xs text-amber-700 transition hover:bg-amber-50">提交審核</button>}
+                            {q.status==='pending_review' && canWrite && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
+                            {q.status==='pending_review' && canWrite && <button onClick={e=>changeStatus(q.id,'draft',e)} className="rounded-lg px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-50">退回草稿</button>}
+                            {q.status==='pending_review' && canApprove && <button onClick={e=>changeStatus(q.id,'approved',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">審核通過</button>}
                             {q.status==='approved' && canWrite && <button onClick={e=>changeStatus(q.id,'sent',e)} className="rounded-lg px-2 py-1 text-xs text-[#6d5b49] transition hover:bg-[#f3e6d7]">送出</button>}
                             {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'accepted',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">接受</button>}
                             {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'rejected',e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">拒絕</button>}

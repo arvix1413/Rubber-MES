@@ -3743,27 +3743,6 @@ app.post('/api/po', authMiddleware, requirePerm('po.create'), async c => {
       }
     }
     await audit(u, 'CREATE', '採購單', poId, poNum)
-
-    // 發送通知郵件（非阻塞）
-    ;(async () => {
-      try {
-        const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
-        const notifyEmail = co?.notification_email?.trim()
-        if (notifyEmail) {
-          const subTotal = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
-          const { subject, html } = buildPendingApprovalEmail({
-            type: '採購單',
-            number: poNum,
-            name: b.supplier_name,
-            createdBy: u.username || u.email || String(u.userId),
-            amount: subTotal,
-            currency: b.currency || 'VND',
-          })
-          await sendNotificationEmail({ to: notifyEmail, subject, html })
-        }
-      } catch {}
-    })()
-
     return c.json({ id: poId, po_number: poNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -3772,7 +3751,7 @@ app.put('/api/po/:id', authMiddleware, requirePerm('po.create'), async c => {
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const po = await queryOne<any>('SELECT status FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!po) return c.json({ error: 'Not found' }, 404)
-    if (po.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的採購單' }, 400)
+    if (!['draft', 'pending_review'].includes(po.status)) return c.json({ error: '只能編輯草稿或待審核狀態的採購單' }, 400)
     const subTotal = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     const taxRate = Math.min(25, Math.max(1, Number(b.tax_rate) || 8))
     const total = Math.round(subTotal * (1 + taxRate / 100) * 100) / 100
@@ -3793,9 +3772,9 @@ app.put('/api/po/:id', authMiddleware, requirePerm('po.create'), async c => {
 app.patch('/api/po/:id/approve', authMiddleware, requirePerm('po.approve'), async c => {
   try {
     const id = c.req.param('id'); const u = c.get('user')
-    const row = await queryOne<any>('SELECT po_number, status FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
+    const row = await queryOne<any>('SELECT po_number, status, supplier_name, total_amount, currency FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
-    if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的採購單才能審核' }, 400)
+    if (row.status !== 'pending_review') return c.json({ error: '只有待審核狀態的採購單才能審核通過' }, 400)
     await execute('UPDATE purchase_orders SET status=?,approved_by=?,approved_at=? WHERE id=?', ['approved',u.userId,now8(),id])
     await audit(u, 'APPROVE', '採購單', id, row?.po_number)
     return c.json({ ok: true })
@@ -3803,12 +3782,44 @@ app.patch('/api/po/:id/approve', authMiddleware, requirePerm('po.approve'), asyn
 })
 app.patch('/api/po/:id/status', authMiddleware, requirePerm('po.create'), async c => {
   try {
-    const id = c.req.param('id'); const { status } = await c.req.json()
-    const validStatuses = ['sent', 'cancelled']
+    const id = c.req.param('id'); const { status } = await c.req.json(); const u = c.get('user')
+    const validStatuses = ['pending_review', 'draft', 'sent', 'cancelled']
     if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400)
-    const row = await queryOne<any>('SELECT po_number FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
-    await execute('UPDATE purchase_orders SET status=? WHERE id=?', [status,id])
-    await audit(c.get('user'), 'STATUS_CHANGE', '採購單', id, `${row?.po_number} → ${status}`)
+    const row = await queryOne<any>('SELECT po_number, status, supplier_name, total_amount, currency FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
+    if (!row) return c.json({ error: 'Not found' }, 404)
+
+    if (status === 'pending_review') {
+      if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的採購單才能提交審核' }, 400)
+    } else if (status === 'draft') {
+      if (row.status !== 'pending_review') return c.json({ error: '只有待審核狀態的採購單才能退回草稿' }, 400)
+    } else if (status === 'sent') {
+      if (row.status !== 'approved') return c.json({ error: '只有已審核的採購單才能送出' }, 400)
+    }
+
+    await execute('UPDATE purchase_orders SET status=? WHERE id=?', [status, id])
+    await audit(u, 'STATUS_CHANGE', '採購單', id, `${row?.po_number} → ${status}`)
+
+    // 提交審核時發通知郵件（非阻塞）
+    if (status === 'pending_review') {
+      ;(async () => {
+        try {
+          const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
+          const notifyEmail = co?.notification_email?.trim()
+          if (notifyEmail) {
+            const { subject, html } = buildPendingApprovalEmail({
+              type: '採購單',
+              number: row.po_number,
+              name: row.supplier_name,
+              createdBy: u.username || u.email || String(u.userId),
+              amount: row.total_amount,
+              currency: row.currency || 'VND',
+            })
+            await sendNotificationEmail({ to: notifyEmail, subject, html })
+          }
+        } catch {}
+      })()
+    }
+
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -4702,26 +4713,6 @@ app.post('/api/quotations', authMiddleware, requirePerm('customer_order.create')
       }
     }
     await audit(u, 'CREATE', '報價單', qId, `${qNum} / ${b.customer_name}`)
-
-    // 發送通知郵件（非阻塞）
-    ;(async () => {
-      try {
-        const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
-        const notifyEmail = co?.notification_email?.trim()
-        if (notifyEmail) {
-          const { subject, html } = buildPendingApprovalEmail({
-            type: '報價單',
-            number: qNum,
-            name: b.customer_name,
-            createdBy: u.username || u.email || String(u.userId),
-            amount: total,
-            currency: b.currency || 'VND',
-          })
-          await sendNotificationEmail({ to: notifyEmail, subject, html })
-        }
-      } catch {}
-    })()
-
     return c.json({ id: qId, quotation_number: qNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -4730,7 +4721,7 @@ app.put('/api/quotations/:id', authMiddleware, requirePerm('customer_order.creat
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const existing = await queryOne<any>('SELECT status FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
-    if (existing.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的報價單' }, 400)
+    if (!['draft', 'pending_review'].includes(existing.status)) return c.json({ error: '只能編輯草稿或待審核狀態的報價單' }, 400)
     const total = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     await execute('UPDATE quotations SET customer_id=?,customer_name=?,currency=?,valid_until=?,remark=?,total_amount=? WHERE id=?',
       [b.customer_id||null, b.customer_name, b.currency||'VND', b.valid_until||null, b.remark||'', total, id])
@@ -4749,14 +4740,22 @@ app.put('/api/quotations/:id', authMiddleware, requirePerm('customer_order.creat
 app.patch('/api/quotations/:id/status', authMiddleware, async c => {
   try {
     const id = c.req.param('id'); const { status } = await c.req.json(); const user = c.get('user')
-    const validStatuses = ['approved', 'sent', 'accepted', 'rejected']
+    const validStatuses = ['pending_review', 'approved', 'sent', 'accepted', 'rejected', 'draft']
     if (!validStatuses.includes(status)) return c.json({ error: 'Invalid status' }, 400)
-    const row = await queryOne<any>('SELECT quotation_number,customer_name,status FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
+    const row = await queryOne<any>('SELECT quotation_number,customer_name,status,total_amount,currency FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
     if (!row) return c.json({ error: 'Not found' }, 404)
 
-    if (status === 'approved') {
+    if (status === 'pending_review') {
+      // 任何有 create 權限的人可以提交審核，只有 draft 可以提交
+      if (!await hasPermission(user, 'customer_order.create')) return c.json({ error: '無此操作權限（customer_order.create）' }, 403)
+      if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的報價單才能提交審核' }, 400)
+    } else if (status === 'draft') {
+      // 退回草稿（撤回提交）
+      if (!await hasPermission(user, 'customer_order.create')) return c.json({ error: '無此操作權限（customer_order.create）' }, 403)
+      if (row.status !== 'pending_review') return c.json({ error: '只有待審核狀態的報價單才能退回草稿' }, 400)
+    } else if (status === 'approved') {
       if (!await hasPermission(user, 'quotation.approve')) return c.json({ error: '無此操作權限（quotation.approve）' }, 403)
-      if (row.status !== 'draft') return c.json({ error: '只有草稿狀態的報價單才能審核' }, 400)
+      if (row.status !== 'pending_review') return c.json({ error: '只有待審核狀態的報價單才能審核通過' }, 400)
     } else if (status === 'sent') {
       if (!await hasPermission(user, 'customer_order.create')) return c.json({ error: '無此操作權限（customer_order.create）' }, 403)
       if (row.status !== 'approved') return c.json({ error: '只有已審核的報價單才能送出' }, 400)
@@ -4765,8 +4764,30 @@ app.patch('/api/quotations/:id/status', authMiddleware, async c => {
       if (row.status !== 'sent') return c.json({ error: '只有已送出的報價單才能更新結果' }, 400)
     }
 
-    await execute('UPDATE quotations SET status=? WHERE id=?', [status,id])
+    await execute('UPDATE quotations SET status=? WHERE id=?', [status, id])
     await audit(user, 'STATUS_CHANGE', '報價單', id, `${row?.quotation_number} ${row?.status} → ${status}`)
+
+    // 提交審核時發通知郵件（非阻塞）
+    if (status === 'pending_review') {
+      ;(async () => {
+        try {
+          const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
+          const notifyEmail = co?.notification_email?.trim()
+          if (notifyEmail) {
+            const { subject, html } = buildPendingApprovalEmail({
+              type: '報價單',
+              number: row.quotation_number,
+              name: row.customer_name,
+              createdBy: user.username || user.email || String(user.userId),
+              amount: row.total_amount,
+              currency: row.currency || 'VND',
+            })
+            await sendNotificationEmail({ to: notifyEmail, subject, html })
+          }
+        } catch {}
+      })()
+    }
+
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
