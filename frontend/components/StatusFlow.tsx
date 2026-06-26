@@ -176,3 +176,26 @@ export function getGRActions(status: string): StatusAction[] {
   if (status === 'draft') return [{ label: '審核', toStatus: 'confirmed', icon: '✓' }]
   return []
 }
+
+export const QT_STEPS: StatusStep[] = [
+  { key: 'draft',          label: '草稿',   color: 'gray'   },
+  { key: 'pending_review', label: '待審核', color: 'yellow' },
+  { key: 'approved',       label: '已審核', color: 'blue'   },
+  { key: 'sent',           label: '已送出', color: 'blue'   },
+  { key: 'accepted',       label: '已接受', color: 'green'  },
+  { key: 'rejected',       label: '已拒絕', color: 'red'    },
+]
+
+export function getQTActions(status: string): StatusAction[] {
+  if (status === 'draft')          return [{ label: '提交審核', toStatus: 'pending_review', icon: '📋', color: 'warning' }]
+  if (status === 'pending_review') return [
+    { label: '退回草稿', toStatus: 'draft', icon: '↩', color: 'danger' },
+    { label: '審核通過', toStatus: 'approved', icon: '✓', color: 'primary' },
+  ]
+  if (status === 'approved') return [{ label: '送出', toStatus: 'sent', icon: '📤' }]
+  if (status === 'sent')     return [
+    { label: '接受', toStatus: 'accepted', icon: '✓', color: 'primary' },
+    { label: '拒絕', toStatus: 'rejected', icon: '✕', color: 'danger' },
+  ]
+  return []
+}

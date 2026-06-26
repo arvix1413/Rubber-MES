@@ -11,6 +11,7 @@ import { getCompany, getCompanySignatureUrl } from '@/lib/useCompany'
 import { generateQuotationHTML, openQuotationPrint } from '@/lib/printQuotation'
 import { normalizeMoqTiers, resolveTierPrice } from '@/lib/moqPricing'
 import StatusCountChips from '@/components/StatusCountChips'
+import { StatusFlow, QT_STEPS, getQTActions } from '@/components/StatusFlow'
 import { can } from '@/lib/usePermissions'
 
 type MoqTier = { moq: number; price: number }
@@ -602,16 +603,19 @@ export default function QuotationsPage() {
                         <td className="px-4 py-3"><span className={sm.badge}>{sm.label}</span></td>
                         <td className="px-4 py-3" onClick={e => e.stopPropagation()}>
                           <div className="flex items-center gap-1">
-                            <button onClick={e=>{ e.stopPropagation(); printQuotation(q.id, q) }} className="rounded-lg px-2 py-1 text-xs text-[#7f5b36] transition hover:bg-[#f3e6d7]" title="列印">🖨 列印</button>
-                            {q.status==='draft' && canWrite && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
-                            {q.status==='draft' && canWrite && <button onClick={e=>changeStatus(q.id,'pending_review',e)} className="rounded-lg px-2 py-1 text-xs text-amber-700 transition hover:bg-amber-50">提交審核</button>}
-                            {q.status==='pending_review' && canWrite && <button onClick={e=>startEdit(q,e)} className="rounded-lg px-2 py-1 text-xs text-[#8d4a1d] transition hover:bg-[#f3e6d7]">✏ 編輯</button>}
-                            {q.status==='pending_review' && canWrite && <button onClick={e=>changeStatus(q.id,'draft',e)} className="rounded-lg px-2 py-1 text-xs text-slate-600 transition hover:bg-slate-50">退回草稿</button>}
-                            {q.status==='pending_review' && canApprove && <button onClick={e=>changeStatus(q.id,'approved',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">審核通過</button>}
-                            {q.status==='approved' && canWrite && <button onClick={e=>changeStatus(q.id,'sent',e)} className="rounded-lg px-2 py-1 text-xs text-[#6d5b49] transition hover:bg-[#f3e6d7]">送出</button>}
-                            {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'accepted',e)} className="rounded-lg px-2 py-1 text-xs text-emerald-700 transition hover:bg-emerald-50">接受</button>}
-                            {q.status==='sent' && canWrite && <button onClick={e=>changeStatus(q.id,'rejected',e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">拒絕</button>}
-                            {canDelete && <button onClick={e=>del(q.id,e)} className="rounded-lg px-2 py-1 text-xs text-red-700 transition hover:bg-red-50">刪除</button>}
+                            <StatusFlow compact steps={QT_STEPS} current={q.status}
+                              actions={getQTActions(q.status).filter(a => {
+                                if (a.toStatus === 'approved') return canApprove
+                                return canWrite
+                              })}
+                              onAction={async (toStatus) => {
+                                await changeStatus(q.id, toStatus, { stopPropagation: ()=>{} } as any)
+                              }} />
+                            <button onClick={e=>{ e.stopPropagation(); printQuotation(q.id, q) }} className="btn-ghost ml-1" title="列印">🖨 列印</button>
+                            {canWrite && (q.status === 'draft' || q.status === 'pending_review') && (
+                              <button onClick={e => startEdit(q, e)} className="btn-ghost text-blue-600">✏ 編輯</button>
+                            )}
+                            {canDelete && <button onClick={e=>del(q.id,e)} className="btn-danger">刪除</button>}
                           </div>
                         </td>
                       </tr>
