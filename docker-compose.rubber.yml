@@ -36,6 +36,8 @@ services:
       - DB_NAME=${MYSQL_DATABASE}
       - DB_USER=${MYSQL_USER}
       - DB_PASSWORD=${MYSQL_PASSWORD}
+      - RESEND_API_KEY=${RESEND_API_KEY}
+      - RESEND_FROM=${RESEND_FROM:-MES System <onboarding@resend.dev>}
     volumes:
       - ./uploads:/app/uploads
     depends_on:
