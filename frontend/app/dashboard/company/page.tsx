@@ -202,6 +202,27 @@ export default function CompanyPage() {
           ))}
         </div>
 
+        {/* 通知郵箱 */}
+        <div className="border-t border-slate-100 pt-5">
+          <h3 className="text-xs font-bold text-slate-700 mb-1">📧 審核通知設定</h3>
+          <p className="text-xs text-slate-400 mb-3">
+            設定後，每當有新的報價單或採購單建立（待審核），系統會自動發送通知郵件到指定信箱。
+          </p>
+          <div className="max-w-md">
+            <label className="block text-xs font-semibold text-slate-600 mb-1.5">
+              通知郵箱
+            </label>
+            <input
+              type="email"
+              className="rubber-input"
+              value={form.notification_email || ''}
+              placeholder="例如：manager@company.com"
+              onChange={(e) => setForm((p) => ({ ...p, notification_email: e.target.value }))}
+            />
+            <p className="mt-1 text-[11px] text-slate-400">留空則不發送通知郵件</p>
+          </div>
+        </div>
+
         <div>
           <button onClick={save} disabled={saving} className="btn-primary">
             {saving ? '儲存中...' : '儲存設定'}

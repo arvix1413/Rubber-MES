@@ -14,6 +14,7 @@ export type CompanySettings = {
   signature_url: string | null
   signature_print_width: number
   signature_print_height: number
+  notification_email: string
 }
 
 export const DEFAULT_COMPANY_NAME = 'KUNYI CO., LTD'
@@ -32,6 +33,7 @@ export const EMPTY_COMPANY_SETTINGS: CompanySettings = {
   signature_url: null,
   signature_print_width: 220,
   signature_print_height: 72,
+  notification_email: '',
 }
 
 export const FALLBACK_COMPANY_SETTINGS: CompanySettings = {

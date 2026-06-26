@@ -6,6 +6,7 @@ import { hashPw, signJwt, verifyJwt, now8 } from './auth'
 import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
+import { sendNotificationEmail, buildPendingApprovalEmail } from './mailer'
 
 type Variables = { user: any }
 const app = new Hono<{ Variables: Variables }>()
@@ -256,6 +257,24 @@ const ensureCompanySignaturePrintColumns = async () => {
     })
   }
   await ensureCompanySignaturePrintColumnsPromise
+}
+
+let ensureCompanyNotificationEmailPromise: Promise<void> | null = null
+const ensureCompanyNotificationEmail = async () => {
+  if (!ensureCompanyNotificationEmailPromise) {
+    ensureCompanyNotificationEmailPromise = (async () => {
+      try {
+        await execute("ALTER TABLE company_settings ADD COLUMN notification_email VARCHAR(255) NOT NULL DEFAULT ''")
+      } catch (e: any) {
+        const msg = String(e?.message || '').toLowerCase()
+        if (!msg.includes('duplicate column')) throw e
+      }
+    })().catch((e) => {
+      ensureCompanyNotificationEmailPromise = null
+      throw e
+    })
+  }
+  await ensureCompanyNotificationEmailPromise
 }
 
 let ensureCustomerOrderTrackingColumnsPromise: Promise<void> | null = null
@@ -3724,6 +3743,27 @@ app.post('/api/po', authMiddleware, requirePerm('po.create'), async c => {
       }
     }
     await audit(u, 'CREATE', '採購單', poId, poNum)
+
+    // 發送通知郵件（非阻塞）
+    ;(async () => {
+      try {
+        const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
+        const notifyEmail = co?.notification_email?.trim()
+        if (notifyEmail) {
+          const subTotal = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
+          const { subject, html } = buildPendingApprovalEmail({
+            type: '採購單',
+            number: poNum,
+            name: b.supplier_name,
+            createdBy: u.username || u.email || String(u.userId),
+            amount: subTotal,
+            currency: b.currency || 'VND',
+          })
+          await sendNotificationEmail({ to: notifyEmail, subject, html })
+        }
+      } catch {}
+    })()
+
     return c.json({ id: poId, po_number: poNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -4662,6 +4702,26 @@ app.post('/api/quotations', authMiddleware, requirePerm('customer_order.create')
       }
     }
     await audit(u, 'CREATE', '報價單', qId, `${qNum} / ${b.customer_name}`)
+
+    // 發送通知郵件（非阻塞）
+    ;(async () => {
+      try {
+        const co = await queryOne<any>('SELECT notification_email FROM company_settings WHERE id=1')
+        const notifyEmail = co?.notification_email?.trim()
+        if (notifyEmail) {
+          const { subject, html } = buildPendingApprovalEmail({
+            type: '報價單',
+            number: qNum,
+            name: b.customer_name,
+            createdBy: u.username || u.email || String(u.userId),
+            amount: total,
+            currency: b.currency || 'VND',
+          })
+          await sendNotificationEmail({ to: notifyEmail, subject, html })
+        }
+      } catch {}
+    })()
+
     return c.json({ id: qId, quotation_number: qNum }, 201)
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -7382,6 +7442,7 @@ app.get('/api/company', async c => {
   try {
     await ensureCompanySignatureColumn()
     await ensureCompanySignaturePrintColumns()
+    await ensureCompanyNotificationEmail()
     const row = await queryOne<any>('SELECT * FROM company_settings WHERE id=1')
     if (!row) {
       return c.json({
@@ -7397,6 +7458,7 @@ app.get('/api/company', async c => {
         signature_url: null,
         signature_print_width: 220,
         signature_print_height: 72,
+        notification_email: '',
       })
     }
     return c.json(row)
@@ -7406,15 +7468,17 @@ app.put('/api/company', authMiddleware, requireManager, async c => {
   try {
     await ensureCompanySignatureColumn()
     await ensureCompanySignaturePrintColumns()
+    await ensureCompanyNotificationEmail()
     const b = await c.req.json(); const u = c.get('user')
     const signaturePrintWidth = Math.max(120, Math.min(320, Number(b.signature_print_width) || 220))
     const signaturePrintHeight = Math.max(48, Math.min(140, Number(b.signature_print_height) || 72))
+    const notificationEmail = String(b.notification_email || '').trim()
     // Upsert
-    await execute(`INSERT INTO company_settings (id,company_name,company_name_local,address,phone,contact_person,email,tax_id,logo_url,signature_url,signature_print_width,signature_print_height)
-      VALUES (1,?,?,?,?,?,?,?,?,?,?,?)
-      ON DUPLICATE KEY UPDATE company_name=?,company_name_local=?,address=?,phone=?,contact_person=?,email=?,tax_id=?,logo_url=?,signature_url=?,signature_print_width=?,signature_print_height=?`,
-      [b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null,signaturePrintWidth,signaturePrintHeight,
-       b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null,signaturePrintWidth,signaturePrintHeight])
+    await execute(`INSERT INTO company_settings (id,company_name,company_name_local,address,phone,contact_person,email,tax_id,logo_url,signature_url,signature_print_width,signature_print_height,notification_email)
+      VALUES (1,?,?,?,?,?,?,?,?,?,?,?,?)
+      ON DUPLICATE KEY UPDATE company_name=?,company_name_local=?,address=?,phone=?,contact_person=?,email=?,tax_id=?,logo_url=?,signature_url=?,signature_print_width=?,signature_print_height=?,notification_email=?`,
+      [b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null,signaturePrintWidth,signaturePrintHeight,notificationEmail,
+       b.company_name,b.company_name_local||'',b.address||'',b.phone||'',b.contact_person||'',b.email||'',b.tax_id||'',b.logo_url||null,b.signature_url||null,signaturePrintWidth,signaturePrintHeight,notificationEmail])
     await audit(u, 'UPDATE', '公司設定', 1, b.company_name)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
