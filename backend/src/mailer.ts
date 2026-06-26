@@ -24,8 +24,8 @@ export async function sendNotificationEmail({
     const { error } = await getResend().emails.send({ from, to, subject, html })
     if (error) console.error('[mailer] Resend error:', error)
     else console.log(`[mailer] Email sent to ${to}: ${subject}`)
-  } catch (e) {
-    console.error('[mailer] Failed to send email:', e)
+  } catch (e: any) {
+    console.error('[mailer] Failed to send email:', e?.message || e)
   }
 }
 
@@ -44,8 +44,8 @@ export function buildPendingApprovalEmail({
   amount?: number
   currency?: string
 }) {
-  const amountStr = amount != null
-    ? `<tr><td style="padding:6px 16px;color:#64748b;font-size:13px">金額</td><td style="padding:6px 16px;font-weight:600;font-size:13px">${Number(amount).toLocaleString()} ${currency || ''}</td></tr>`
+  const amountRow = amount != null
+    ? `<tr><td style="padding:10px 16px;color:#64748b;font-size:13px">金額</td><td style="padding:10px 16px;font-weight:600;font-size:13px">${Number(amount).toLocaleString()} ${currency || ''}</td></tr>`
     : ''
 
   return {
@@ -53,12 +53,10 @@ export function buildPendingApprovalEmail({
     html: `
 <div style="font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Arial,sans-serif;max-width:560px;margin:0 auto;background:#f8fafc;padding:24px">
   <div style="background:#fff;border-radius:10px;padding:32px;box-shadow:0 1px 3px rgba(0,0,0,0.08)">
-
     <div style="display:flex;align-items:center;gap:10px;margin-bottom:24px">
       <div style="width:8px;height:8px;border-radius:50%;background:#f59e0b;flex-shrink:0"></div>
       <h2 style="margin:0;font-size:17px;font-weight:700;color:#1e293b">新${type}待審核</h2>
     </div>
-
     <table style="width:100%;border-collapse:collapse;margin-bottom:24px;background:#f8fafc;border-radius:8px;overflow:hidden">
       <tr>
         <td style="padding:10px 16px;color:#64748b;font-size:13px;width:90px">單號</td>
@@ -68,17 +66,15 @@ export function buildPendingApprovalEmail({
         <td style="padding:10px 16px;color:#64748b;font-size:13px">${type === '報價單' ? '客戶' : '供應商'}</td>
         <td style="padding:10px 16px;font-size:13px;color:#1e293b">${name}</td>
       </tr>
-      ${amountStr}
+      ${amountRow}
       <tr style="background:#fff">
         <td style="padding:10px 16px;color:#64748b;font-size:13px">建立人</td>
         <td style="padding:10px 16px;font-size:13px;color:#1e293b">${createdBy}</td>
       </tr>
     </table>
-
     <p style="color:#64748b;font-size:13px;line-height:1.6;margin:0 0 20px">
       請登入 MES 系統進行審核。
     </p>
-
   </div>
   <p style="text-align:center;color:#94a3b8;font-size:11px;margin-top:16px">
     此郵件由 MES 系統自動發送，請勿回覆
