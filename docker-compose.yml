@@ -39,12 +39,7 @@ services:
       - DB_USER=${MYSQL_USER}
       - DB_PASSWORD=${MYSQL_PASSWORD}
       - RESEND_API_KEY=${RESEND_API_KEY}
-      - RESEND_FROM=${RESEND_FROM:-MES System <onboarding@resend.dev>}
-      - SMTP_HOST=${SMTP_HOST:-vdc-whm-cheaphosting-1112.vinahost.org}
-      - SMTP_PORT=${SMTP_PORT:-465}
-      - SMTP_USER=${SMTP_USER:-noreply@kunyi.vn}
-      - SMTP_PASS=${SMTP_PASS}
-      - SMTP_FROM=${SMTP_FROM:-MES System <noreply@kunyi.vn>}
+      - RESEND_FROM=${RESEND_FROM:-MES System <noreply@kunyi.vn>}
     volumes:
       - ./uploads:/app/uploads
     depends_on:

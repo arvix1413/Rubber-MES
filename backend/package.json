@@ -13,11 +13,10 @@
     "hono": "^4.12.9",
     "jose": "^5.9.6",
     "mysql2": "^3.11.5",
-    "nodemailer": "^6.9.16"
+    "resend": "^4.0.1"
   },
   "devDependencies": {
     "@types/node": "^22.0.0",
-    "@types/nodemailer": "^6.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3"
   }
