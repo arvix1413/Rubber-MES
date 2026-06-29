@@ -9,10 +9,12 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.7",
+    "@types/nodemailer": "^6.4.17",
     "dotenv": "^17.4.1",
     "hono": "^4.12.9",
     "jose": "^5.9.6",
     "mysql2": "^3.11.5",
+    "nodemailer": "^6.9.16",
     "resend": "^4.0.1"
   },
   "devDependencies": {

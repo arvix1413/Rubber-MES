@@ -1,9 +1,18 @@
-import { Resend } from 'resend'
+import nodemailer from 'nodemailer'
 
-let _resend: Resend | null = null
-function getResend() {
-  if (!_resend) _resend = new Resend(process.env.RESEND_API_KEY)
-  return _resend
+function getTransporter() {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST || 'vdc-whm-cheaphosting-1112.vinahost.org',
+    port: Number(process.env.SMTP_PORT) || 465,
+    secure: true, // SSL on port 465
+    auth: {
+      user: process.env.SMTP_USER || 'noreply@kunyi.vn',
+      pass: process.env.SMTP_PASS,
+    },
+    tls: {
+      rejectUnauthorized: false, // VinaHost uses self-signed cert
+    },
+  })
 }
 
 export async function sendNotificationEmail({
@@ -15,15 +24,14 @@ export async function sendNotificationEmail({
   subject: string
   html: string
 }) {
-  if (!process.env.RESEND_API_KEY) {
-    console.warn('[mailer] RESEND_API_KEY not set, skipping email')
+  if (!process.env.SMTP_PASS) {
+    console.warn('[mailer] SMTP_PASS not set, skipping email')
     return
   }
   try {
-    const from = process.env.RESEND_FROM || 'MES System <noreply@kunyi.vn>'
-    const { error } = await getResend().emails.send({ from, to, subject, html })
-    if (error) console.error('[mailer] Resend error:', error)
-    else console.log(`[mailer] Email sent to ${to}: ${subject}`)
+    const from = process.env.SMTP_FROM || 'MES System <noreply@kunyi.vn>'
+    await getTransporter().sendMail({ from, to, subject, html })
+    console.log(`[mailer] Email sent to ${to}: ${subject}`)
   } catch (e: any) {
     console.error('[mailer] Failed to send email:', e?.message || e)
   }
@@ -57,7 +65,7 @@ export function buildPendingApprovalEmail({
   const accentLight = isQT ? '#e0f2fe' : '#fef3c7'
   const typeLabel = isQT ? '報價單' : '採購單'
   const partyLabel = isQT ? '客戶' : '供應商'
-  const loginUrl = systemUrl || (isQT ? 'http://43.160.199.226:10101' : 'http://43.160.199.226:10101')
+  const loginUrl = systemUrl || 'http://43.160.199.226:10101'
 
   const amountFormatted = amount != null
     ? `${Number(amount).toLocaleString('en-US', { minimumFractionDigits: 0, maximumFractionDigits: 2 })} ${currency || 'VND'}`
