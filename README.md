@@ -341,111 +341,54 @@ node scripts/daily-patrol.mjs
 
 如果要改交期、数量核对、发票、库存、软删除或部署，请默认这是系统级改动，而不是单页改动。
 
-## 14. TODO: 将邮件服务从 Resend 改为 VinaHost SMTP
+## 14. 邮件服务：Resend（当前方案）
 
-目前 `backend/src/mailer.ts` 使用 Resend 发信，发件人显示的是 Resend 的域名而不是 `noreply@kunyi.vn`。需要改成直接用 VinaHost 的 SMTP 服务器发信。
+目前 `backend/src/mailer.ts` 使用 **Resend** 作为邮件服务提供商。
 
-### 当前状态
-- 邮件逻辑文件：[backend/src/mailer.ts](/Users/leo_w/Workspace/codes/ern-projects/Rubber-MES/backend/src/mailer.ts)
-- 现在用 Resend SDK（`resend` npm 包），`from` 写的是 `noreply@kunyi.vn` 但实际发件人还是 Resend 的域名
-- 根本原因：`kunyi.vn` 的 SPF 记录在 VinaHost cPanel 已经更新，但 DNS 传播需要等待
+### 当前状态（2026-06-30）
 
-### DNS 记录状态（2026-06-29 已操作）
-- ✅ `resend._domainkey.kunyi.vn` — DKIM 已存在（Resend 用）
-- ✅ `default._domainkey.kunyi.vn` — cPanel 自带 DKIM
-- ✅ `_dmarc.kunyi.vn` — `v=DMARC1; p=none;`
-- ⏳ SPF `kunyi.vn` — cPanel 区域文件已更新为 `v=spf1 +a +mx +ip4:103.9.76.10 +ip4:123.30.129.241 ~all`，但外部 DNS 传播还未完成（TTL 14400）
+**已完成：**
+- ✅ 使用 Resend API 发送邮件
+- ✅ 发件人：`Rubber MES <noreply@updates.ern-rubber.com>`
+- ✅ 可靠性高，无需配置 DNS SPF
+- ✅ Resend 已配置好域名验证
 
-### 待完成步骤
+### 环境变量
 
-**Step 1 — 确认 DNS 传播完成**
+服务器 `/opt/rubber/.env` 需要配置：
+
 ```bash
-dig TXT kunyi.vn +short @8.8.8.8
-# 期望结果包含 ip4:103.9.76.10
+RESEND_API_KEY=re_TwNfHgba_P6T6tLAVUdjLAHS5g8oZ9M8o
 ```
 
-**Step 2 — 安装 nodemailer**
+### 测试邮件发送
+
 ```bash
-cd backend
-npm install nodemailer@6.9.16 @types/nodemailer@6.4.17 --save
+# 在服务器上测试
+curl -X POST http://localhost:10102/api/test-email \
+  -H "Content-Type: application/json" \
+  -d '{"to":"wxfaigl@gmail.com","subject":"Test","html":"<p>Test</p>"}'
 ```
 
-**Step 3 — 改写 mailer.ts**
+### 发件人域名
 
-将 `backend/src/mailer.ts` 从 Resend 改为 nodemailer SMTP：
+- 使用 Resend 验证的域名 `updates.ern-rubber.com`
+- 无需配置 kunyi.vn 的 DNS SPF 记录
+- Resend 自动处理 SPF/DKIM/DMARC
 
-```typescript
-import nodemailer from 'nodemailer'
+### 相关文件
 
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'vdc-whm-cheaphosting-1112.vinahost.org',
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: true, // SSL
-    auth: {
-      user: process.env.SMTP_USER || 'noreply@kunyi.vn',
-      pass: process.env.SMTP_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false, // VinaHost 用自签证书
-    },
-  })
-}
+- `backend/src/mailer.ts` - 邮件发送逻辑
+- `backend/package.json` - resend 依赖
+- `docker-compose.yml` - RESEND_API_KEY 环境变量
 
-export async function sendNotificationEmail({
-  to,
-  subject,
-  html,
-}: {
-  to: string
-  subject: string
-  html: string
-}) {
-  if (!process.env.SMTP_PASS) {
-    console.warn('[mailer] SMTP_PASS not set, skipping email')
-    return
-  }
-  try {
-    const from = process.env.SMTP_FROM || 'MES System <noreply@kunyi.vn>'
-    await getTransporter().sendMail({ from, to, subject, html })
-    console.log(`[mailer] Email sent to ${to}: ${subject}`)
-  } catch (e: any) {
-    console.error('[mailer] Failed to send email:', e?.message || e)
-  }
-}
-```
+---
 
-**Step 4 — 更新后端环境变量**
+### 历史记录：VinaHost SMTP 方案（已废弃）
 
-在服务器 `/opt/rubber/` 的 `.env` 或 `docker-compose.yml` 里加入：
-```
-SMTP_HOST=vdc-whm-cheaphosting-1112.vinahost.org
-SMTP_PORT=465
-SMTP_USER=noreply@kunyi.vn
-SMTP_PASS=Notify@Kunyi2026!
-SMTP_FROM=KunYi System <noreply@kunyi.vn>
-```
-同时移除 `RESEND_API_KEY` / `RESEND_FROM`。
+之前尝试使用 VinaHost SMTP 直接发送，但遇到以下问题：
+- kunyi.vn 有 3 条 SPF 记录（DNS 规范只允许 1 条）
+- 部分记录被系统保护，cPanel 用户权限无法删除
+- 需要联系 VinaHost 技术支持清理 DNS 记录
 
-**Step 5 — 本地验证**
-```bash
-# 用 python 快速测试 SMTP 是否通
-python3 -c "
-import smtplib, ssl
-from email.mime.text import MIMEText
-msg = MIMEText('test', 'plain', 'utf-8')
-msg['Subject'] = 'SMTP test'
-msg['From'] = 'noreply@kunyi.vn'
-msg['To'] = 'your@email.com'
-ctx = ssl.create_default_context()
-ctx.check_hostname = False
-ctx.verify_mode = ssl.CERT_NONE
-with smtplib.SMTP_SSL('vdc-whm-cheaphosting-1112.vinahost.org', 465, context=ctx) as s:
-    s.login('noreply@kunyi.vn', 'Notify@Kunyi2026!')
-    s.sendmail('noreply@kunyi.vn', ['your@email.com'], msg.as_string())
-    print('ok')
-"
-```
-
-### VinaHost SMTP 凭据
-凭据在 `scripts/.secrets.env`，key 名为 `SMTP_HOST` / `SMTP_PORT` / `SMTP_USER` / `SMTP_PASS` / `SMTP_FROM`。
+**决定改回 Resend** 以避免 DNS 配置复杂度。

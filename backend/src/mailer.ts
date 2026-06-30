@@ -1,19 +1,4 @@
-import nodemailer from 'nodemailer'
-
-function getTransporter() {
-  return nodemailer.createTransport({
-    host: process.env.SMTP_HOST || 'vdc-whm-cheaphosting-1112.vinahost.org',
-    port: Number(process.env.SMTP_PORT) || 465,
-    secure: true, // SSL on port 465
-    auth: {
-      user: process.env.SMTP_USER || 'noreply@kunyi.vn',
-      pass: process.env.SMTP_PASS,
-    },
-    tls: {
-      rejectUnauthorized: false, // VinaHost uses self-signed cert
-    },
-  })
-}
+import { Resend } from 'resend'
 
 export async function sendNotificationEmail({
   to,
@@ -24,14 +9,27 @@ export async function sendNotificationEmail({
   subject: string
   html: string
 }) {
-  if (!process.env.SMTP_PASS) {
-    console.warn('[mailer] SMTP_PASS not set, skipping email')
+  const apiKey = process.env.RESEND_API_KEY
+  if (!apiKey) {
+    console.warn('[mailer] RESEND_API_KEY not set, skipping email')
     return
   }
+
   try {
-    const from = process.env.SMTP_FROM || 'MES System <noreply@kunyi.vn>'
-    await getTransporter().sendMail({ from, to, subject, html })
-    console.log(`[mailer] Email sent to ${to}: ${subject}`)
+    const resend = new Resend(apiKey)
+    const { data, error } = await resend.emails.send({
+      from: 'Rubber MES <noreply@updates.ern-rubber.com>',
+      to: [to],
+      subject,
+      html,
+    })
+
+    if (error) {
+      console.error('[mailer] Resend error:', error)
+      return
+    }
+
+    console.log(`[mailer] Email sent to ${to}: ${subject} (${data?.id})`)
   } catch (e: any) {
     console.error('[mailer] Failed to send email:', e?.message || e)
   }
