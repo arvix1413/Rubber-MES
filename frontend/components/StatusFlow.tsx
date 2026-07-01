@@ -99,7 +99,7 @@ export function StatusFlow({ steps, current, actions, onAction, compact = false 
 
 export const PO_STEPS: StatusStep[] = [
   { key: 'draft',          label: '草稿',   color: 'gray'   },
-  { key: 'pending_review', label: '待審核', color: 'yellow' },
+  { key: 'pending_review', label: '審核中', color: 'yellow' },
   { key: 'approved',       label: '已審核', color: 'blue'   },
   { key: 'sent',           label: '已送出', color: 'blue'   },
   { key: 'received',       label: '已收貨', color: 'green'  },
@@ -139,7 +139,7 @@ export const CO_STEPS: StatusStep[] = [
 ]
 
 export function getPOActions(status: string): StatusAction[] {
-  if (status === 'draft')          return [{ label: '提交審核', toStatus: 'pending_review', icon: '📋', color: 'warning' }]
+  if (status === 'draft')          return [{ label: '送審', toStatus: 'pending_review', icon: '📋', color: 'warning' }]
   if (status === 'pending_review') return [{ label: '審核通過', toStatus: 'approved', icon: '✓', color: 'primary' }]
   if (status === 'approved') return [{ label: '送出', toStatus: 'sent', icon: '📤' }]
   if (status === 'sent')     return [{ label: '確認收貨', toStatus: 'received', icon: '📦', color: 'primary' }]
@@ -176,7 +176,7 @@ export function getGRActions(status: string): StatusAction[] {
 
 export const QT_STEPS: StatusStep[] = [
   { key: 'draft',          label: '草稿',   color: 'gray'   },
-  { key: 'pending_review', label: '待審核', color: 'yellow' },
+  { key: 'pending_review', label: '審核中', color: 'yellow' },
   { key: 'approved',       label: '已審核', color: 'blue'   },
   { key: 'sent',           label: '已送出', color: 'blue'   },
   { key: 'accepted',       label: '已接受', color: 'green'  },
@@ -184,7 +184,7 @@ export const QT_STEPS: StatusStep[] = [
 ]
 
 export function getQTActions(status: string): StatusAction[] {
-  if (status === 'draft')          return [{ label: '提交審核', toStatus: 'pending_review', icon: '📋', color: 'warning' }]
+  if (status === 'draft')          return [{ label: '送審', toStatus: 'pending_review', icon: '📋', color: 'warning' }]
   if (status === 'pending_review') return [{ label: '審核通過', toStatus: 'approved', icon: '✓', color: 'primary' }]
   if (status === 'approved') return [{ label: '送出', toStatus: 'sent', icon: '📤' }]
   if (status === 'sent')     return [

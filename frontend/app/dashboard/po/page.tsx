@@ -29,7 +29,7 @@ type PoItemExt = PoItem & {
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
   draft:          { label:'草稿',   badge:'badge-gray'   },
-  pending_review: { label:'待審核', badge:'badge-yellow' },
+  pending_review: { label:'審核中', badge:'badge-yellow' },
   approved:       { label:'已審核', badge:'badge-green'  },
   sent:           { label:'已送出', badge:'badge-blue'   },
   received:       { label:'已收貨', badge:'badge-purple' },
@@ -39,7 +39,7 @@ const STATUS_MAP: Record<string,{label:string;badge:string}> = {
 const STATUS_FILTERS = [
   { value: '', label: '全部' },
   { value: 'draft', label: '草稿' },
-  { value: 'pending_review', label: '待審核' },
+  { value: 'pending_review', label: '審核中' },
   { value: 'approved', label: '已審核' },
   { value: 'sent', label: '已送出' },
   { value: 'received', label: '已收貨' },
