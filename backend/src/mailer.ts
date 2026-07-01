@@ -18,7 +18,7 @@ export async function sendNotificationEmail({
   try {
     const resend = new Resend(apiKey)
     const { data, error } = await resend.emails.send({
-      from: 'Rubber MES <noreply@updates.ern-rubber.com>',
+      from: 'Rubber MES <onboarding@resend.dev>',
       to: [to],
       subject,
       html,
