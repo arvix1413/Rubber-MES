@@ -86,6 +86,7 @@ export default function PoPage() {
   const [unitPriceInputs, setUnitPriceInputs] = useState<Record<number, string>>({})
   const canWrite = can('po.create')
   const canApprove = can('po.approve')
+  const canReceive = can('po.receive')
   const canDel = can('po.delete')
 
   const loadPoItems = async (id: number) => {
@@ -724,7 +725,7 @@ export default function PoPage() {
                             <StatusFlow compact steps={PO_STEPS} current={p.status}
                               actions={getPOActions(p.status).filter(a => {
                                 if (a.toStatus === 'approved') return canApprove
-                                if (a.toStatus === 'received') return canApprove
+                                if (a.toStatus === 'received') return canReceive
                                 return canWrite
                               })}
                               onAction={async (toStatus) => {

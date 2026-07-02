@@ -2904,7 +2904,8 @@ const ALL_PERMISSIONS = [
   { key: 'bom.edit', label: '編輯BOM' },
   { key: 'bom.delete', label: '刪除BOM' },
   { key: 'po.create', label: '新增採購單' },
-  { key: 'po.approve', label: '審核採購單' },
+  { key: 'po.approve', label: '審核採購單（送出→審核）' },
+  { key: 'po.receive', label: '確認收貨（已送出→已收貨）' },
   { key: 'po.delete', label: '刪除採購單' },
   { key: 'production.create', label: '新增生產單' },
   { key: 'production.delete', label: '刪除生產單' },
@@ -3833,7 +3834,7 @@ app.delete('/api/po/:id', authMiddleware, requirePerm('po.delete'), async c => {
 })
 
 // 採購單收貨：更新材料庫存
-app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.approve'), async c => {
+app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.receive'), async c => {
   try {
     const id = c.req.param('id'); const u = c.get('user')
     const po = await queryOne<any>('SELECT * FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
