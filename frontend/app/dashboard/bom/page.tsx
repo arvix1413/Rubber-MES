@@ -182,6 +182,7 @@ export default function BomPage() {
     const editingId = editing.id ? Number(editing.id) : null
     if (!String(editing.product_sku || '').trim()) { toast('請填寫物料編號', 'error'); return }
     if (!String(editing.product_name || '').trim()) { toast('請填寫產品名稱', 'error'); return }
+    if (!editing.material_id) { toast('請選擇關聯材料', 'error'); return }
     if (!String(editing.unit || '').trim()) { toast('請選擇單位', 'error'); return }
     if (!String(editing.currency || '').trim()) { toast('請選擇幣別', 'error'); return }
     if ((editing.items || []).some((item) => !item.material_id)) { toast('BOM 組合材料必須選擇有效材料', 'error'); return }
@@ -407,6 +408,34 @@ export default function BomPage() {
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">產品名稱 *</label>
                 <input className={inp} value={editing.product_name||''} onChange={e=>setEditing(p=>({...p,product_name:e.target.value}))} />
+              </div>
+              <div className="col-span-2">
+                <label className="block text-[11px] text-slate-500 mb-1.5">關聯材料 * <span className="text-slate-400">（選擇後將自動帶入供應商、單價等資料）</span></label>
+                <div className="flex items-center gap-2">
+                  <div className="flex-1">
+                    <SearchableSelect
+                      options={materials}
+                      value={headerMaterialId}
+                      onChange={applyMaterialToHeader}
+                      placeholder="-- 搜尋並選擇材料 --"
+                      renderOption={(m) => `${m.material_code} — ${m.material_name}${m.spec ? ` (${m.spec})` : ''}`}
+                      filterFn={(m, search) =>
+                        m.material_code.toLowerCase().includes(search) ||
+                        m.material_name.toLowerCase().includes(search) ||
+                        (m.spec || '').toLowerCase().includes(search)
+                      }
+                    />
+                  </div>
+                  {headerMaterialId && (
+                    <button
+                      type="button"
+                      className="text-xs text-slate-400 hover:text-red-500 shrink-0"
+                      onClick={() => applyMaterialToHeader('')}
+                    >
+                      清除
+                    </button>
+                  )}
+                </div>
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">單位</label>
