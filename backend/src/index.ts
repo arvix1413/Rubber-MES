@@ -2280,7 +2280,10 @@ const parsePositiveInt = (raw: any, fallback: number, max: number): number => {
   return Math.min(v, max)
 }
 
-const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; material_code: string }>): Promise<Map<string, number>> => {
+const buildOrderItemIdMap = async (
+  pairs: Array<{ customer_order_id: number; material_code: string }>,
+  db?: DbExecutor,
+): Promise<Map<string, number>> => {
   const keyMap = new Map<string, number>()
   const orderIds = Array.from(new Set(pairs.map((p) => Number(p.customer_order_id)).filter((x) => Number.isFinite(x) && x > 0)))
   const materialCodes = Array.from(new Set(pairs.map((p) => String(p.material_code || '').trim()).filter(Boolean)))
@@ -2308,7 +2311,7 @@ const buildOrderItemIdMap = async (pairs: Array<{ customer_order_id: number; mat
         )
       )
     ORDER BY ci.id ASC
-  `, [...orderIds, ...materialCodes, ...materialCodes, ...materialCodes])
+  `, [...orderIds, ...materialCodes, ...materialCodes, ...materialCodes], db)
   for (const row of rows) {
     const orderId = Number(row.customer_order_id || 0)
     const materialCode = String(row.material_code || '').trim()
@@ -5384,6 +5387,104 @@ app.get('/api/order-intake/export/csv', authMiddleware, async c => {
   }
 })
 
+/**
+ * A reconciliation is an immutable record of a completed shipment, not a
+ * second approval gate. Create the header and every line atomically so a
+ * duplicate/invalid line can never leave an empty header behind.
+ */
+const createShipmentReconciliationRecord = async (deliveryNoteId: number, user: any) => {
+  return withTransaction(async (tx) => {
+    const deliveryNote = await queryOne<any>(`
+      SELECT id, dn_number, delivery_date
+      FROM delivery_notes
+      WHERE id=? AND status='shipped' AND deleted_at IS NULL
+      FOR UPDATE
+    `, [deliveryNoteId], tx)
+    if (!deliveryNote) throw new Error('已出貨單不存在')
+
+    const sources = await query<any>(`
+      SELECT
+        dni.id as delivery_note_item_id,
+        dni.order_item_id,
+        dn.id as delivery_note_id,
+        dn.customer_order_id,
+        dni.po_ref,
+        COALESCE(NULLIF(TRIM(dni.po_ref), ''), co.po_number) as po_number,
+        dni.material_code,
+        COALESCE(NULLIF(m.material_name, ''), NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
+        COALESCE(m.supplier_id, b.supplier_id) as supplier_id,
+        COALESCE(ms.name, s.name, '') as supplier_name,
+        COALESCE(NULLIF(m.unit, ''), NULLIF(dni.unit, ''), 'PCS') as unit,
+        COALESCE(dni.qty, 0) as shipped_qty
+      FROM delivery_note_items dni
+      JOIN delivery_notes dn ON dn.id = dni.dn_id
+      LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
+      LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
+      LEFT JOIN materials m ON dni.material_id=m.id AND m.deleted_at IS NULL
+      LEFT JOIN bom b ON b.product_sku=dni.material_code AND b.deleted_at IS NULL
+      LEFT JOIN suppliers ms ON ms.id=m.supplier_id AND ms.deleted_at IS NULL
+      LEFT JOIN suppliers s ON s.id=b.supplier_id AND s.deleted_at IS NULL
+      WHERE dni.dn_id=? AND dni.deleted_at IS NULL AND sri.id IS NULL
+      ORDER BY dni.id ASC
+      FOR UPDATE
+    `, [deliveryNoteId], tx)
+
+    // Idempotent: a repeated request for an already-recorded shipment is OK.
+    if (!sources.length) return null
+
+    const reconciliationNo = `RC${Date.now()}`
+    const createdAt = now8()
+    const header = await execute(`
+      INSERT INTO shipment_reconciliations
+        (reconciliation_no, reconcile_date, status, remark, created_by, confirmed_by, confirmed_at, created_at)
+      VALUES (?,?,?,?,?,?,?,?)
+    `, [
+      reconciliationNo,
+      deliveryNote.delivery_date ? toDateStr(deliveryNote.delivery_date) : null,
+      'confirmed',
+      `系統依出貨單 ${deliveryNote.dn_number || deliveryNoteId} 自動建立`,
+      user?.userId || null,
+      user?.userId || null,
+      createdAt,
+      createdAt,
+    ], tx)
+
+    const orderItemIdMap = await buildOrderItemIdMap(sources.map((src: any) => ({
+      customer_order_id: Number(src.customer_order_id || 0),
+      material_code: String(src.material_code || ''),
+    })), tx)
+
+    for (const src of sources) {
+      const resolvedFromProgress = String(src.po_ref || '').trim()
+        ? await resolveOrderItemIdFromProgress(Number(src.delivery_note_item_id), tx)
+        : null
+      const orderItemId = resolvedFromProgress
+        || Number(src.order_item_id || 0)
+        || orderItemIdMap.get(`${Number(src.customer_order_id || 0)}::${String(src.material_code || '').trim()}`)
+        || null
+      if (resolvedFromProgress && resolvedFromProgress !== Number(src.order_item_id || 0)) {
+        await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [resolvedFromProgress, src.delivery_note_item_id], tx)
+      }
+      const shippedQty = toQty(src.shipped_qty)
+      await execute(`
+        INSERT INTO shipment_reconciliation_items
+          (reconciliation_id, delivery_note_id, delivery_note_item_id, customer_order_id, order_item_id, po_number,
+           material_code, material_name, supplier_id, supplier_name, unit, shipped_qty, accepted_qty,
+           difference_qty, difference_reason, created_at)
+        VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+      `, [
+        header.insertId, src.delivery_note_id, src.delivery_note_item_id, src.customer_order_id || null,
+        orderItemId, src.po_number || '', src.material_code || '', src.material_name || '',
+        src.supplier_id || null, src.supplier_name || '', src.unit || 'PCS', shippedQty, shippedQty,
+        0, '', createdAt,
+      ], tx)
+    }
+
+    await audit(user, 'CREATE', '出貨核對紀錄', header.insertId, `${reconciliationNo} / ${deliveryNote.dn_number}`, tx)
+    return { id: header.insertId, reconciliation_no: reconciliationNo }
+  })
+}
+
 app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
   try {
     const page = parsePositiveInt(c.req.query('page'), 1, 1000000)
@@ -5492,6 +5593,7 @@ app.get('/api/reconciliations', authMiddleware, async c => {
     LEFT JOIN users ucf ON ucf.id = sr.confirmed_by
     WHERE ${where.join(' AND ')}
     GROUP BY sr.id
+    HAVING COUNT(sri.id) > 0
     ORDER BY sr.created_at DESC
     LIMIT ${pageSize} OFFSET ${offset}
   `, params)
@@ -5575,6 +5677,7 @@ app.get('/api/reconciliations/export/csv', authMiddleware, async c => {
 })
 
 app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'), async c => {
+  let reconciliationId = 0
   try {
     const b = await c.req.json()
     const items = Array.isArray(b?.items) ? b.items : []
@@ -5590,11 +5693,16 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
 
     const reconciliationNo = `RC${Date.now()}`
     const reconcileDate = b?.reconcile_date ? toDateStr(b.reconcile_date) : null
+    const createdAt = now8()
     const r = await execute(`
-      INSERT INTO shipment_reconciliations (reconciliation_no, reconcile_date, status, remark, created_by, created_at)
-      VALUES (?,?,?,?,?,?)
-    `, [reconciliationNo, reconcileDate, 'draft', b.remark || '', c.get('user')?.userId || null, now8()])
-    const reconciliationId = r.insertId
+      INSERT INTO shipment_reconciliations
+        (reconciliation_no, reconcile_date, status, remark, created_by, confirmed_by, confirmed_at, created_at)
+      VALUES (?,?,?,?,?,?,?,?)
+    `, [
+      reconciliationNo, reconcileDate, 'confirmed', b.remark || '', c.get('user')?.userId || null,
+      c.get('user')?.userId || null, createdAt, createdAt,
+    ])
+    reconciliationId = r.insertId
 
     const placeholders = deliveryNoteItemIds.map(() => '?').join(',')
     const sources = await query<any>(`
@@ -5688,6 +5796,11 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
     await audit(c.get('user'), 'CREATE', '出貨核對單', reconciliationId, reconciliationNo)
     return c.json({ id: reconciliationId, reconciliation_no: reconciliationNo }, 201)
   } catch (e: any) {
+    // Legacy/manual callers must not be able to leave an orphan header when a
+    // selected delivery line was already recorded concurrently.
+    if (reconciliationId > 0) {
+      await softDeleteById('shipment_reconciliations', reconciliationId, c.get('user')?.userId).catch(() => {})
+    }
     return c.json({ error: String(e.message) }, 500)
   }
 })
@@ -5740,91 +5853,20 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('recon
     const u = c.get('user')
     const header = await queryOne<any>('SELECT id, status, reconciliation_no FROM shipment_reconciliations WHERE id=? AND deleted_at IS NULL', [id])
     if (!header) return c.json({ error: 'Not found' }, 404)
-    if (header.status !== 'draft') return c.json({ error: 'already confirmed' }, 400)
+    if (header.status !== 'draft') return c.json({ ok: true })
+    const itemCount = await queryOne<any>(
+      'SELECT COUNT(*) as cnt FROM shipment_reconciliation_items WHERE reconciliation_id=? AND deleted_at IS NULL',
+      [id]
+    )
+    if (Number(itemCount?.cnt || 0) <= 0) return c.json({ error: '核對紀錄沒有出貨明細，請刪除此異常紀錄' }, 400)
 
-    const items = await query<any>(`
-      SELECT id, customer_order_id, order_item_id, accepted_qty
-      FROM shipment_reconciliation_items
-      WHERE reconciliation_id=? AND deleted_at IS NULL
-    `, [id])
-    if (!items.length) return c.json({ error: 'no items' }, 400)
-
-    const reconcileMap = new Map<number, number>()
-    const orderIdsFromReconcile = new Set<number>()
-    for (const item of items) {
-      const orderItemId = Number(item.order_item_id || 0)
-      const qty = toQty(item.accepted_qty)
-      const orderId = Number(item.customer_order_id || 0)
-      if (orderId > 0) orderIdsFromReconcile.add(orderId)
-      if (!orderItemId || qty <= 0) continue
-      reconcileMap.set(orderItemId, toQty((reconcileMap.get(orderItemId) || 0) + qty))
-    }
-    const orderItemIds = Array.from(reconcileMap.keys())
-    if (orderItemIds.length) {
-      const inClause = orderItemIds.map(() => '?').join(',')
-      const orderItems = await query<any>(
-        `SELECT id, order_id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id IN (${inClause}) AND deleted_at IS NULL`,
-        [...orderItemIds]
-      )
-
-      const arrivedCase: string[] = []
-      const reconciledCase: string[] = []
-      const balanceCase: string[] = []
-      const statusCase: string[] = []
-      const params: any[] = []
-      const touchedOrderIds = new Set<number>(Array.from(orderIdsFromReconcile))
-
-      for (const row of orderItems) {
-        const itemId = Number(row.id || 0)
-        const delta = toQty(reconcileMap.get(itemId) || 0)
-        if (!itemId || delta <= 0) continue
-        const qty = toQty(row.qty)
-        const nextArrived = toQty(Math.min(qty, toQty(row.arrived_qty) + delta))
-        const nextReconciled = toQty(Math.min(qty, toQty(row.reconciled_qty) + delta))
-        const nextBalance = toQty(Math.max(0, qty - nextArrived))
-        const nextStatus = nextArrived >= qty && qty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
-        const orderId = Number(row.order_id || 0)
-        if (orderId > 0) touchedOrderIds.add(orderId)
-
-        arrivedCase.push('WHEN ? THEN ?')
-        params.push(itemId, nextArrived)
-        reconciledCase.push('WHEN ? THEN ?')
-        params.push(itemId, nextReconciled)
-        balanceCase.push('WHEN ? THEN ?')
-        params.push(itemId, nextBalance)
-        statusCase.push('WHEN ? THEN ?')
-        params.push(itemId, nextStatus)
-      }
-
-      if (arrivedCase.length > 0) {
-        await execute(`
-          UPDATE customer_order_items
-          SET
-            arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
-            reconciled_qty = CASE id ${reconciledCase.join(' ')} ELSE reconciled_qty END,
-            balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
-            status = CASE id ${statusCase.join(' ')} ELSE status END
-          WHERE id IN (${inClause})
-        `, [...params, ...orderItemIds])
-      }
-
-      for (const orderId of Array.from(touchedOrderIds)) {
-        const summary = await queryOne<any>(
-          'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
-          [orderId]
-        )
-        const totalQty = toQty(summary?.total_qty || 0)
-        const arrivedQty = toQty(summary?.arrived_qty || 0)
-        const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
-        await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
-      }
-    }
-
+    // Legacy compatibility only: old drafts can be marked as recorded, but this
+    // endpoint no longer mutates order quantities. Shipment is the sole source.
     await execute(
       'UPDATE shipment_reconciliations SET status=?, confirmed_by=?, confirmed_at=? WHERE id=?',
       ['confirmed', u?.userId || null, now8(), id]
     )
-    await audit(u, 'CONFIRM', '出貨核對單', id, header.reconciliation_no || `id=${id}`)
+    await audit(u, 'MIGRATE', '出貨核對紀錄', id, header.reconciliation_no || `id=${id}`)
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -5923,40 +5965,7 @@ const deleteReconciliationWithRollback = async (reconciliationId: number, user: 
     throw new Error(`請先刪除關聯發票：${linkedInvoices.map((r: any) => r.invoice_no).join('、')}`)
   }
 
-  const items = await query<any>(
-    'SELECT id, order_item_id, customer_order_id, accepted_qty FROM shipment_reconciliation_items WHERE reconciliation_id=? AND deleted_at IS NULL',
-    [reconciliationId]
-  )
-
-  if (header.status === 'confirmed') {
-    const rollbackMap = new Map<number, number>()
-    const touchedOrderIds = new Set<number>()
-    for (const item of items) {
-      const orderItemId = Number(item.order_item_id || 0)
-      const orderId = Number(item.customer_order_id || 0)
-      const qty = toQty(item.accepted_qty)
-      if (!orderItemId || qty <= 0) continue
-      rollbackMap.set(orderItemId, toQty((rollbackMap.get(orderItemId) || 0) + qty))
-      if (orderId > 0) touchedOrderIds.add(orderId)
-    }
-
-    for (const [orderItemId, qty] of rollbackMap.entries()) {
-      const row = await queryOne<any>('SELECT id, qty, arrived_qty, reconciled_qty FROM customer_order_items WHERE id=? AND deleted_at IS NULL', [orderItemId])
-      if (!row) continue
-      const totalQty = toQty(row.qty)
-      const nextArrived = toQty(Math.max(0, toQty(row.arrived_qty) - qty))
-      const nextReconciled = toQty(Math.max(0, toQty(row.reconciled_qty) - qty))
-      const nextBalance = toQty(Math.max(0, totalQty - nextArrived))
-      const nextStatus = nextArrived >= totalQty && totalQty > 0 ? 'completed' : nextArrived > 0 ? 'partial' : 'pending'
-      await execute(
-        'UPDATE customer_order_items SET arrived_qty=?, reconciled_qty=?, balance=?, status=? WHERE id=?',
-        [nextArrived, nextReconciled, nextBalance, nextStatus, orderItemId]
-      )
-    }
-
-    await recalcCustomerOrderStatus(Array.from(touchedOrderIds))
-  }
-
+  // 核對單只是出貨事實的投影。刪除投影不可反向改變出貨單或客戶訂單數量。
   await markDeletedByWhere('shipment_reconciliation_items', 'reconciliation_id=?', [reconciliationId], user?.userId)
   await softDeleteById('shipment_reconciliations', reconciliationId, user?.userId)
   await audit(user, 'DELETE', '出貨核對單', reconciliationId, header.reconciliation_no || `id=${reconciliationId}`)
@@ -6571,6 +6580,9 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
         const shippedMap = await buildShippedQtyByOrderItemId()
         await applyShippedQtyToOrderItems(shippedMap, Array.from(extraOrderIds))
       }
+
+      // 出貨完成即形成事實紀錄，不再要求另一位使用者二次審核。
+      await createShipmentReconciliationRecord(Number(id), u)
     }
 
     await audit(u, 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`)

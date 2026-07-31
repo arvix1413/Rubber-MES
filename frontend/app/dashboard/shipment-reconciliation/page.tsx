@@ -54,14 +54,13 @@ type ReconciliationDetail = ReconciliationHeader & {
 }
 
 const STATUS_MAP: Record<string, { label: string; badge: string }> = {
-  draft: { label: '尚未審核', badge: 'badge-gray' },
-  confirmed: { label: '已審核', badge: 'badge-green' },
+  draft: { label: '建立異常', badge: 'badge-red' },
+  confirmed: { label: '已記錄', badge: 'badge-green' },
 }
 
 export default function ShipmentReconciliationPage() {
   const { toast, confirm } = useDialog()
   const canWrite = can('delivery.create')
-  const canApprove = can('reconciliation.approve')
 
   const [pending, setPending] = useState<PendingItem[]>([])
   const [headers, setHeaders] = useState<ReconciliationHeader[]>([])
@@ -176,27 +175,9 @@ export default function ShipmentReconciliationPage() {
     }
   }
 
-  const confirmReconciliation = async (id: number) => {
-    if (!await confirm('審核核對單？', '審核後將回寫客戶訂單已核對數量。', '審核核對單')) return
-    try {
-      setSaving(id)
-      await apiFetch(`/api/reconciliations/${id}/confirm`, { method: 'PATCH' })
-      toast('核對單已審核')
-      await loadAll()
-      if (expandedId === id) {
-        const latest = await apiFetch<ReconciliationDetail>(`/api/reconciliations/${id}`)
-        setDetails((prev) => ({ ...prev, [id]: latest }))
-      }
-    } catch (e: any) {
-      toast(`審核失敗：${e.message}`, 'error')
-    } finally {
-      setSaving(null)
-    }
-  }
-
   const removeReconciliation = async (id: number, status: string) => {
-    const title = status === 'draft' ? '確定刪除草稿核對單？' : '確定刪除已審核核對單？'
-    const desc = status === 'draft' ? '刪除後不可恢復。' : '刪除後將回滾訂單已核對 / 到貨數量。若已開立發票，需先刪除發票。'
+    const title = status === 'draft' ? '確定刪除異常核對單？' : '確定刪除核對紀錄？'
+    const desc = status === 'draft' ? '此單沒有形成有效出貨紀錄，刪除後不可恢復。' : '若此紀錄已被發票引用，需先刪除相關發票。'
     if (!await confirm(title, desc, '刪除')) return
     try {
       setSaving(id)
@@ -237,15 +218,10 @@ export default function ShipmentReconciliationPage() {
       <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">出貨核對</h1>
-          <p className="text-xs text-slate-500 mt-1">將已出貨項目建立核對單，確認到貨差異並回寫訂單核對量。</p>
+          <p className="text-xs text-slate-500 mt-1">出貨完成後由系統自動建立，忠實記錄出貨明細與數量，不需二次審核。</p>
         </div>
         <div className="flex items-center gap-2">
           <button className="btn-ghost" onClick={exportCsv}>匯出 CSV</button>
-          {canWrite && (
-            <button className="btn-primary" onClick={() => setCreating(v => !v)}>
-              {creating ? '收起建立區' : '+ 新建核對單'}
-            </button>
-          )}
         </div>
       </div>
 
@@ -378,9 +354,6 @@ export default function ShipmentReconciliationPage() {
                       <td className="px-3 py-2"><span className={sm.badge}>{sm.label}</span></td>
                       <td className="px-3 py-2 text-right space-x-2">
                         <button className="btn-ghost" onClick={() => openDetail(h.id)}>明細</button>
-                        {h.status === 'draft' && canApprove && (
-                          <button className="btn-primary" disabled={saving === h.id} onClick={() => confirmReconciliation(h.id)}>審核</button>
-                        )}
                         {canWrite && (
                           <button className="btn-danger" disabled={saving === h.id} onClick={() => removeReconciliation(h.id, h.status)}>刪除</button>
                         )}
