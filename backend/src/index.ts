@@ -2443,7 +2443,7 @@ const recalcCustomerOrderStatus = async (orderIds: number[]) => {
 const buildShippedQtyByOrderItemId = async (db?: DbExecutor): Promise<Map<number, number>> => {
   const shippedByOrderItem = new Map<number, number>()
   const dniRows = await query<any>(`
-    SELECT dni.id, dni.order_item_id, dni.material_code, dni.item_name,
+    SELECT dni.id, dni.order_item_id, dni.material_code, dni.item_name, dni.po_ref,
            COALESCE(dni.qty, 0) as qty, dn.customer_order_id
     FROM delivery_note_items dni
     JOIN delivery_notes dn ON dn.id = dni.dn_id AND dn.deleted_at IS NULL
@@ -2452,8 +2452,17 @@ const buildShippedQtyByOrderItemId = async (db?: DbExecutor): Promise<Map<number
 
   for (const row of dniRows) {
     let orderItemId = Number(row.order_item_id || 0)
-    if (!orderItemId) {
-      orderItemId = (await resolveOrderItemIdFromProgress(Number(row.id), db))
+    // Multi-PO delivery notes may have been linked to the header order by legacy
+    // code. When a line carries its own PO reference, the progress-line mapping
+    // is authoritative and must also replace a stale, non-zero order_item_id.
+    const progressOrderItemId = String(row.po_ref || '').trim()
+      ? await resolveOrderItemIdFromProgress(Number(row.id), db)
+      : null
+    if (progressOrderItemId && progressOrderItemId !== orderItemId) {
+      orderItemId = progressOrderItemId
+      await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, row.id], db)
+    } else if (!orderItemId) {
+      orderItemId = progressOrderItemId
         || (await resolveOrderItemIdForDnLine(Number(row.customer_order_id || 0), {
           materialCode: row.material_code,
           itemName: row.item_name,
@@ -5383,11 +5392,13 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
     const rows = await query<any>(`
       SELECT
         dni.id as delivery_note_item_id,
+        dni.order_item_id,
         dn.id as delivery_note_id,
         dn.dn_number,
         dn.delivery_date,
         dn.customer_order_id,
-        co.po_number,
+        dni.po_ref,
+        COALESCE(NULLIF(TRIM(dni.po_ref), ''), co.po_number) as po_number,
         dn.customer_name,
         dni.material_code,
         COALESCE(NULLIF(m.material_name, ''), NULLIF(dni.item_name, ''), '') as material_name,
@@ -5421,7 +5432,19 @@ app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
     const enriched: any[] = []
     for (const row of rows) {
       const key = `${Number(row.customer_order_id || 0)}::${String(row.material_code || '').trim()}`
-      const orderItemId = orderItemIdMap.get(key) || null
+      const progressOrderItemId = String(row.po_ref || '').trim()
+        ? await resolveOrderItemIdFromProgress(Number(row.delivery_note_item_id))
+        : null
+      const orderItemId = progressOrderItemId
+        || Number(row.order_item_id || 0)
+        || orderItemIdMap.get(key)
+        || null
+      if (progressOrderItemId && progressOrderItemId !== Number(row.order_item_id || 0)) {
+        await execute(
+          'UPDATE delivery_note_items SET order_item_id=? WHERE id=?',
+          [progressOrderItemId, row.delivery_note_item_id]
+        )
+      }
       enriched.push({
         ...row,
         order_item_id: orderItemId,
@@ -5577,9 +5600,11 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
     const sources = await query<any>(`
       SELECT
         dni.id as delivery_note_item_id,
+        dni.order_item_id,
         dn.id as delivery_note_id,
         dn.customer_order_id,
-        co.po_number,
+        dni.po_ref,
+        COALESCE(NULLIF(TRIM(dni.po_ref), ''), co.po_number) as po_number,
         dni.material_code,
         COALESCE(NULLIF(m.material_name, ''), NULLIF(dni.item_name, ''), b.product_name, '') as material_name,
         COALESCE(m.supplier_id, b.supplier_id) as supplier_id,
@@ -5605,7 +5630,18 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
         AND sri.id IS NULL
     `, deliveryNoteItemIds)
     const sourceMap = new Map<number, any>()
-    for (const src of sources) sourceMap.set(Number(src.delivery_note_item_id), src)
+    for (const src of sources) {
+      // Repair historical multi-PO lines before creating the reconciliation.
+      // A line-level PO reference is more precise than the delivery-note header.
+      const resolvedFromProgress = String(src.po_ref || '').trim()
+        ? await resolveOrderItemIdFromProgress(Number(src.delivery_note_item_id))
+        : null
+      if (resolvedFromProgress && resolvedFromProgress !== Number(src.order_item_id || 0)) {
+        src.order_item_id = resolvedFromProgress
+        await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [resolvedFromProgress, src.delivery_note_item_id])
+      }
+      sourceMap.set(Number(src.delivery_note_item_id), src)
+    }
     const orderItemIdMap = await buildOrderItemIdMap(
       sources.map((src: any) => ({
         customer_order_id: Number(src.customer_order_id || 0),
@@ -5624,7 +5660,9 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
       if (acceptedQty < 0) acceptedQty = 0
       if (acceptedQty > shippedQty) acceptedQty = shippedQty
       const differenceQty = toQty(shippedQty - acceptedQty)
-      const orderItemId = orderItemIdMap.get(`${Number(src.customer_order_id || 0)}::${String(src.material_code || '').trim()}`) || null
+      const orderItemId = Number(src.order_item_id || 0)
+        || orderItemIdMap.get(`${Number(src.customer_order_id || 0)}::${String(src.material_code || '').trim()}`)
+        || null
 
       await execute(`
         INSERT INTO shipment_reconciliation_items
