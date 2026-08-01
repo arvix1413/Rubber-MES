@@ -2,7 +2,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { usePathname, useRouter } from 'next/navigation'
-import { clearToken, getToken } from '@/lib/api'
+import { apiFetch, clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
 import { useReviewBadge } from '@/lib/useReviewBadge'
 import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
@@ -48,6 +48,7 @@ const NAV: NavEntry[] = [
       { href: '/dashboard/company', label: '公司設定', icon: <IconBuilding /> },
       { href: '/dashboard/role-permissions', label: '權限設定', icon: <IconCheck /> },
       { href: '/dashboard/users', label: '使用者管理', icon: <IconUserCog /> },
+      { href: '/dashboard/audit-logs', label: '操作日誌', icon: <IconList /> },
     ],
   },
 ]
@@ -73,6 +74,7 @@ const MANAGER_ONLY_ROUTES = new Set<string>([
   '/dashboard/company',
   '/dashboard/role-permissions',
   '/dashboard/users',
+  '/dashboard/audit-logs',
 ])
 
 function IconGrid() { return <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" className="h-4 w-4"><rect x="3" y="3" width="7" height="7" rx="1" /><rect x="14" y="3" width="7" height="7" rx="1" /><rect x="3" y="14" width="7" height="7" rx="1" /><rect x="14" y="14" width="7" height="7" rx="1" /></svg> }
@@ -159,7 +161,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
     setSidebarOpen(false)
   }, [pathname, router, user])
 
-  const logout = () => {
+  const logout = async () => {
+    try {
+      await apiFetch('/api/auth/logout', { method: 'POST', reloadOnSuccess: 'never' })
+    } catch {
+      // Local logout must still succeed if the network is unavailable.
+    }
     clearToken()
     localStorage.removeItem('rubber_user')
     localStorage.removeItem('rubber_permissions')

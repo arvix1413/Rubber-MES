@@ -2897,7 +2897,11 @@ async function audit(user: any, action: string, resource: string, resourceId: an
       [user?.userId || 0, user?.name || 'system', user?.email || '', action, resource, String(resourceId), detail || '', now8()],
       db,
     )
-  } catch {}
+  } catch (e) {
+    // Audit failure must not block the business operation, but it must be visible
+    // to operators instead of silently losing the trace.
+    console.error('[audit] failed to write operation log', { action, resource, resourceId, error: e })
+  }
 }
 
 app.get('/', c => c.json({ name: 'RUBBER MES Backend', version: '2.0.0' }))
@@ -2935,10 +2939,20 @@ const ALL_PERMISSIONS = [
 app.post('/api/auth/login', async c => {
   try {
     const { email, password } = await c.req.json()
-    if (!email || !password) return c.json({ error: 'Missing fields' }, 400)
-    const user = await queryOne<any>('SELECT * FROM users WHERE email=? AND deleted_at IS NULL', [email])
-    if (!user) return c.json({ error: 'Invalid credentials' }, 401)
-    if (hashPw(password) !== user.password_hash) return c.json({ error: 'Invalid credentials' }, 401)
+    const normalizedEmail = String(email || '').trim().toLowerCase()
+    if (!normalizedEmail || !password) {
+      if (normalizedEmail) await audit({ email: normalizedEmail, name: 'unknown' }, 'LOGIN_FAILED', '系統登入', '-', '缺少登入欄位')
+      return c.json({ error: 'Missing fields' }, 400)
+    }
+    const user = await queryOne<any>('SELECT * FROM users WHERE email=? AND deleted_at IS NULL', [normalizedEmail])
+    if (!user) {
+      await audit({ email: normalizedEmail, name: 'unknown' }, 'LOGIN_FAILED', '系統登入', '-', '帳號或密碼錯誤')
+      return c.json({ error: 'Invalid credentials' }, 401)
+    }
+    if (hashPw(password) !== user.password_hash) {
+      await audit({ userId: user.id, email: user.email, name: user.name }, 'LOGIN_FAILED', '系統登入', user.id, '帳號或密碼錯誤')
+      return c.json({ error: 'Invalid credentials' }, 401)
+    }
     const normalizedRole = normalizeUserRole(user.role)
     const token = await signJwt({ userId: user.id, email: user.email, name: user.name, role: normalizedRole })
     // Load role permissions
@@ -2949,8 +2963,15 @@ app.post('/api/auth/login', async c => {
       const rows = await query<any>('SELECT permission FROM role_permissions WHERE role=? AND allowed=1', ['employee'])
       permissions = rows.map((r: any) => r.permission)
     }
+    await audit({ userId: user.id, email: user.email, name: user.name }, 'LOGIN', '系統登入', user.id, '登入成功')
     return c.json({ token, user: { id: user.id, email: user.email, name: user.name, role: normalizedRole, signature_url: user.signature_url || null }, permissions })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+})
+
+app.post('/api/auth/logout', authMiddleware, async c => {
+  const u = c.get('user')
+  await audit(u, 'LOGOUT', '系統登入', u.userId, '安全登出')
+  return c.json({ ok: true })
 })
 
 app.get('/api/auth/me', authMiddleware, async c => {
@@ -2966,6 +2987,7 @@ app.post('/api/auth/signature', authMiddleware, async c => {
     const u = c.get('user')
     const { signature_url } = await c.req.json()
     await execute('UPDATE users SET signature_url=? WHERE id=?', [signature_url || null, u.userId])
+    await audit(u, 'UPDATE', '個人簽名', u.userId, signature_url ? '更新電子簽名' : '移除電子簽名')
     const user = await queryOne<any>('SELECT id,email,name,role,signature_url FROM users WHERE id=? AND deleted_at IS NULL', [u.userId])
     return c.json({ ok: true, user: user ? { ...user, role: normalizeUserRole(user.role) } : null })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
@@ -6865,34 +6887,59 @@ app.get('/api/role-permissions', authMiddleware, requireManager, async c => {
 })
 app.put('/api/role-permissions', authMiddleware, requireManager, async c => {
   try {
+    const u = c.get('user')
     const { role, permission, allowed } = await c.req.json()
     if (role !== 'employee') return c.json({ error: 'Only employee role can be modified' }, 400)
     await execute('INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,?) ON DUPLICATE KEY UPDATE allowed=?', ['employee',permission,allowed?1:0,allowed?1:0])
+    await audit(u, 'UPDATE', '權限設定', permission, `員工權限「${permission}」${allowed ? '啟用' : '停用'}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
 // ── Audit Logs ────────────────────────────────────────────────────────────────
-app.get('/api/audit-logs', authMiddleware, requirePerm('audit.view'), async c => {
+app.get('/api/audit-logs', authMiddleware, requireManager, async c => {
   try {
     const url = new URL(c.req.url)
-    const limit = Math.min(parseInt(url.searchParams.get('limit') || '100'), 500)
-    const offset = parseInt(url.searchParams.get('offset') || '0')
-    const resource = url.searchParams.get('resource') || ''
-    const user_email = url.searchParams.get('user_email') || ''
+    const parsedLimit = Number.parseInt(url.searchParams.get('limit') || '20', 10)
+    const parsedOffset = Number.parseInt(url.searchParams.get('offset') || '0', 10)
+    const limit = Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 20, 1), 100)
+    const offset = Math.max(Number.isFinite(parsedOffset) ? parsedOffset : 0, 0)
+    const resource = (url.searchParams.get('resource') || '').trim()
+    const action = (url.searchParams.get('action') || '').trim()
+    const userEmail = (url.searchParams.get('user_email') || '').trim()
+    const search = (url.searchParams.get('search') || '').trim()
+    const dateFrom = (url.searchParams.get('date_from') || '').trim()
+    const dateTo = (url.searchParams.get('date_to') || '').trim()
     const params: any[] = []
     const where: string[] = []
     if (resource) { where.push('resource=?'); params.push(resource) }
-    if (user_email) { where.push('user_email LIKE ?'); params.push(`%${user_email}%`) }
+    if (action) { where.push('action=?'); params.push(action) }
+    if (userEmail) { where.push('user_email LIKE ?'); params.push(`%${userEmail}%`) }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateFrom)) { where.push('created_at >= ?'); params.push(`${dateFrom} 00:00:00`) }
+    if (/^\d{4}-\d{2}-\d{2}$/.test(dateTo)) { where.push('created_at <= ?'); params.push(`${dateTo} 23:59:59`) }
+    if (search) {
+      const value = `%${search}%`
+      where.push('(user_name LIKE ? OR user_email LIKE ? OR action LIKE ? OR resource LIKE ? OR resource_id LIKE ? OR detail LIKE ?)')
+      params.push(value, value, value, value, value, value)
+    }
     const whereClause = where.length ? ' WHERE ' + where.join(' AND ') : ''
     // Embed LIMIT/OFFSET directly to avoid mysql2 prepared statement issues
     const sql = `SELECT * FROM audit_logs${whereClause} ORDER BY created_at DESC LIMIT ${limit} OFFSET ${offset}`
     const countSql = `SELECT COUNT(*) as cnt FROM audit_logs${whereClause}`
-    const [logs, totalRow] = await Promise.all([
+    const [logs, totalRow, resourceRows, actionRows] = await Promise.all([
       query(sql, params),
-      queryOne<any>(countSql, params)
+      queryOne<any>(countSql, params),
+      query<any>('SELECT DISTINCT resource FROM audit_logs WHERE resource IS NOT NULL AND resource <> \'\' ORDER BY resource'),
+      query<any>('SELECT DISTINCT action FROM audit_logs WHERE action IS NOT NULL AND action <> \'\' ORDER BY action'),
     ])
-    return c.json({ logs, total: totalRow?.cnt || 0 })
+    return c.json({
+      logs,
+      total: totalRow?.cnt || 0,
+      options: {
+        resources: resourceRows.map((row: any) => row.resource),
+        actions: actionRows.map((row: any) => row.action),
+      },
+    })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
