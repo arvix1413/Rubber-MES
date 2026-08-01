@@ -7650,6 +7650,58 @@ app.post('/api/admin/sync-shipped-arrived-qty', authMiddleware, isAdmin, async c
   }
 })
 
+app.post('/api/admin/delivery-notes/:id/sync-arrived-qty', authMiddleware, isAdmin, async c => {
+  try {
+    const deliveryNoteId = Number(c.req.param('id') || 0)
+    const deliveryNote = await queryOne<any>(
+      `SELECT id, dn_number, status
+       FROM delivery_notes
+       WHERE id=? AND deleted_at IS NULL`,
+      [deliveryNoteId],
+    )
+    if (!deliveryNote) return c.json({ error: 'Not found' }, 404)
+    if (deliveryNote.status !== 'shipped') return c.json({ error: '只能同步已出貨的出貨單' }, 400)
+
+    const lines = await query<any>(
+      `SELECT id, order_item_id
+       FROM delivery_note_items
+       WHERE dn_id=? AND deleted_at IS NULL`,
+      [deliveryNoteId],
+    )
+    const affectedOrderIds = new Set<number>()
+    for (const line of lines) {
+      let orderItemId = Number(line.order_item_id || 0)
+      const resolvedOrderItemId = await resolveOrderItemIdFromProgress(Number(line.id))
+      if (resolvedOrderItemId && resolvedOrderItemId !== orderItemId) {
+        orderItemId = resolvedOrderItemId
+        await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, line.id])
+      }
+      if (!orderItemId) continue
+      const orderItem = await queryOne<any>(
+        'SELECT order_id FROM customer_order_items WHERE id=? AND deleted_at IS NULL',
+        [orderItemId],
+      )
+      const orderId = Number(orderItem?.order_id || 0)
+      if (orderId > 0) affectedOrderIds.add(orderId)
+    }
+    if (!affectedOrderIds.size) return c.json({ error: '出貨單沒有可同步的客戶訂單明細' }, 400)
+
+    const shippedMap = await buildShippedQtyByOrderItemId()
+    const updatedOrderIds = await applyShippedQtyToOrderItems(shippedMap, Array.from(affectedOrderIds))
+    const result = {
+      ok: true,
+      delivery_note_id: deliveryNoteId,
+      delivery_note_number: deliveryNote.dn_number,
+      linked_orders: affectedOrderIds.size,
+      updated_orders: updatedOrderIds.length,
+    }
+    await audit(c.get('user'), 'SYNC', 'delivery_note_arrived_qty', deliveryNoteId, JSON.stringify(result))
+    return c.json(result)
+  } catch (e: any) {
+    return c.json({ error: String(e.message) }, 500)
+  }
+})
+
 // ── Upload ────────────────────────────────────────────────────────────────────
 app.post('/api/upload', authMiddleware, async c => {
   try {
