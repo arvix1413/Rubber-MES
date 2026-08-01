@@ -83,7 +83,7 @@ export default function DashboardPage() {
               僅保留與參考流程相關頁面：客戶訂單 → 交期進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-right">
+          <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-3">
             <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
               <div className="text-[11px] text-[#8a6b49]">總銷售額</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.total_sales || 0)}</div>
@@ -92,6 +92,20 @@ export default function DashboardPage() {
               <div className="text-[11px] text-[#8a6b49]">本月訂單</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.month_orders || 0)}</div>
             </div>
+            <Link
+              href="/dashboard/po"
+              className="col-span-2 rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2 transition-colors hover:border-[#c59e70] hover:bg-white/90 sm:col-span-1"
+              aria-label="查看採購概況"
+            >
+              <div className="text-[11px] text-[#8a6b49]">採購概況</div>
+              <div className="mt-0.5 flex items-baseline justify-end gap-2">
+                <span className="text-lg font-bold text-[#4f351d]">{fmt(stats?.po_count || 0)}</span>
+                <span className="text-[10px] text-[#8a6b49]">張採購單</span>
+              </div>
+              <div className="mt-1 border-t border-[#e8d8c3] pt-1 text-xs font-semibold text-[#6f4b29]">
+                總額 {fmt(stats?.po_total || 0)}
+              </div>
+            </Link>
           </div>
         </div>
       </section>
