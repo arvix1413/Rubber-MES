@@ -18,6 +18,10 @@ type ProcessHealth = {
 }
 
 const fmt = (n: number) => formatInteger(n || 0)
+const formatPurchaseTotals = (rows: Array<{ currency?: string; total?: number }> | undefined, fallback: number) => {
+  if (!Array.isArray(rows) || rows.length === 0) return fmt(fallback)
+  return rows.map((row) => `${row.currency || 'VND'} ${fmt(Number(row.total || 0))}`).join(' · ')
+}
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
@@ -35,10 +39,10 @@ export default function DashboardPage() {
     const invoicePending = (health?.pending_customer_invoice_items || 0) + (health?.pending_supplier_invoice_items || 0)
     return [
       { step: '01', title: '客戶下單', desc: '建立客戶訂單與交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '訂單數' },
-      { step: '02', title: '交期進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
-      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數', secondaryLabel: '採購總額', secondaryMetric: fmt(stats?.po_total || 0) },
+      { step: '02', title: '交期進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.progress_count || 0), tag: '進度數' },
+      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: '有效 PO', secondaryLabel: '採購總額', secondaryMetric: formatPurchaseTotals(stats?.po_totals_by_currency, stats?.po_total || 0) },
       { step: '04', title: '安排出貨', desc: '建立出貨單並回寫數量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出貨單' },
-      { step: '05', title: '數量核對', desc: '核對實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核對' },
+      { step: '05', title: '數量核對', desc: '自動記錄實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(stats?.reconciliation_count || 0), tag: '記錄數' },
       { step: '06', title: '開立發票', desc: '客戶/供應商雙向發票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待開票' },
       { step: '07', title: '供應商付款', desc: '處理應付並追蹤狀態', href: '/dashboard/payables', metric: fmt(health?.overdue_payables?.invoice_count || 0), tag: '逾期筆數' },
     ]
@@ -125,7 +129,7 @@ export default function DashboardPage() {
           <h2 className="brand-font text-lg font-bold text-[#3c2f24]">流程異常提醒</h2>
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             <Link href="/dashboard/shipment-reconciliation" className="rounded-xl border border-[#e7c4ba] bg-[#fff4f1] p-3">
-              <div className="text-xs text-[#9f5946]">待核對數量</div>
+              <div className="text-xs text-[#9f5946]">未生成核對記錄</div>
               <div className="mt-1 text-xl font-bold text-[#8b3f2a]">{fmt(health?.pending_reconciliation_items || 0)}</div>
             </Link>
             <Link href="/dashboard/invoices" className="rounded-xl border border-[#e4cfb3] bg-[#fff7eb] p-3">

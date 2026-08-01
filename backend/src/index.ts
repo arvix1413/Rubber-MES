@@ -8,6 +8,7 @@ import path from 'path'
 import crypto from 'crypto'
 import { sendNotificationEmail, buildPendingApprovalEmail } from './mailer'
 import { buildOrderQuantityCaseUpdate, type OrderQuantityUpdate } from './order-quantity-sync'
+import { validateDeliveryStatusTransition } from './delivery-status'
 
 type Variables = { user: any }
 const app = new Hono<{ Variables: Variables }>()
@@ -5386,8 +5387,8 @@ app.get('/api/order-intake/export/csv', authMiddleware, async c => {
  * second approval gate. Create the header and every line atomically so a
  * duplicate/invalid line can never leave an empty header behind.
  */
-const createShipmentReconciliationRecord = async (deliveryNoteId: number, user: any) => {
-  return withTransaction(async (tx) => {
+const createShipmentReconciliationRecord = async (deliveryNoteId: number, user: any, db?: DbExecutor) => {
+  const createRecord = async (tx: DbExecutor) => {
     const deliveryNote = await queryOne<any>(`
       SELECT id, dn_number, delivery_date
       FROM delivery_notes
@@ -5415,7 +5416,12 @@ const createShipmentReconciliationRecord = async (deliveryNoteId: number, user: 
       LEFT JOIN customer_orders co ON co.id = dn.customer_order_id AND co.deleted_at IS NULL
       LEFT JOIN shipment_reconciliation_items sri ON sri.delivery_note_item_id = dni.id AND sri.deleted_at IS NULL
       LEFT JOIN materials m ON dni.material_id=m.id AND m.deleted_at IS NULL
-      LEFT JOIN bom b ON b.product_sku=dni.material_code AND b.deleted_at IS NULL
+      LEFT JOIN (
+        SELECT product_sku, MAX(NULLIF(product_name, '')) as product_name, MAX(supplier_id) as supplier_id
+        FROM bom
+        WHERE deleted_at IS NULL
+        GROUP BY product_sku
+      ) b ON b.product_sku=dni.material_code
       LEFT JOIN suppliers ms ON ms.id=m.supplier_id AND ms.deleted_at IS NULL
       LEFT JOIN suppliers s ON s.id=b.supplier_id AND s.deleted_at IS NULL
       WHERE dni.dn_id=? AND dni.deleted_at IS NULL AND sri.id IS NULL
@@ -5476,7 +5482,8 @@ const createShipmentReconciliationRecord = async (deliveryNoteId: number, user: 
 
     await audit(user, 'CREATE', '出貨核對紀錄', header.insertId, `${reconciliationNo} / ${deliveryNote.dn_number}`, tx)
     return { id: header.insertId, reconciliation_no: reconciliationNo }
-  })
+  }
+  return db ? createRecord(db) : withTransaction(createRecord)
 }
 
 app.get('/api/reconciliations/pending-items', authMiddleware, async c => {
@@ -5722,7 +5729,12 @@ app.post('/api/reconciliations', authMiddleware, requirePerm('delivery.create'),
         AND dni.material_id > 0
         AND dni.material_id = m.id
         AND m.deleted_at IS NULL
-      LEFT JOIN bom b ON b.product_sku = dni.material_code AND b.deleted_at IS NULL
+      LEFT JOIN (
+        SELECT product_sku, MAX(NULLIF(product_name, '')) as product_name, MAX(supplier_id) as supplier_id
+        FROM bom
+        WHERE deleted_at IS NULL
+        GROUP BY product_sku
+      ) b ON b.product_sku = dni.material_code
       LEFT JOIN suppliers ms ON ms.id = m.supplier_id AND ms.deleted_at IS NULL
       LEFT JOIN suppliers s ON s.id = b.supplier_id AND s.deleted_at IS NULL
       WHERE dni.id IN (${placeholders})
@@ -6526,63 +6538,95 @@ app.put('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.create'
 })
 app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
   try {
-    const id = c.req.param('id'); const { status } = await c.req.json()
+    const id = Number(c.req.param('id') || 0); const { status } = await c.req.json()
     const u = c.get('user')
-    if (!status) return c.json({ error: 'Invalid status' }, 400)
+    if (!id || !status) return c.json({ error: 'Invalid status' }, 400)
     const requiredPerm =
       status === 'confirmed' ? 'delivery.approve'
       : status === 'shipped' ? 'delivery.create'
       : null
     if (!requiredPerm) return c.json({ error: 'Invalid status' }, 400)
     if (!await hasPermission(u, requiredPerm)) return c.json({ error: `無此操作權限（${requiredPerm}）` }, 403)
-    const row = await queryOne<any>('SELECT dn_number,customer_name,status as current_status FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [id])
-    if (!row) return c.json({ error: 'Not found' }, 404)
-    if (row.current_status === 'shipped') return c.json({ error: '此出貨單已出貨，不可重複操作' }, 400)
-    if (status === 'shipped' && row.current_status !== 'confirmed') return c.json({ error: '出貨前需先審核出貨單' }, 400)
+    const result = await withTransaction(async (tx) => {
+      const row = await queryOne<any>(`
+        SELECT dn_number, customer_name, customer_order_id, progress_id, status as current_status
+        FROM delivery_notes
+        WHERE id=? AND deleted_at IS NULL
+        FOR UPDATE
+      `, [id], tx)
+      if (!row) throw new Error('DN_NOT_FOUND')
 
-    await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id])
+      const { idempotent: isRepeatedRequest } = validateDeliveryStatusTransition(String(row.current_status), String(status))
 
-    // 出貨確認時依已出貨單重算客戶訂單 arrived_qty（含材料明細無 order_item_id 的出貨行）
-    if (status === 'shipped') {
-      const dn = await queryOne<any>('SELECT customer_order_id FROM delivery_notes WHERE id=? AND deleted_at IS NULL', [Number(id)])
-      const customerOrderId = Number(dn?.customer_order_id || 0)
-      // 原有邏輯：通過 customer_order_id sync
-      if (customerOrderId > 0) {
-        await syncCustomerOrderArrivedFromShippedDns(customerOrderId)
+      if (!isRepeatedRequest) {
+        await execute('UPDATE delivery_notes SET status=? WHERE id=?', [status, id], tx)
       }
-      // 新增：通過 delivery_note_items 反查所有關聯訂單也執行 sync（多訂單出貨單 customer_order_id 可能為 null）
-      const dniRows = await query<any>(
-        'SELECT id, order_item_id, material_code, item_name FROM delivery_note_items WHERE dn_id=? AND deleted_at IS NULL',
-        [Number(id)]
-      )
-      const extraOrderIds = new Set<number>()
-      for (const dni of dniRows) {
-        let orderItemId = Number(dni.order_item_id || 0)
-        if (!orderItemId) {
-          orderItemId = (await resolveOrderItemIdFromProgress(Number(dni.id)))
-            || (await resolveOrderItemIdForDnLine(customerOrderId, { materialCode: dni.material_code, itemName: dni.item_name }))
-            || 0
-          if (orderItemId) {
-            await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, dni.id])
-          }
+
+      // Shipping, order quantity synchronization and reconciliation projection
+      // form one atomic operation. A repeated shipped request safely repairs a
+      // historical half-completed record without double-counting quantities.
+      if (status === 'shipped') {
+        const customerOrderId = Number(row.customer_order_id || 0)
+        if (customerOrderId > 0) {
+          await syncCustomerOrderArrivedFromShippedDns(customerOrderId, tx)
         }
-        if (!orderItemId) continue
-        const oi = await queryOne<any>('SELECT order_id FROM customer_order_items WHERE id=? AND deleted_at IS NULL', [orderItemId])
-        const orderId = Number(oi?.order_id || 0)
-        if (orderId > 0 && orderId !== customerOrderId) extraOrderIds.add(orderId)
-      }
-      if (extraOrderIds.size > 0) {
-        const shippedMap = await buildShippedQtyByOrderItemId()
-        await applyShippedQtyToOrderItems(shippedMap, Array.from(extraOrderIds))
+        const dniRows = await query<any>(
+          'SELECT id, order_item_id, material_code, item_name FROM delivery_note_items WHERE dn_id=? AND deleted_at IS NULL',
+          [id],
+          tx,
+        )
+        const extraOrderIds = new Set<number>()
+        for (const dni of dniRows) {
+          let orderItemId = Number(dni.order_item_id || 0)
+          const resolvedFromProgress = await resolveOrderItemIdFromProgress(Number(dni.id), tx)
+          if (resolvedFromProgress && resolvedFromProgress !== orderItemId) {
+            orderItemId = resolvedFromProgress
+            await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, dni.id], tx)
+          } else if (!orderItemId) {
+            orderItemId = (await resolveOrderItemIdForDnLine(customerOrderId, {
+              materialCode: dni.material_code,
+              itemName: dni.item_name,
+            }, tx)) || 0
+            if (orderItemId) {
+              await execute('UPDATE delivery_note_items SET order_item_id=? WHERE id=?', [orderItemId, dni.id], tx)
+            }
+          }
+          if (!orderItemId) continue
+          const oi = await queryOne<any>('SELECT order_id FROM customer_order_items WHERE id=? AND deleted_at IS NULL', [orderItemId], tx)
+          const orderId = Number(oi?.order_id || 0)
+          if (orderId > 0 && orderId !== customerOrderId) extraOrderIds.add(orderId)
+        }
+        if (extraOrderIds.size > 0) {
+          const shippedMap = await buildShippedQtyByOrderItemId(tx)
+          await applyShippedQtyToOrderItems(shippedMap, Array.from(extraOrderIds), tx)
+        }
+        await createShipmentReconciliationRecord(id, u, tx)
+        const progressId = Number(row.progress_id || 0)
+        if (progressId > 0) {
+          await execute(
+            "UPDATE delivery_progress SET status='completed' WHERE id=? AND deleted_at IS NULL",
+            [progressId],
+            tx,
+          )
+          await execute(
+            "UPDATE delivery_progress_items SET status='completed' WHERE progress_id=? AND deleted_at IS NULL",
+            [progressId],
+            tx,
+          )
+        }
       }
 
-      // 出貨完成即形成事實紀錄，不再要求另一位使用者二次審核。
-      await createShipmentReconciliationRecord(Number(id), u)
-    }
-
-    await audit(u, 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`)
-    return c.json({ ok: true })
-  } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+      await audit(u, isRepeatedRequest ? 'STATUS_REPAIR' : 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`, tx)
+      return { idempotent: isRepeatedRequest }
+    })
+    return c.json({ ok: true, ...result })
+  } catch (e: any) {
+    const message = String(e.message || '')
+    if (message === 'DN_NOT_FOUND') return c.json({ error: 'Not found' }, 404)
+    if (message === 'INVALID_CONFIRM_TRANSITION') return c.json({ error: '只有草稿出貨單可以審核' }, 400)
+    if (message === 'INVALID_SHIP_TRANSITION') return c.json({ error: '出貨前需先審核出貨單' }, 400)
+    return c.json({ error: message }, 500)
+  }
 })
 app.delete('/api/delivery-notes/:id', authMiddleware, requirePerm('delivery.delete'), async c => {
   const id = c.req.param('id')
@@ -7550,19 +7594,47 @@ app.get('/api/stats', authMiddleware, async c => {
   try {
     const now = new Date()
     const monthStart = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}-01`
-    const [materials, suppliers, customers, po, orders, monthOrders, allSales, lowStock] = await Promise.all([
+    const [materials, suppliers, customers, po, poTotalsByCurrency, orders, progress, deliveryNotes, reconciliations, monthOrders, allSales, lowStock] = await Promise.all([
       queryOne<any>('SELECT COUNT(*) as cnt FROM bom WHERE deleted_at IS NULL'),
       queryOne<any>('SELECT COUNT(*) as cnt FROM suppliers WHERE deleted_at IS NULL'),
       queryOne<any>('SELECT COUNT(*) as cnt FROM customers WHERE deleted_at IS NULL'),
-      queryOne<any>("SELECT COUNT(*) as cnt, COALESCE(SUM(total_amount),0) as total FROM purchase_orders WHERE status='received' AND deleted_at IS NULL"),
+      queryOne<any>("SELECT COUNT(*) as cnt FROM purchase_orders WHERE status IN ('approved','sent','received') AND deleted_at IS NULL"),
+      query<any>(`
+        SELECT COALESCE(NULLIF(TRIM(currency), ''), 'VND') as currency, COALESCE(SUM(total_amount), 0) as total
+        FROM purchase_orders
+        WHERE status IN ('approved','sent','received') AND deleted_at IS NULL
+        GROUP BY COALESCE(NULLIF(TRIM(currency), ''), 'VND')
+        ORDER BY currency ASC
+      `),
       queryOne<any>('SELECT COUNT(*) as cnt FROM customer_orders WHERE deleted_at IS NULL'),
-      queryOne<any>('SELECT COUNT(*) as cnt, COALESCE(SUM(ci.qty*ci.unit_price),0) as total FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND ci.deleted_at IS NULL AND co.po_date>=?', [monthStart]),
+      queryOne<any>("SELECT COUNT(*) as cnt FROM delivery_progress WHERE deleted_at IS NULL AND status IN ('pending','partial','completed')"),
+      queryOne<any>('SELECT COUNT(*) as cnt FROM delivery_notes WHERE deleted_at IS NULL'),
+      queryOne<any>(`
+        SELECT COUNT(*) as cnt
+        FROM shipment_reconciliations sr
+        WHERE sr.deleted_at IS NULL
+          AND EXISTS (
+            SELECT 1 FROM shipment_reconciliation_items sri
+            WHERE sri.reconciliation_id=sr.id AND sri.deleted_at IS NULL
+          )
+      `),
+      queryOne<any>('SELECT COUNT(DISTINCT co.id) as cnt, COALESCE(SUM(ci.qty*ci.unit_price),0) as total FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND ci.deleted_at IS NULL AND co.po_date>=?', [monthStart]),
       queryOne<any>('SELECT COALESCE(SUM(ci.qty*ci.unit_price),0) as total, MIN(co.po_date) as earliest, MAX(co.po_date) as latest FROM customer_orders co JOIN customer_order_items ci ON ci.order_id=co.id WHERE co.deleted_at IS NULL AND ci.deleted_at IS NULL'),
       queryOne<any>('SELECT COUNT(*) as cnt FROM bom WHERE deleted_at IS NULL AND COALESCE(current_stock,0) <= 0'),
     ])
+    const normalizedPoTotals = poTotalsByCurrency.map((row: any) => ({
+      currency: String(row.currency || 'VND'),
+      total: toMoney(row.total || 0),
+    }))
     return c.json({
       materials: materials?.cnt||0, suppliers: suppliers?.cnt||0, customers: customers?.cnt||0,
-      po_count: po?.cnt||0, po_total: po?.total||0, orders_count: orders?.cnt||0,
+      po_count: po?.cnt||0,
+      po_total: normalizedPoTotals.length === 1 ? normalizedPoTotals[0].total : 0,
+      po_totals_by_currency: normalizedPoTotals,
+      orders_count: orders?.cnt||0,
+      progress_count: progress?.cnt||0,
+      delivery_count: deliveryNotes?.cnt||0,
+      reconciliation_count: reconciliations?.cnt||0,
       month_orders: monthOrders?.cnt||0, month_sales: monthOrders?.total||0,
       total_sales: allSales?.total||0,
       sales_date_range: allSales?.earliest ? `${allSales.earliest} ~ ${allSales.latest}` : '',
