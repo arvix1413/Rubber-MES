@@ -7,6 +7,7 @@ import fs from 'fs'
 import path from 'path'
 import crypto from 'crypto'
 import { sendNotificationEmail, buildPendingApprovalEmail } from './mailer'
+import { buildOrderQuantityCaseUpdate, type OrderQuantityUpdate } from './order-quantity-sync'
 
 type Variables = { user: any }
 const app = new Hono<{ Variables: Variables }>()
@@ -54,7 +55,8 @@ const authMiddleware = async (c: any, next: () => Promise<void>) => {
 
 const isAdmin = async (c: any, next: () => Promise<void>) => {
   const user = c.get('user')
-  if (user?.role !== 'admin') return c.json({ error: 'Forbidden' }, 403)
+  // Login normalizes legacy `admin` accounts to `manager` in the JWT.
+  if (normalizeUserRole(user?.role) !== 'manager') return c.json({ error: 'Forbidden' }, 403)
   await next()
 }
 
@@ -2428,17 +2430,18 @@ const resolveOrderItemIdFromProgress = async (
   return id > 0 ? id : null
 }
 
-const recalcCustomerOrderStatus = async (orderIds: number[]) => {
+const recalcCustomerOrderStatus = async (orderIds: number[], db?: DbExecutor) => {
   const normalized = Array.from(new Set(orderIds.map((id) => Number(id || 0)).filter((id) => id > 0)))
   for (const orderId of normalized) {
     const summary = await queryOne<any>(
       'SELECT COALESCE(SUM(qty),0) as total_qty, COALESCE(SUM(arrived_qty),0) as arrived_qty FROM customer_order_items WHERE order_id=? AND deleted_at IS NULL',
-      [orderId]
+      [orderId],
+      db,
     )
     const totalQty = toQty(summary?.total_qty || 0)
     const arrivedQty = toQty(summary?.arrived_qty || 0)
     const nextOrderStatus = totalQty <= 0 ? 'pending' : arrivedQty >= totalQty ? 'completed' : arrivedQty > 0 ? 'partial' : 'pending'
-    await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId])
+    await execute('UPDATE customer_orders SET status=? WHERE id=? AND deleted_at IS NULL', [nextOrderStatus, orderId], db)
   }
 }
 
@@ -2496,11 +2499,7 @@ const applyShippedQtyToOrderItems = async (
     WHERE id IN (${inClause}) AND deleted_at IS NULL
   `, orderItemIds, db)
 
-  const arrivedCase: string[] = []
-  const balanceCase: string[] = []
-  const statusCase: string[] = []
-  const params: any[] = []
-  const touchedIds: number[] = []
+  const updates: OrderQuantityUpdate[] = []
   const touchedOrderIds = new Set<number>()
 
   for (const row of orderItems) {
@@ -2518,27 +2517,22 @@ const applyShippedQtyToOrderItems = async (
 
     if (toQty(row.arrived_qty) === nextArrived) continue
 
-    arrivedCase.push('WHEN ? THEN ?')
-    params.push(itemId, nextArrived)
-    balanceCase.push('WHEN ? THEN ?')
-    params.push(itemId, nextBalance)
-    statusCase.push('WHEN ? THEN ?')
-    params.push(itemId, nextStatus)
-    touchedIds.push(itemId)
+    updates.push({ itemId, arrivedQty: nextArrived, balance: nextBalance, status: nextStatus })
     touchedOrderIds.add(orderId)
   }
 
-  if (touchedIds.length > 0) {
-    const idClause = touchedIds.map(() => '?').join(',')
+  if (updates.length > 0) {
+    const updateSql = buildOrderQuantityCaseUpdate(updates)
+    const idClause = updates.map(() => '?').join(',')
     await execute(`
       UPDATE customer_order_items
       SET
-        arrived_qty = CASE id ${arrivedCase.join(' ')} ELSE arrived_qty END,
-        balance = CASE id ${balanceCase.join(' ')} ELSE balance END,
-        status = CASE id ${statusCase.join(' ')} ELSE status END
+        arrived_qty = CASE id ${updateSql.arrivedCase} ELSE arrived_qty END,
+        balance = CASE id ${updateSql.balanceCase} ELSE balance END,
+        status = CASE id ${updateSql.statusCase} ELSE status END
       WHERE id IN (${idClause})
-    `, [...params, ...touchedIds], db)
-    await recalcCustomerOrderStatus(Array.from(touchedOrderIds))
+    `, updateSql.params, db)
+    await recalcCustomerOrderStatus(Array.from(touchedOrderIds), db)
   }
   return Array.from(touchedOrderIds)
 }
@@ -6453,13 +6447,14 @@ app.get('/api/delivery-notes/:id', authMiddleware, async c => {
       AND dni.material_id = m.id
       AND m.deleted_at IS NULL
     LEFT JOIN (
-      SELECT bom.id, bom.product_sku, bom.product_name, 
-             COALESCE(bom.spec, GROUP_CONCAT(DISTINCT bi.spec SEPARATOR ', ')) as spec,
-             COALESCE(bom.unit, MAX(bi.unit)) as unit
+      SELECT bom.product_sku,
+             MAX(NULLIF(bom.product_name, '')) as product_name,
+             COALESCE(MAX(NULLIF(bom.spec, '')), GROUP_CONCAT(DISTINCT NULLIF(bi.spec, '') SEPARATOR ', ')) as spec,
+             COALESCE(MAX(NULLIF(bom.unit, '')), MAX(NULLIF(bi.unit, ''))) as unit
       FROM bom
       LEFT JOIN bom_items bi ON bom.id = bi.bom_id
-      WHERE bi.deleted_at IS NULL
-      GROUP BY bom.id, bom.product_sku, bom.product_name
+      WHERE bom.deleted_at IS NULL AND (bi.deleted_at IS NULL OR bi.id IS NULL)
+      GROUP BY bom.product_sku
     ) b ON dni.material_code = b.product_sku
     WHERE dni.dn_id=? AND dni.deleted_at IS NULL`, [c.req.param('id')])
   return c.json({ ...dn, items })
