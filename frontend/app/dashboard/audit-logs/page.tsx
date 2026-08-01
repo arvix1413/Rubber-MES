@@ -191,7 +191,7 @@ export default function AuditLogsPage() {
         ) : (
           <>
             <div className="table-scroll-x">
-              <table className="min-w-full text-sm" style={{ minWidth: 1120 }}>
+              <table className="min-w-full text-sm" style={{ minWidth: 980 }}>
                 <thead className="bg-slate-50 text-slate-600">
                   <tr>
                     <th className="px-4 py-3 text-left">時間</th>
