@@ -3806,7 +3806,7 @@ app.patch('/api/po/:id/approve', authMiddleware, requirePerm('po.approve'), asyn
     if (!row) return c.json({ error: 'Not found' }, 404)
     if (row.status !== 'pending_review') return c.json({ error: '只有待審核狀態的採購單才能審核通過' }, 400)
     await execute('UPDATE purchase_orders SET status=?,approved_by=?,approved_at=? WHERE id=?', ['approved',u.userId,now8(),id])
-    await audit(u, 'APPROVE', '採購單', id, row?.po_number)
+    await audit(u, 'APPROVE', '採購單', id, `${row.po_number}: ${row.status} → approved`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -3825,7 +3825,7 @@ app.patch('/api/po/:id/status', authMiddleware, requirePerm('po.create'), async 
     }
 
     await execute('UPDATE purchase_orders SET status=? WHERE id=?', [status, id])
-    await audit(u, 'STATUS_CHANGE', '採購單', id, `${row?.po_number} → ${status}`)
+    await audit(u, 'STATUS_CHANGE', '採購單', id, `${row.po_number}: ${row.status} → ${status}`)
 
     // 提交審核時發通知郵件（非阻塞）
     if (status === 'pending_review') {
@@ -3886,7 +3886,7 @@ app.patch('/api/po/:id/receive', authMiddleware, requirePerm('po.receive'), asyn
       await execute('UPDATE po_items SET received_qty=? WHERE id=?', [qty, item.id])
     }
     await execute('UPDATE purchase_orders SET status=? WHERE id=?', ['received', id])
-    await audit(u, 'RECEIVE', '採購單', id, `${po.po_number} 收貨完成，庫存已更新`)
+    await audit(u, 'RECEIVE', '採購單', id, `${po.po_number}: ${po.status} → received；收貨完成，庫存已更新`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -4256,6 +4256,8 @@ app.patch('/api/customer-orders/:id/status', authMiddleware, requirePerm('custom
     const valid = ['pending', 'partial', 'completed', 'delay']
     if (!valid.includes(status)) return c.json({ error: 'Invalid status' }, 400)
     const orderId = Number(id)
+    const row = await queryOne<any>('SELECT po_number,status FROM customer_orders WHERE id=? AND deleted_at IS NULL', [id])
+    if (!row) return c.json({ error: 'Not found' }, 404)
     if (status === 'completed') {
       // Mark all order items as fully arrived so metrics are consistent
       await execute(
@@ -4269,8 +4271,7 @@ app.patch('/api/customer-orders/:id/status', authMiddleware, requirePerm('custom
       // If no shipped DNs exist the sync leaves items at 0; honour the user's explicit status choice
       await execute('UPDATE customer_orders SET status=? WHERE id=?', [status, orderId])
     }
-    const row = await queryOne<any>('SELECT po_number FROM customer_orders WHERE id=? AND deleted_at IS NULL', [id])
-    await audit(c.get('user'), 'STATUS_CHANGE', '客戶訂單', id, `${row?.po_number} → ${status}`)
+    await audit(c.get('user'), 'STATUS_CHANGE', '客戶訂單', id, `${row.po_number}: ${row.status} → ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -5894,7 +5895,7 @@ app.patch('/api/reconciliations/:id/confirm', authMiddleware, requirePerm('recon
       'UPDATE shipment_reconciliations SET status=?, confirmed_by=?, confirmed_at=? WHERE id=?',
       ['confirmed', u?.userId || null, now8(), id]
     )
-    await audit(u, 'MIGRATE', '出貨核對紀錄', id, header.reconciliation_no || `id=${id}`)
+    await audit(u, 'STATUS_CHANGE', '出貨核對紀錄', id, `${header.reconciliation_no || `id=${id}`}: ${header.status} → confirmed`)
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -6416,7 +6417,7 @@ app.patch('/api/invoices/:id/confirm', authMiddleware, requirePerm('invoice.appr
     }
 
     await execute('UPDATE invoice_headers SET status=?, confirmed_by=?, confirmed_at=? WHERE id=?', ['confirmed', u?.userId || null, now8(), id])
-    await audit(u, 'CONFIRM', header.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', id, header.invoice_no || `id=${id}`)
+    await audit(u, 'CONFIRM', header.invoice_type === 'supplier' ? '供應商發票' : '客戶發票', id, `${header.invoice_no || `id=${id}`}: ${header.status} → confirmed`)
     return c.json({ ok: true })
   } catch (e: any) {
     return c.json({ error: String(e.message) }, 500)
@@ -6638,7 +6639,14 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
         }
       }
 
-      await audit(u, isRepeatedRequest ? 'STATUS_REPAIR' : 'STATUS_CHANGE', '出貨單', id, `${row.dn_number} → ${status}`, tx)
+      await audit(
+        u,
+        isRepeatedRequest ? 'STATUS_REPAIR' : 'STATUS_CHANGE',
+        '出貨單',
+        id,
+        `${row.dn_number}: ${row.current_status} → ${status}${isRepeatedRequest ? '（重複請求，已修復關聯資料）' : ''}`,
+        tx,
+      )
       return { idempotent: isRepeatedRequest }
     })
     return c.json({ ok: true, ...result })
@@ -7369,7 +7377,7 @@ app.patch('/api/goods-receipts/:id/confirm', authMiddleware, requirePerm('goods_
       }
     }
     await execute('UPDATE goods_receipts SET status=? WHERE id=?', ['confirmed', id])
-    await audit(u, 'CONFIRM', '進貨單', id, gr.gr_number)
+    await audit(u, 'CONFIRM', '進貨單', id, `${gr.gr_number}: ${gr.status} → confirmed`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -7494,7 +7502,7 @@ app.patch('/api/production/:id/status', authMiddleware, requirePerm('production.
     }
     const setClause = Object.keys(updates).map(k => `${k}=?`).join(',')
     await execute(`UPDATE production_orders SET ${setClause} WHERE id=?`, [...Object.values(updates), id])
-    await audit(u, 'STATUS_CHANGE', '生產單', id, `${prod.prod_number} → ${status}`)
+    await audit(u, 'STATUS_CHANGE', '生產單', id, `${prod.prod_number}: ${prod.status} → ${status}`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
@@ -7576,7 +7584,7 @@ app.patch('/api/stock-adjustments/:id/approve', authMiddleware, requirePerm('sto
       )
     }
     await execute('UPDATE stock_adjustments SET status=?,approved_by=?,approved_at=? WHERE id=?', ['approved',u.userId,now8(),id])
-    await audit(u, 'APPROVE', '庫存調整', id, adj.adj_number)
+    await audit(u, 'APPROVE', '庫存調整', id, `${adj.adj_number}: ${adj.status} → approved`)
     return c.json({ ok: true })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
