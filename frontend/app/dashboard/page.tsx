@@ -36,7 +36,7 @@ export default function DashboardPage() {
     return [
       { step: '01', title: '客戶下單', desc: '建立客戶訂單與交期', href: '/dashboard/customer-orders', metric: fmt(stats?.orders_count || 0), tag: '訂單數' },
       { step: '02', title: '交期進度', desc: '依客戶通知進度追蹤需求', href: '/dashboard/order-intake', metric: fmt(stats?.orders_count || 0), tag: '追蹤中' },
-      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數' },
+      { step: '03', title: '採購下單', desc: '依交期進度生成採購單', href: '/dashboard/po', metric: fmt(stats?.po_count || 0), tag: 'PO 數', secondaryLabel: '採購總額', secondaryMetric: fmt(stats?.po_total || 0) },
       { step: '04', title: '安排出貨', desc: '建立出貨單並回寫數量', href: '/dashboard/delivery-notes', metric: fmt(stats?.delivery_count || 0), tag: '出貨單' },
       { step: '05', title: '數量核對', desc: '核對實際出貨與訂單', href: '/dashboard/shipment-reconciliation', metric: fmt(health?.pending_reconciliation_items || 0), tag: '待核對' },
       { step: '06', title: '開立發票', desc: '客戶/供應商雙向發票', href: '/dashboard/invoices', metric: fmt(invoicePending), tag: '待開票' },
@@ -83,7 +83,7 @@ export default function DashboardPage() {
               僅保留與參考流程相關頁面：客戶訂單 → 交期進度 → PO 下單 → 出貨 → 核對 → 開票 → 付款
             </p>
           </div>
-          <div className="grid grid-cols-2 gap-2 text-right sm:grid-cols-3">
+          <div className="grid grid-cols-2 gap-2 text-right">
             <div className="rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2">
               <div className="text-[11px] text-[#8a6b49]">總銷售額</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.total_sales || 0)}</div>
@@ -92,20 +92,6 @@ export default function DashboardPage() {
               <div className="text-[11px] text-[#8a6b49]">本月訂單</div>
               <div className="text-lg font-bold text-[#4f351d]">{fmt(stats?.month_orders || 0)}</div>
             </div>
-            <Link
-              href="/dashboard/po"
-              className="col-span-2 rounded-xl border border-[#dcc5a7] bg-white/70 px-3 py-2 transition-colors hover:border-[#c59e70] hover:bg-white/90 sm:col-span-1"
-              aria-label="查看採購概況"
-            >
-              <div className="text-[11px] text-[#8a6b49]">採購概況</div>
-              <div className="mt-0.5 flex items-baseline justify-end gap-2">
-                <span className="text-lg font-bold text-[#4f351d]">{fmt(stats?.po_count || 0)}</span>
-                <span className="text-[10px] text-[#8a6b49]">張採購單</span>
-              </div>
-              <div className="mt-1 border-t border-[#e8d8c3] pt-1 text-xs font-semibold text-[#6f4b29]">
-                總額 {fmt(stats?.po_total || 0)}
-              </div>
-            </Link>
           </div>
         </div>
       </section>
@@ -124,6 +110,12 @@ export default function DashboardPage() {
             <div className="text-base font-bold text-[#372c21]">{item.title}</div>
             <div className="mt-1 text-xs leading-5 text-[#7d6d5a]">{item.desc}</div>
             <div className="mt-3 text-2xl font-extrabold text-[#4f351d]">{item.metric}</div>
+            {item.secondaryMetric ? (
+              <div className="mt-2 flex items-center justify-between border-t border-[#e4d7c5] pt-2">
+                <span className="text-[11px] font-semibold text-[#7c6a57]">{item.secondaryLabel}</span>
+                <span className="text-sm font-bold text-[#6f4b29]">{item.secondaryMetric}</span>
+              </div>
+            ) : null}
           </Link>
         ))}
       </section>
