@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation'
 import { apiFetch, clearToken, getToken } from '@/lib/api'
 import { getUser, type Role } from '@/lib/permissions'
 import { useReviewBadge } from '@/lib/useReviewBadge'
+import { clearSessionActivity, useIdleTimeout } from '@/lib/useIdleTimeout'
 import StickyTableHeaderBridge from '@/components/StickyTableHeaderBridge'
 import { getCompany, getCompanyDisplayName, getCompanyInitial, type CompanySettings } from '@/lib/useCompany'
 
@@ -118,6 +119,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
 
+  useIdleTimeout(() => {
+    clearToken()
+    clearSessionActivity()
+    localStorage.removeItem('rubber_user')
+    localStorage.removeItem('rubber_permissions')
+    window.location.replace('/login?reason=idle')
+  })
+
   useEffect(() => {
     if (!getToken()) {
       router.replace('/login')
@@ -168,6 +177,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       // Local logout must still succeed if the network is unavailable.
     }
     clearToken()
+    clearSessionActivity()
     localStorage.removeItem('rubber_user')
     localStorage.removeItem('rubber_permissions')
     window.location.href = '/login'

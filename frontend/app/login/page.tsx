@@ -1,6 +1,7 @@
 'use client'
 import { useEffect, useState } from 'react'
 import { apiFetch, setToken } from '@/lib/api'
+import { markSessionActivity } from '@/lib/useIdleTimeout'
 import { getCompany, getCompanyDisplayName, getCompanyInitial, getLogoUrl, type CompanySettings } from '@/lib/useCompany'
 
 export default function LoginPage() {
@@ -9,6 +10,7 @@ export default function LoginPage() {
   const [loading, setLoading] = useState(false)
   const [showPw, setShowPw] = useState(false)
   const [company, setCompany] = useState<CompanySettings | null>(null)
+  const [notice, setNotice] = useState('')
 
   useEffect(() => {
     getCompany().then(setCompany).catch(() => {})
@@ -18,6 +20,14 @@ export default function LoginPage() {
     const name = getCompanyDisplayName(company)
     document.title = name ? `${name} — 登入` : '登入'
   }, [company])
+
+  useEffect(() => {
+    const reason = new URLSearchParams(window.location.search).get('reason')
+    if (reason === 'idle') {
+      setNotice('為保護帳號安全，系統已因 30 分鐘未操作自動登出，請重新登入。')
+      window.history.replaceState({}, '', '/login')
+    }
+  }, [])
 
   const companyName = getCompanyDisplayName(company)
   const companyInitial = getCompanyInitial(company)
@@ -32,6 +42,7 @@ export default function LoginPage() {
       })
       if (typeof document !== 'undefined') (document.activeElement as HTMLElement | null)?.blur()
       setToken(data.token)
+      markSessionActivity()
       localStorage.setItem('rubber_user', JSON.stringify(data.user))
       localStorage.setItem('rubber_permissions', JSON.stringify(data.permissions || []))
       window.location.href = '/dashboard'
@@ -82,6 +93,11 @@ export default function LoginPage() {
           {error && (
             <div className="mb-5 rounded-lg border border-red-200 bg-red-50 px-4 py-2.5 text-xs font-medium text-red-700">
               {error}
+            </div>
+          )}
+          {notice && (
+            <div className="mb-5 rounded-lg border border-amber-200 bg-amber-50 px-4 py-2.5 text-xs font-medium text-amber-700">
+              {notice}
             </div>
           )}
 
