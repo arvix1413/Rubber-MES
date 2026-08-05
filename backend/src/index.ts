@@ -1005,6 +1005,99 @@ const blockIfReferenced = async (
   return `無法刪除：此資料目前仍被其他業務單據或主檔引用。使用情況：${hits.join('、')}。請先解除關聯、刪除相關單據，或改用停用 / 封存後再操作。`
 }
 
+type MaterialReferenceCheck = {
+  label: string
+  sql: string
+  params: (id: any, materialCode: string) => any[]
+}
+
+const materialReferenceChecks: MaterialReferenceCheck[] = [
+  {
+    label: 'BOM 用料',
+    sql: 'SELECT COUNT(*) as cnt FROM bom_items bi JOIN bom b ON b.id = bi.bom_id WHERE (bi.material_id=? OR bi.material_code=?) AND bi.deleted_at IS NULL AND b.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: 'BOM 主檔',
+    sql: 'SELECT COUNT(*) as cnt FROM bom b WHERE (b.material_id=? OR b.product_sku=?) AND b.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '採購單',
+    sql: 'SELECT COUNT(*) as cnt FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE (pi.material_id=? OR pi.material_code=?) AND pi.deleted_at IS NULL AND po.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '報價單',
+    sql: 'SELECT COUNT(*) as cnt FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE (qi.material_id=? OR qi.material_code=?) AND qi.deleted_at IS NULL AND q.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '出貨單',
+    sql: 'SELECT COUNT(*) as cnt FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id WHERE (dni.material_id=? OR dni.material_code=?) AND dni.deleted_at IS NULL AND dn.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '送貨單',
+    sql: 'SELECT COUNT(*) as cnt FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id WHERE (dsi.material_id=? OR dsi.material_code=?) AND dsi.deleted_at IS NULL AND ds.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '進貨單',
+    sql: 'SELECT COUNT(*) as cnt FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE (gri.material_id=? OR gri.material_code=?) AND gri.deleted_at IS NULL AND gr.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '生產領料',
+    sql: 'SELECT COUNT(*) as cnt FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id WHERE (pm.material_id=? OR pm.material_code=?) AND pm.deleted_at IS NULL AND po.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '庫存調整',
+    sql: 'SELECT COUNT(*) as cnt FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id WHERE (sai.material_id=? OR sai.material_code=?) AND sai.deleted_at IS NULL AND sa.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '交期進度',
+    sql: 'SELECT COUNT(*) as cnt FROM delivery_progress dp WHERE dp.material_code=? AND dp.deleted_at IS NULL',
+    params: (_id, code) => [code],
+  },
+  {
+    label: '交期進度明細',
+    sql: 'SELECT COUNT(*) as cnt FROM delivery_progress_items dpi JOIN delivery_progress dp ON dp.id = dpi.progress_id WHERE (dpi.material_id=? OR dpi.material_code=?) AND dpi.deleted_at IS NULL AND dp.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '交期進度用料',
+    sql: 'SELECT COUNT(*) as cnt FROM delivery_progress_item_materials dpim JOIN delivery_progress_items dpi ON dpi.id = dpim.progress_item_id AND dpi.deleted_at IS NULL JOIN delivery_progress dp ON dp.id = dpim.progress_id WHERE (dpim.material_id=? OR dpim.material_code=?) AND dpim.deleted_at IS NULL AND dp.deleted_at IS NULL',
+    params: (id, code) => [id, code],
+  },
+  {
+    label: '庫存流水',
+    sql: 'SELECT COUNT(*) as cnt FROM stock_ledger WHERE material_code=?',
+    params: (_id, code) => [code],
+  },
+  {
+    label: '出貨對帳',
+    sql: 'SELECT COUNT(*) as cnt FROM shipment_reconciliation_items WHERE material_code=?',
+    params: (_id, code) => [code],
+  },
+  {
+    label: '發票',
+    sql: 'SELECT COUNT(*) as cnt FROM invoice_items WHERE material_code=?',
+    params: (_id, code) => [code],
+  },
+]
+
+const findMaterialReferenceUsage = async (id: any, materialCode: string): Promise<string | null> => {
+  const hits: string[] = []
+  for (const check of materialReferenceChecks) {
+    const count = await getActiveReferenceCount(check.sql, check.params(id, materialCode))
+    if (count > 0) hits.push(`${check.label} ${count} 筆`)
+  }
+  return hits.length ? hits.join('、') : null
+}
+
 let ensureInvoiceTablesPromise: Promise<void> | null = null
 const ensureInvoiceTables = async () => {
   if (!ensureInvoiceTablesPromise) {
@@ -3160,6 +3253,23 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
     const b = await c.req.json()
     const existing = await queryOne<any>('SELECT material_code FROM materials WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
+    const currentMaterialCode = String(existing.material_code || '').trim()
+    const nextMaterialCode = String(b.material_code ?? currentMaterialCode).trim()
+    if (!nextMaterialCode) return c.json({ error: 'material_code required' }, 400)
+    if (nextMaterialCode !== currentMaterialCode) {
+      const duplicate = await queryOne<any>(
+        'SELECT id FROM materials WHERE material_code=? AND id<>? AND deleted_at IS NULL LIMIT 1',
+        [nextMaterialCode, id],
+      )
+      if (duplicate) return c.json({ error: '新的物料編號已存在，請更換後再試' }, 409)
+
+      const usage = await findMaterialReferenceUsage(id, currentMaterialCode)
+      if (usage) {
+        return c.json({
+          error: `物料編號無法修改：此物料已被既有業務資料引用（${usage}），修改會影響歷史單據。請建立新的物料資料。`,
+        }, 409)
+      }
+    }
     const moqTiers = normalizeMoqTiers(b.moq_tiers)
     const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
     const leadtimeText = String(b.leadtime_text ?? b.leadtime ?? '').trim()
@@ -3169,7 +3279,7 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
     await execute(
       'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,leadtime_text=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
       [
-        existing.material_code, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
+        nextMaterialCode, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
         b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
         b.color || '', leadtimeDays, leadtimeText || null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
       ]
