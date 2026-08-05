@@ -1179,6 +1179,130 @@ const findMaterialReferenceUsage = async (id: any, materialCode: string): Promis
   return hits.length ? hits.join('、') : null
 }
 
+const executeIfSchemaAvailable = async (sql: string, params: any[], db?: DbExecutor) => {
+  try {
+    return await execute(sql, params, db)
+  } catch (e: any) {
+    if (isMissingSchemaError(e)) return { insertId: 0, affectedRows: 0 }
+    throw e
+  }
+}
+
+/**
+ * Material IDs are the durable relation key, but several current business
+ * tables also keep a material_code snapshot for display and search. When a
+ * code changes, keep those active records in sync while leaving historical
+ * accounting/stock snapshots untouched.
+ */
+const syncActiveMaterialCodeReferences = async (
+  db: DbExecutor,
+  materialId: any,
+  previousCode: string,
+  nextCode: string,
+) => {
+  const statements: Array<{ sql: string; params: any[] }> = [
+    {
+      sql: `UPDATE bom
+        SET material_id=?, product_sku=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND product_sku=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE bom_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE customer_order_items
+        SET material_code=?
+        WHERE deleted_at IS NULL AND material_code=?`,
+      params: [nextCode, previousCode],
+    },
+    {
+      sql: `UPDATE po_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE quotation_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE delivery_note_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE delivery_sheet_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE goods_receipt_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE production_materials
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE stock_adjustment_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE delivery_progress
+        SET material_code=?
+        WHERE deleted_at IS NULL AND material_code=?`,
+      params: [nextCode, previousCode],
+    },
+    {
+      sql: `UPDATE delivery_progress_items
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+    {
+      sql: `UPDATE delivery_progress_items
+        SET bom_code=?
+        WHERE deleted_at IS NULL AND bom_id=?`,
+      params: [nextCode, materialId],
+    },
+    {
+      sql: `UPDATE delivery_progress_item_materials
+        SET material_id=?, material_code=?
+        WHERE deleted_at IS NULL
+          AND (material_id=? OR (COALESCE(material_id, 0)=0 AND material_code=?))`,
+      params: [materialId, nextCode, materialId, previousCode],
+    },
+  ]
+
+  for (const statement of statements) {
+    await executeIfSchemaAvailable(statement.sql, statement.params, db)
+  }
+}
+
 let ensureInvoiceTablesPromise: Promise<void> | null = null
 const ensureInvoiceTables = async () => {
   if (!ensureInvoiceTablesPromise) {
@@ -3332,41 +3456,71 @@ app.put('/api/materials/:id', authMiddleware, requirePerm('bom.edit'), async c =
     await ensureMaterialExtraColumns()
     const id = c.req.param('id')
     const b = await c.req.json()
-    const existing = await queryOne<any>('SELECT material_code FROM materials WHERE id=? AND deleted_at IS NULL', [id])
-    if (!existing) return c.json({ error: 'Not found' }, 404)
-    const currentMaterialCode = String(existing.material_code || '').trim()
-    const nextMaterialCode = String(b.material_code ?? currentMaterialCode).trim()
-    if (!nextMaterialCode) return c.json({ error: 'material_code required' }, 400)
-    if (nextMaterialCode !== currentMaterialCode) {
-      const duplicate = await queryOne<any>(
-        'SELECT id FROM materials WHERE material_code=? AND id<>? AND deleted_at IS NULL LIMIT 1',
-        [nextMaterialCode, id],
-      )
-      if (duplicate) return c.json({ error: '新的物料編號已存在，請更換後再試' }, 409)
+    const result = await withTransaction(async tx => {
+      const existing = await queryOne<any>('SELECT material_code FROM materials WHERE id=? AND deleted_at IS NULL FOR UPDATE', [id], tx)
+      if (!existing) throw Object.assign(new Error('Not found'), { status: 404 })
 
-      const usage = await findMaterialReferenceUsage(id, currentMaterialCode)
-      if (usage) {
-        return c.json({
-          error: `物料編號無法修改：此物料已被既有業務資料引用（${usage}），修改會影響歷史單據。請建立新的物料資料。`,
-        }, 409)
+      const currentMaterialCode = String(existing.material_code || '').trim()
+      const nextMaterialCode = String(b.material_code ?? currentMaterialCode).trim()
+      if (!nextMaterialCode) throw Object.assign(new Error('material_code required'), { status: 400 })
+
+      if (nextMaterialCode !== currentMaterialCode) {
+        const duplicate = await queryOne<any>(
+          'SELECT id FROM materials WHERE material_code=? AND id<>? AND deleted_at IS NULL LIMIT 1',
+          [nextMaterialCode, id],
+          tx,
+        )
+        if (duplicate) throw Object.assign(new Error('新的物料編號已存在，請更換後再試'), { status: 409 })
+
+        const bomConflict = await queryOne<any>(
+          `SELECT id, product_sku
+           FROM bom
+           WHERE product_sku=? AND deleted_at IS NULL AND COALESCE(material_id, 0)<>?
+           LIMIT 1`,
+          [nextMaterialCode, id],
+          tx,
+        )
+        if (bomConflict) {
+          throw Object.assign(
+            new Error(`新的物料編號與 BOM SKU「${bomConflict.product_sku}」衝突，請先處理 BOM ${bomConflict.id}`),
+            { status: 409 },
+          )
+        }
       }
-    }
-    const moqTiers = normalizeMoqTiers(b.moq_tiers)
-    const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
-    const leadtimeText = String(b.leadtime_text ?? b.leadtime ?? '').trim()
-    const leadtimeDays = leadtimeText
-      ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
-      : (b.leadtime_days ? Number(b.leadtime_days) : null)
-    await execute(
-      'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,leadtime_text=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
-      [
-        nextMaterialCode, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
-        b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
-        b.color || '', leadtimeDays, leadtimeText || null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
-      ]
-    )
-    return c.json({ ok: true })
-  } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+
+      const moqTiers = normalizeMoqTiers(b.moq_tiers)
+      const singleMoq = moqTiers.length ? moqTiers[0].moq : (b.moq ? Number(b.moq) : null)
+      const leadtimeText = String(b.leadtime_text ?? b.leadtime ?? '').trim()
+      const leadtimeDays = leadtimeText
+        ? (/^\d+$/.test(leadtimeText) ? Number(leadtimeText) : null)
+        : (b.leadtime_days ? Number(b.leadtime_days) : null)
+      await execute(
+        'UPDATE materials SET material_code=?,material_name=?,spec=?,unit=?,category=?,product_category=?,supplier_id=?,supplier_price=?,company_price=?,currency=?,stock=?,image_url=?,color=?,leadtime_days=?,leadtime_text=?,moq=?,moq_tiers=?,remark=? WHERE id=?',
+        [
+          nextMaterialCode, b.material_name, b.spec || '', b.unit || 'PCS', b.category || '', b.product_category || '',
+          b.supplier_id || null, b.supplier_price || 0, b.company_price || 0, b.currency || 'VND', b.stock || 0, b.image_url || '',
+          b.color || '', leadtimeDays, leadtimeText || null, singleMoq, moqTiers.length ? JSON.stringify(moqTiers) : null, b.remark || '', id,
+        ],
+        tx,
+      )
+
+      if (nextMaterialCode !== currentMaterialCode) {
+        await syncActiveMaterialCodeReferences(tx, id, currentMaterialCode, nextMaterialCode)
+      }
+
+      return { currentMaterialCode, nextMaterialCode }
+    })
+
+    const auditDetail = result.currentMaterialCode === result.nextMaterialCode
+      ? result.nextMaterialCode
+      : `${result.currentMaterialCode} → ${result.nextMaterialCode}`
+    await audit(c.get('user'), 'UPDATE', '材料', id, auditDetail)
+    return c.json({ ok: true, material_code: result.nextMaterialCode })
+  } catch (e: any) {
+    const status = Number(e?.status)
+    const responseStatus = status >= 400 && status < 600 ? status : 500
+    return c.json({ error: String(e.message) }, responseStatus as any)
+  }
 })
 app.delete('/api/materials/:id', authMiddleware, requirePerm('bom.delete'), async c => {
   const id = c.req.param('id')

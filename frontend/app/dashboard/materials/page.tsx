@@ -168,7 +168,7 @@ export default function MaterialsPage() {
     try {
       if (editing.id) {
         await apiFetch(`/api/materials/${editing.id}`, { method: 'PUT', body: JSON.stringify(editing) })
-        toast('材料更新成功')
+        toast('材料更新成功，相關使用中的資料已同步')
       } else {
         await apiFetch('/api/materials', { method: 'POST', body: JSON.stringify(editing) })
         toast('材料建立成功')
@@ -259,7 +259,7 @@ export default function MaterialsPage() {
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">物料編號 *</label>
                 <input className="rubber-input" value={editing.material_code || ''} onChange={(e) => setEditing((p) => ({ ...p, material_code: e.target.value }))} />
-                {editing.id && <p className="mt-1 text-[10px] leading-4 text-amber-600">若已被既有 BOM、採購、出貨、進貨或庫存資料引用，物料編號無法直接修改。</p>}
+                {editing.id && <p className="mt-1 text-[10px] leading-4 text-amber-600">編號修改後會同步更新目前使用中的業務資料；庫存流水、對帳與發票等歷史快照會保留原始編號。</p>}
               </div>
               <div>
                 <label className="block text-[11px] text-slate-500 mb-1.5">材料名稱 *</label>
