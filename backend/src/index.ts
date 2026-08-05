@@ -992,6 +992,19 @@ const getActiveReferenceCount = async (sql: string, params: any[]) => {
   }
 }
 
+const getActiveReferenceDetails = async (sql: string, params: any[]): Promise<string[]> => {
+  try {
+    const rows = await query<any>(sql, params)
+    return rows
+      .map((row: any) => String(row?.reference || '').trim())
+      .filter(Boolean)
+      .slice(0, 3)
+  } catch (e: any) {
+    if (isMissingSchemaError(e)) return []
+    throw e
+  }
+}
+
 const blockIfReferenced = async (
   id: any,
   checks: Array<{ sql: string; label: string }>,
@@ -1008,6 +1021,7 @@ const blockIfReferenced = async (
 type MaterialReferenceCheck = {
   label: string
   sql: string
+  detailSql: string
   params: (id: any, materialCode: string) => any[]
 }
 
@@ -1015,76 +1029,135 @@ const materialReferenceChecks: MaterialReferenceCheck[] = [
   {
     label: 'BOM 用料',
     sql: 'SELECT COUNT(*) as cnt FROM bom_items bi JOIN bom b ON b.id = bi.bom_id WHERE (bi.material_id=? OR bi.material_code=?) AND bi.deleted_at IS NULL AND b.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('BOM ', COALESCE(NULLIF(b.product_sku, ''), CONCAT('#', b.id))) AS reference
+      FROM bom_items bi JOIN bom b ON b.id = bi.bom_id
+      WHERE (bi.material_id=? OR bi.material_code=?) AND bi.deleted_at IS NULL AND b.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: 'BOM 主檔',
     sql: 'SELECT COUNT(*) as cnt FROM bom b WHERE (b.material_id=? OR b.product_sku=?) AND b.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('BOM ', COALESCE(NULLIF(b.product_sku, ''), CONCAT('#', b.id))) AS reference
+      FROM bom b
+      WHERE (b.material_id=? OR b.product_sku=?) AND b.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '採購單',
     sql: 'SELECT COUNT(*) as cnt FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id WHERE (pi.material_id=? OR pi.material_code=?) AND pi.deleted_at IS NULL AND po.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('採購單 ', COALESCE(NULLIF(po.po_number, ''), CONCAT('#', po.id))) AS reference
+      FROM po_items pi JOIN purchase_orders po ON po.id = pi.po_id
+      WHERE (pi.material_id=? OR pi.material_code=?) AND pi.deleted_at IS NULL AND po.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '報價單',
     sql: 'SELECT COUNT(*) as cnt FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id WHERE (qi.material_id=? OR qi.material_code=?) AND qi.deleted_at IS NULL AND q.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('報價單 ', COALESCE(NULLIF(q.quotation_number, ''), CONCAT('#', q.id))) AS reference
+      FROM quotation_items qi JOIN quotations q ON q.id = qi.quotation_id
+      WHERE (qi.material_id=? OR qi.material_code=?) AND qi.deleted_at IS NULL AND q.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '出貨單',
     sql: 'SELECT COUNT(*) as cnt FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id WHERE (dni.material_id=? OR dni.material_code=?) AND dni.deleted_at IS NULL AND dn.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('出貨單 ', COALESCE(NULLIF(dn.dn_number, ''), CONCAT('#', dn.id))) AS reference
+      FROM delivery_note_items dni JOIN delivery_notes dn ON dn.id = dni.dn_id
+      WHERE (dni.material_id=? OR dni.material_code=?) AND dni.deleted_at IS NULL AND dn.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '送貨單',
     sql: 'SELECT COUNT(*) as cnt FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id WHERE (dsi.material_id=? OR dsi.material_code=?) AND dsi.deleted_at IS NULL AND ds.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('送貨單 ', COALESCE(NULLIF(ds.ds_number, ''), CONCAT('#', ds.id))) AS reference
+      FROM delivery_sheet_items dsi JOIN delivery_sheets ds ON ds.id = dsi.ds_id
+      WHERE (dsi.material_id=? OR dsi.material_code=?) AND dsi.deleted_at IS NULL AND ds.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '進貨單',
     sql: 'SELECT COUNT(*) as cnt FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id WHERE (gri.material_id=? OR gri.material_code=?) AND gri.deleted_at IS NULL AND gr.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('進貨單 ', COALESCE(NULLIF(gr.gr_number, ''), CONCAT('#', gr.id))) AS reference
+      FROM goods_receipt_items gri JOIN goods_receipts gr ON gr.id = gri.gr_id
+      WHERE (gri.material_id=? OR gri.material_code=?) AND gri.deleted_at IS NULL AND gr.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '生產領料',
     sql: 'SELECT COUNT(*) as cnt FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id WHERE (pm.material_id=? OR pm.material_code=?) AND pm.deleted_at IS NULL AND po.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('生產單 ', COALESCE(NULLIF(po.prod_number, ''), CONCAT('#', po.id))) AS reference
+      FROM production_materials pm JOIN production_orders po ON po.id = pm.prod_id
+      WHERE (pm.material_id=? OR pm.material_code=?) AND pm.deleted_at IS NULL AND po.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '庫存調整',
     sql: 'SELECT COUNT(*) as cnt FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id WHERE (sai.material_id=? OR sai.material_code=?) AND sai.deleted_at IS NULL AND sa.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('庫存調整 ', COALESCE(NULLIF(sa.adj_number, ''), CONCAT('#', sa.id))) AS reference
+      FROM stock_adjustment_items sai JOIN stock_adjustments sa ON sa.id = sai.adj_id
+      WHERE (sai.material_id=? OR sai.material_code=?) AND sai.deleted_at IS NULL AND sa.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '交期進度',
     sql: 'SELECT COUNT(*) as cnt FROM delivery_progress dp WHERE dp.material_code=? AND dp.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('交期進度 ', COALESCE(NULLIF(dp.progress_no, ''), CONCAT('#', dp.id))) AS reference
+      FROM delivery_progress dp
+      WHERE dp.material_code=? AND dp.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (_id, code) => [code],
   },
   {
     label: '交期進度明細',
     sql: 'SELECT COUNT(*) as cnt FROM delivery_progress_items dpi JOIN delivery_progress dp ON dp.id = dpi.progress_id WHERE (dpi.material_id=? OR dpi.material_code=?) AND dpi.deleted_at IS NULL AND dp.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('交期進度 ', COALESCE(NULLIF(dp.progress_no, ''), CONCAT('#', dp.id))) AS reference
+      FROM delivery_progress_items dpi JOIN delivery_progress dp ON dp.id = dpi.progress_id
+      WHERE (dpi.material_id=? OR dpi.material_code=?) AND dpi.deleted_at IS NULL AND dp.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '交期進度用料',
     sql: 'SELECT COUNT(*) as cnt FROM delivery_progress_item_materials dpim JOIN delivery_progress_items dpi ON dpi.id = dpim.progress_item_id AND dpi.deleted_at IS NULL JOIN delivery_progress dp ON dp.id = dpim.progress_id WHERE (dpim.material_id=? OR dpim.material_code=?) AND dpim.deleted_at IS NULL AND dp.deleted_at IS NULL',
+    detailSql: `SELECT DISTINCT CONCAT('交期進度 ', COALESCE(NULLIF(dp.progress_no, ''), CONCAT('#', dp.id))) AS reference
+      FROM delivery_progress_item_materials dpim
+      JOIN delivery_progress_items dpi ON dpi.id = dpim.progress_item_id AND dpi.deleted_at IS NULL
+      JOIN delivery_progress dp ON dp.id = dpim.progress_id
+      WHERE (dpim.material_id=? OR dpim.material_code=?) AND dpim.deleted_at IS NULL AND dp.deleted_at IS NULL
+      ORDER BY reference LIMIT 3`,
     params: (id, code) => [id, code],
   },
   {
     label: '庫存流水',
     sql: 'SELECT COUNT(*) as cnt FROM stock_ledger WHERE material_code=?',
+    detailSql: "SELECT DISTINCT CONCAT('庫存流水 #', id) AS reference FROM stock_ledger WHERE material_code=? ORDER BY id DESC LIMIT 3",
     params: (_id, code) => [code],
   },
   {
     label: '出貨對帳',
     sql: 'SELECT COUNT(*) as cnt FROM shipment_reconciliation_items WHERE material_code=?',
+    detailSql: `SELECT DISTINCT CONCAT('出貨對帳 ', COALESCE(NULLIF(sr.reconciliation_no, ''), CONCAT('#', sr.id))) AS reference
+      FROM shipment_reconciliation_items sri JOIN shipment_reconciliations sr ON sr.id = sri.reconciliation_id
+      WHERE sri.material_code=?
+      ORDER BY reference LIMIT 3`,
     params: (_id, code) => [code],
   },
   {
     label: '發票',
     sql: 'SELECT COUNT(*) as cnt FROM invoice_items WHERE material_code=?',
+    detailSql: `SELECT DISTINCT CONCAT('發票 ', COALESCE(NULLIF(ih.invoice_no, ''), CONCAT('#', ih.id))) AS reference
+      FROM invoice_items ii JOIN invoice_headers ih ON ih.id = ii.invoice_id
+      WHERE ii.material_code=?
+      ORDER BY reference LIMIT 3`,
     params: (_id, code) => [code],
   },
 ]
@@ -1092,8 +1165,16 @@ const materialReferenceChecks: MaterialReferenceCheck[] = [
 const findMaterialReferenceUsage = async (id: any, materialCode: string): Promise<string | null> => {
   const hits: string[] = []
   for (const check of materialReferenceChecks) {
-    const count = await getActiveReferenceCount(check.sql, check.params(id, materialCode))
-    if (count > 0) hits.push(`${check.label} ${count} 筆`)
+    const params = check.params(id, materialCode)
+    const count = await getActiveReferenceCount(check.sql, params)
+    if (count <= 0) continue
+    const details = await getActiveReferenceDetails(check.detailSql, params)
+    if (!details.length) {
+      hits.push(`${check.label}（共 ${count} 筆）`)
+      continue
+    }
+    const suffix = count > details.length ? ` 等，共 ${count} 筆` : ''
+    hits.push(`${check.label}（${details.join('、')}${suffix}）`)
   }
   return hits.length ? hits.join('、') : null
 }
