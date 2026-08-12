@@ -9,10 +9,79 @@ import crypto from 'crypto'
 import { sendNotificationEmail, buildPendingApprovalEmail } from './mailer'
 import { buildOrderQuantityCaseUpdate, type OrderQuantityUpdate } from './order-quantity-sync'
 import { validateDeliveryStatusTransition } from './delivery-status'
+import {
+  ALL_PERMISSIONS,
+  MANAGER_ONLY_PERMISSIONS,
+  defaultEmployeeAllowed,
+} from './permissions'
 
 type Variables = { user: any }
 const app = new Hono<{ Variables: Variables }>()
 const normalizeUserRole = (role: any): 'manager' | 'employee' => (role === 'manager' || role === 'admin' ? 'manager' : 'employee')
+
+/** Sync employee role to: all ops except approve / company / user admin. */
+let employeePolicyApplied = false
+let ensureEmployeePermissionsPromise: Promise<void> | null = null
+const ensureEmployeePermissions = async (force = false) => {
+  if (employeePolicyApplied && !force) return
+  if (!ensureEmployeePermissionsPromise) {
+    ensureEmployeePermissionsPromise = (async () => {
+      if (force) {
+        for (const item of ALL_PERMISSIONS) {
+          const allowed = defaultEmployeeAllowed(item.key) ? 1 : 0
+          await execute(
+            'INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,?) ON DUPLICATE KEY UPDATE allowed=?',
+            ['employee', item.key, allowed, allowed],
+          )
+        }
+      } else {
+        for (const item of ALL_PERMISSIONS) {
+          const allowed = defaultEmployeeAllowed(item.key) ? 1 : 0
+          if (MANAGER_ONLY_PERMISSIONS.has(item.key)) {
+            await execute(
+              'INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,0) ON DUPLICATE KEY UPDATE allowed=0',
+              ['employee', item.key],
+            )
+            continue
+          }
+          await execute(
+            'INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,?) ON DUPLICATE KEY UPDATE permission=permission',
+            ['employee', item.key, allowed],
+          )
+        }
+      }
+      employeePolicyApplied = true
+    })().finally(() => {
+      ensureEmployeePermissionsPromise = null
+    })
+  }
+  await ensureEmployeePermissionsPromise
+}
+
+/** Ensure DANNY (and aliases) always has manager = full approve rights. */
+let dannyManagerEnsured = false
+let ensureDannyManagerPromise: Promise<void> | null = null
+const ensureDannyManager = async () => {
+  if (dannyManagerEnsured) return
+  if (!ensureDannyManagerPromise) {
+    ensureDannyManagerPromise = (async () => {
+      await execute(
+        `UPDATE users
+         SET role = 'manager'
+         WHERE deleted_at IS NULL
+           AND role <> 'manager'
+           AND (
+             LOWER(name) LIKE '%danny%'
+             OR LOWER(email) LIKE '%danny%'
+           )`,
+      )
+      dannyManagerEnsured = true
+    })().finally(() => {
+      ensureDannyManagerPromise = null
+    })
+  }
+  await ensureDannyManagerPromise
+}
 
 app.use('/api/*', cors({
   origin: '*',
@@ -3204,35 +3273,6 @@ async function audit(user: any, action: string, resource: string, resourceId: an
 
 app.get('/', c => c.json({ name: 'RUBBER MES Backend', version: '2.0.0' }))
 
-// ── All Permissions (defined early, used in login + role-permissions) ─────────
-const ALL_PERMISSIONS = [
-  { key: 'customer_order.create', label: '新增客戶訂單' },
-  { key: 'customer_order.delete', label: '刪除客戶訂單' },
-  { key: 'quotation.approve', label: '審核報價單' },
-  { key: 'bom.create', label: '新增BOM' },
-  { key: 'bom.edit', label: '編輯BOM' },
-  { key: 'bom.delete', label: '刪除BOM' },
-  { key: 'po.create', label: '新增採購單' },
-  { key: 'po.approve', label: '審核採購單（送出→審核）' },
-  { key: 'po.receive', label: '確認收貨（已送出→已收貨）' },
-  { key: 'po.delete', label: '刪除採購單' },
-  { key: 'production.create', label: '新增生產單' },
-  { key: 'production.delete', label: '刪除生產單' },
-  { key: 'delivery.create', label: '新增出貨單' },
-  { key: 'delivery.approve', label: '審核出貨單' },
-  { key: 'delivery.delete', label: '刪除出貨單' },
-  { key: 'reconciliation.approve', label: '審核數量核對單' },
-  { key: 'invoice.approve', label: '審核發票' },
-  { key: 'goods_receipt.approve', label: '審核進貨單' },
-  { key: 'customer.manage', label: '管理客戶' },
-  { key: 'supplier.manage', label: '管理供應商' },
-  { key: 'stock.adjust', label: '庫存調整' },
-  { key: 'stock.approve', label: '審核庫存調整' },
-  { key: 'company.manage', label: '公司設定' },
-  { key: 'user.manage', label: '使用者管理' },
-  { key: 'audit.view', label: '檢視操作日誌' },
-]
-
 // ── Auth ─────────────────────────────────────────────────────────────────────
 app.post('/api/auth/login', async c => {
   try {
@@ -3242,6 +3282,8 @@ app.post('/api/auth/login', async c => {
       if (normalizedEmail) await audit({ email: normalizedEmail, name: 'unknown' }, 'LOGIN_FAILED', '系統登入', '-', '缺少登入欄位')
       return c.json({ error: 'Missing fields' }, 400)
     }
+    await ensureEmployeePermissions()
+    await ensureDannyManager()
     const user = await queryOne<any>('SELECT * FROM users WHERE email=? AND deleted_at IS NULL', [normalizedEmail])
     if (!user) {
       await audit({ email: normalizedEmail, name: 'unknown' }, 'LOGIN_FAILED', '系統登入', '-', '帳號或密碼錯誤')
@@ -3256,7 +3298,7 @@ app.post('/api/auth/login', async c => {
     // Load role permissions
     let permissions: string[] = []
     if (normalizedRole === 'manager') {
-      permissions = ALL_PERMISSIONS.map((p: any) => p.key)
+      permissions = ALL_PERMISSIONS.map((p) => p.key)
     } else {
       const rows = await query<any>('SELECT permission FROM role_permissions WHERE role=? AND allowed=1', ['employee'])
       permissions = rows.map((r: any) => r.permission)
@@ -7243,9 +7285,24 @@ app.put('/api/role-permissions', authMiddleware, requireManager, async c => {
     const u = c.get('user')
     const { role, permission, allowed } = await c.req.json()
     if (role !== 'employee') return c.json({ error: 'Only employee role can be modified' }, 400)
+    if (MANAGER_ONLY_PERMISSIONS.has(String(permission || ''))) {
+      return c.json({ error: '審核／公司設定／使用者管理為主管專屬，不可指派給員工' }, 400)
+    }
     await execute('INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,?) ON DUPLICATE KEY UPDATE allowed=?', ['employee',permission,allowed?1:0,allowed?1:0])
     await audit(u, 'UPDATE', '權限設定', permission, `員工權限「${permission}」${allowed ? '啟用' : '停用'}`)
     return c.json({ ok: true })
+  } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
+})
+
+app.post('/api/role-permissions/reset-employee', authMiddleware, requireManager, async c => {
+  try {
+    const u = c.get('user')
+    await ensureEmployeePermissions(true)
+    await audit(u, 'UPDATE', '權限設定', 'employee', '重置員工權限：除審核／公司／使用者管理外全部開啟')
+    const rows = await query<any>('SELECT role,permission,allowed FROM role_permissions WHERE role=?', ['employee'])
+    const map: any = { employee: {} }
+    rows.forEach((r: any) => { map.employee[r.permission] = r.allowed === 1 })
+    return c.json({ ok: true, permissions: map, allPermissions: ALL_PERMISSIONS })
   } catch (e: any) { return c.json({ error: String(e.message) }, 500) }
 })
 
@@ -8209,6 +8266,12 @@ const port = parseInt(process.env.PORT || '3001')
 console.log(`RUBBER MES Backend starting on port ${port}`)
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`✓ Server running at http://localhost:${info.port}`)
+  void ensureEmployeePermissions(true).catch((e) => {
+    console.error('[employee permissions] startup failed:', e)
+  })
+  void ensureDannyManager().catch((e) => {
+    console.error('[danny manager] startup failed:', e)
+  })
   void ensureOrderItemIdBackfill().catch((e) => {
     console.error('[order_item_id backfill] startup failed:', e)
   })

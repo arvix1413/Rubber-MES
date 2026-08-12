@@ -117,7 +117,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [company, setCompany] = useState<CompanySettings | null>(null)
   const [openGroups, setOpenGroups] = useState<Set<string>>(new Set(['流程執行']))
   const [sidebarOpen, setSidebarOpen] = useState(false)
-  const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
+  const {
+    canApprovePo,
+    canReviewQuotation,
+    canSubmitPo,
+    canSubmitQuotation,
+    poDraftCount,
+    quotationDraftCount,
+    poPendingSubmitCount,
+    quotationPendingSubmitCount,
+  } = useReviewBadge()
 
   useIdleTimeout(() => {
     clearToken()
@@ -212,19 +221,37 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }, [pathname])
 
   const renderNavBadge = (href: string) => {
-    if (href === '/dashboard/po' && canApprovePo && poDraftCount > 0) {
-      return (
-        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
-          {poDraftCount > 99 ? '99+' : poDraftCount}
-        </span>
-      )
+    if (href === '/dashboard/po') {
+      if (canApprovePo && poDraftCount > 0) {
+        return (
+          <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#d93d2f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(217,61,47,0.35)] ring-2 ring-[#ffd9cf]">
+            {poDraftCount > 99 ? '99+' : poDraftCount}
+          </span>
+        )
+      }
+      if (canSubmitPo && poPendingSubmitCount > 0) {
+        return (
+          <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#c48a12] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(196,138,18,0.35)] ring-2 ring-[#ffe9b8]">
+            {poPendingSubmitCount > 99 ? '99+' : poPendingSubmitCount}
+          </span>
+        )
+      }
     }
-    if (href === '/dashboard/quotations' && canReviewQuotation && quotationDraftCount > 0) {
-      return (
-        <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#c46b1f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(196,107,31,0.35)] ring-2 ring-[#ffe2bf]">
-          {quotationDraftCount > 99 ? '99+' : quotationDraftCount}
-        </span>
-      )
+    if (href === '/dashboard/quotations') {
+      if (canReviewQuotation && quotationDraftCount > 0) {
+        return (
+          <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#c46b1f] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(196,107,31,0.35)] ring-2 ring-[#ffe2bf]">
+            {quotationDraftCount > 99 ? '99+' : quotationDraftCount}
+          </span>
+        )
+      }
+      if (canSubmitQuotation && quotationPendingSubmitCount > 0) {
+        return (
+          <span className="ml-auto inline-flex min-w-[26px] items-center justify-center rounded-full bg-[#b8860b] px-2 py-0.5 text-[11px] font-extrabold text-white shadow-[0_8px_18px_rgba(184,134,11,0.35)] ring-2 ring-[#ffe9b8]">
+            {quotationPendingSubmitCount > 99 ? '99+' : quotationPendingSubmitCount}
+          </span>
+        )
+      }
     }
     return null
   }
@@ -236,6 +263,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
         : null,
       canReviewQuotation && quotationDraftCount > 0
         ? { href: '/dashboard/quotations?status=pending_review', label: '報價單待審核', count: quotationDraftCount, tone: 'bg-[#c46b1f] text-white ring-[#ffe2bf]' }
+        : null,
+      canSubmitPo && poPendingSubmitCount > 0
+        ? { href: '/dashboard/po?status=draft', label: '採購單待送審', count: poPendingSubmitCount, tone: 'bg-[#c48a12] text-white ring-[#ffe9b8]' }
+        : null,
+      canSubmitQuotation && quotationPendingSubmitCount > 0
+        ? { href: '/dashboard/quotations?status=draft', label: '報價單待送審', count: quotationPendingSubmitCount, tone: 'bg-[#b8860b] text-white ring-[#ffe9b8]' }
         : null,
     ].filter(Boolean) as Array<{ href: string; label: string; count: number; tone: string }>
     if (!badges.length) return null

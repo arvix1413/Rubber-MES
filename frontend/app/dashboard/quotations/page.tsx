@@ -75,7 +75,7 @@ const findBomForQuotationItem = (boms: BOM[], item: Partial<QItem> & { material_
   return undefined
 }
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:          { label:'草稿',   badge:'badge-gray'   },
+  draft:          { label:'草稿・待送審', badge:'badge-yellow' },
   pending_review: { label:'審核中', badge:'badge-yellow' },
   approved:       { label:'已審核', badge:'badge-green'  },
   sent:           { label:'已送出', badge:'badge-blue'   },
@@ -85,7 +85,7 @@ const STATUS_MAP: Record<string,{label:string;badge:string}> = {
 
 const STATUS_FILTERS = [
   { value: '', label: '全部' },
-  { value: 'draft', label: '草稿' },
+  { value: 'draft', label: '草稿・待送審' },
   { value: 'pending_review', label: '審核中' },
   { value: 'approved', label: '已審核' },
   { value: 'sent', label: '已送出' },
@@ -190,10 +190,17 @@ export default function QuotationsPage() {
 
   const changeStatus = async (id:number, status:string, e: React.MouseEvent) => {
     e.stopPropagation()
-    await apiFetch(`/api/quotations/${id}/status`,{method:'PATCH',body:JSON.stringify({status})})
-    toast('狀態已更新')
-    await load()
-    await refreshExpandedRows(Array.from(expanded))
+    if (status === 'pending_review') {
+      if (!await confirmDialog('確認送審給主管？', '送審後才會出現在主管的待審核清單；草稿不會通知主管。', '確認送審')) return
+    }
+    try {
+      await apiFetch(`/api/quotations/${id}/status`,{method:'PATCH',body:JSON.stringify({status})})
+      toast(status === 'pending_review' ? '已送審，等待主管審核' : '狀態已更新')
+      await load()
+      await refreshExpandedRows(Array.from(expanded))
+    } catch (err: any) {
+      toast('操作失敗：' + err.message, 'error')
+    }
   }
   const del = async (id:number, e: React.MouseEvent) => {
     e.stopPropagation()

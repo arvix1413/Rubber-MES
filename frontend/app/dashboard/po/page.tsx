@@ -28,7 +28,7 @@ type PoItemExt = PoItem & {
 }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:          { label:'草稿',   badge:'badge-gray'   },
+  draft:          { label:'草稿・待送審', badge:'badge-yellow' },
   pending_review: { label:'審核中', badge:'badge-yellow' },
   approved:       { label:'已審核', badge:'badge-green'  },
   sent:           { label:'已送出', badge:'badge-blue'   },
@@ -38,7 +38,7 @@ const STATUS_MAP: Record<string,{label:string;badge:string}> = {
 
 const STATUS_FILTERS = [
   { value: '', label: '全部' },
-  { value: 'draft', label: '草稿' },
+  { value: 'draft', label: '草稿・待送審' },
   { value: 'pending_review', label: '審核中' },
   { value: 'approved', label: '已審核' },
   { value: 'sent', label: '已送出' },
@@ -238,12 +238,22 @@ export default function PoPage() {
 
   const changeStatus = async (id: number, status: string, e: React.MouseEvent) => {
     e.stopPropagation()
-    const labels: Record<string, string> = { sent: '確認送出此採購單？' }
-    const btnLabels: Record<string, string> = { sent: '確認送出' }
-    if (!await confirmDialog(labels[status] || '確認變更狀態？', '', btnLabels[status] || '確認')) return
+    const labels: Record<string, string> = {
+      pending_review: '確認送審給主管？',
+      sent: '確認送出此採購單？',
+    }
+    const descs: Record<string, string> = {
+      pending_review: '送審後才會出現在主管的待審核清單；草稿不會通知主管。',
+      sent: '',
+    }
+    const btnLabels: Record<string, string> = {
+      pending_review: '確認送審',
+      sent: '確認送出',
+    }
+    if (!await confirmDialog(labels[status] || '確認變更狀態？', descs[status] || '', btnLabels[status] || '確認')) return
     try {
       await apiFetch(`/api/po/${id}/status`, { method: 'PATCH', body: JSON.stringify({ status }) })
-      toast('狀態已更新')
+      toast(status === 'pending_review' ? '已送審，等待主管審核' : '狀態已更新')
       await refreshAll(false)
     } catch (e: any) { toast('操作失敗：' + e.message, 'error') }
   }

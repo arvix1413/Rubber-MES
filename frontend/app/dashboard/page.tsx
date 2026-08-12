@@ -27,7 +27,16 @@ export default function DashboardPage() {
   const [stats, setStats] = useState<any>(null)
   const [health, setHealth] = useState<ProcessHealth | null>(null)
   const [companyName, setCompanyName] = useState('')
-  const { canApprovePo, canReviewQuotation, poDraftCount, quotationDraftCount } = useReviewBadge()
+  const {
+    canApprovePo,
+    canReviewQuotation,
+    canSubmitPo,
+    canSubmitQuotation,
+    poDraftCount,
+    quotationDraftCount,
+    poPendingSubmitCount,
+    quotationPendingSubmitCount,
+  } = useReviewBadge()
 
   useEffect(() => {
     apiFetch<any>('/api/stats').then(setStats).catch(() => {})
@@ -50,6 +59,58 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-6">
+      {canSubmitPo && poPendingSubmitCount > 0 ? (
+        <Link
+          href="/dashboard/po?status=draft"
+          className="block overflow-hidden rounded-3xl border border-[#f0d089] bg-[linear-gradient(135deg,#fff9e8_0%,#ffe7b0_52%,#ffd778_100%)] p-5 shadow-[0_18px_45px_rgba(163,120,25,0.16)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(163,120,25,0.22)]"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-white/70 px-3 py-1 text-[11px] font-black tracking-[0.14em] text-[#8a5b00]">
+                ACTION NEEDED · 請送審
+              </div>
+              <h2 className="mt-3 text-2xl font-extrabold text-[#6b4708]">你有 {fmt(poPendingSubmitCount)} 筆採購單草稿尚未送審</h2>
+              <p className="mt-2 text-sm text-[#8f6320]">建立完成後請按「送審給主管」。只有送審後，DANNY／主管才會看到待審核提醒。</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white/70 bg-white/65 px-5 py-3 text-center">
+                <div className="text-[12px] font-semibold text-[#9b6d16]">待送審</div>
+                <div className="mt-1 text-4xl font-black leading-none text-[#c48a12]">{fmt(poPendingSubmitCount)}</div>
+              </div>
+              <div className="inline-flex items-center rounded-2xl bg-[#c48a12] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(196,138,18,0.28)]">
+                去送審 →
+              </div>
+            </div>
+          </div>
+        </Link>
+      ) : null}
+
+      {canSubmitQuotation && quotationPendingSubmitCount > 0 ? (
+        <Link
+          href="/dashboard/quotations?status=draft"
+          className="block overflow-hidden rounded-3xl border border-[#e6d3a0] bg-[linear-gradient(135deg,#fffcee_0%,#fff1c8_52%,#ffe39a_100%)] p-5 shadow-[0_18px_45px_rgba(140,110,30,0.14)] transition-all hover:-translate-y-0.5 hover:shadow-[0_24px_55px_rgba(140,110,30,0.2)]"
+        >
+          <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+            <div>
+              <div className="inline-flex rounded-full bg-white/70 px-3 py-1 text-[11px] font-black tracking-[0.14em] text-[#7a5808]">
+                ACTION NEEDED · 請送審
+              </div>
+              <h2 className="mt-3 text-2xl font-extrabold text-[#5f4308]">你有 {fmt(quotationPendingSubmitCount)} 筆報價單草稿尚未送審</h2>
+              <p className="mt-2 text-sm text-[#84631f]">草稿不會進入主管審核佇列，請送審後才算完成你的流程。</p>
+            </div>
+            <div className="flex items-center gap-3">
+              <div className="rounded-2xl border border-white/70 bg-white/65 px-5 py-3 text-center">
+                <div className="text-[12px] font-semibold text-[#8f6a1c]">待送審</div>
+                <div className="mt-1 text-4xl font-black leading-none text-[#b8860b]">{fmt(quotationPendingSubmitCount)}</div>
+              </div>
+              <div className="inline-flex items-center rounded-2xl bg-[#b8860b] px-4 py-3 text-sm font-bold text-white shadow-[0_12px_24px_rgba(184,134,11,0.28)]">
+                去送審 →
+              </div>
+            </div>
+          </div>
+        </Link>
+      ) : null}
+
       {canApprovePo && poDraftCount > 0 ? (
         <Link
           href="/dashboard/po?status=pending_review"

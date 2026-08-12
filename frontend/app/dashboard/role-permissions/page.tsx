@@ -14,6 +14,7 @@ type RolePermissionResponse = {
 
 const GROUP_TITLES: Record<string, string> = {
   customer_order: '客戶訂單',
+  quotation: '報價單',
   bom: 'BOM / 產品規格',
   po: '採購單',
   production: '生產單',
@@ -29,15 +30,26 @@ const GROUP_TITLES: Record<string, string> = {
   audit: '操作日誌',
 }
 
-const MANAGER_RESERVED_PERMISSIONS = new Set(['company.manage', 'user.manage'])
+const MANAGER_RESERVED_PERMISSIONS = new Set([
+  'company.manage',
+  'user.manage',
+  'quotation.approve',
+  'po.approve',
+  'delivery.approve',
+  'reconciliation.approve',
+  'invoice.approve',
+  'goods_receipt.approve',
+  'stock.approve',
+])
 
 export default function RolePermissionsPage() {
   const router = useRouter()
-  const { toast } = useDialog()
+  const { toast, confirm: confirmDialog } = useDialog()
   const [loading, setLoading] = useState(true)
   const [permissions, setPermissions] = useState<Record<string, boolean>>({})
   const [allPermissions, setAllPermissions] = useState<PermissionItem[]>([])
   const [savingKey, setSavingKey] = useState<string | null>(null)
+  const [resetting, setResetting] = useState(false)
 
   useEffect(() => {
     const me = getUser()
@@ -73,6 +85,11 @@ export default function RolePermissionsPage() {
     }))
   }, [allPermissions])
 
+  const reservedItems = useMemo(
+    () => allPermissions.filter((item) => MANAGER_RESERVED_PERMISSIONS.has(item.key)),
+    [allPermissions],
+  )
+
   const editableCount = allPermissions.filter((item) => !MANAGER_RESERVED_PERMISSIONS.has(item.key)).length
   const enabledCount = allPermissions.filter((item) => !MANAGER_RESERVED_PERMISSIONS.has(item.key) && permissions[item.key]).length
 
@@ -94,6 +111,27 @@ export default function RolePermissionsPage() {
     }
   }
 
+  const resetDefaults = async () => {
+    if (!await confirmDialog(
+      '重置員工權限為新預設？',
+      '員工將擁有除「審核／公司設定／使用者管理」以外的全部權限。',
+      '確認重置',
+    )) return
+    setResetting(true)
+    try {
+      const data = await apiFetch<RolePermissionResponse & { ok: boolean }>('/api/role-permissions/reset-employee', {
+        method: 'POST',
+      })
+      setPermissions(data.permissions?.employee || {})
+      if (data.allPermissions) setAllPermissions(data.allPermissions)
+      toast('已套用員工預設權限')
+    } catch (e: any) {
+      toast(`重置失敗：${e.message}`, 'error')
+    } finally {
+      setResetting(false)
+    }
+  }
+
   if (loading) return <div className="text-xs text-slate-500">載入中...</div>
 
   return (
@@ -101,20 +139,39 @@ export default function RolePermissionsPage() {
       <div className="flex items-start justify-between gap-4 mb-6">
         <div>
           <h1 className="text-xl font-bold text-slate-800">權限設定</h1>
-          <p className="text-xs text-slate-400 mt-0.5">主管可調整員工角色可執行的功能；主管本身維持全權限。</p>
+          <p className="text-xs text-slate-400 mt-0.5">
+            新規則：員工可做全部日常作業；審核只留給主管（例如 DANNY）。員工建立後需「送審」。
+          </p>
         </div>
-        <div className="rubber-card px-4 py-3 min-w-[220px]">
-          <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">員工權限總覽</div>
-          <div className="mt-2 text-2xl font-bold text-slate-800">{enabledCount} / {editableCount}</div>
-          <div className="text-xs text-slate-400 mt-1">已啟用的員工權限數量</div>
+        <div className="flex items-start gap-3">
+          <button
+            type="button"
+            className="btn-ghost"
+            disabled={resetting}
+            onClick={() => void resetDefaults()}
+          >
+            {resetting ? '重置中...' : '重置為員工預設'}
+          </button>
+          <div className="rubber-card px-4 py-3 min-w-[220px]">
+            <div className="text-[11px] font-semibold text-slate-500 uppercase tracking-wider">員工可調權限</div>
+            <div className="mt-2 text-2xl font-bold text-slate-800">{enabledCount} / {editableCount}</div>
+            <div className="text-xs text-slate-400 mt-1">已啟用的員工作業權限</div>
+          </div>
         </div>
       </div>
 
       <div className="rubber-card px-5 py-4 mb-4 border border-amber-200 bg-amber-50/60">
-        <div className="text-sm font-semibold text-amber-800">主管保留權限</div>
+        <div className="text-sm font-semibold text-amber-800">主管專屬（含審核）</div>
         <p className="text-xs text-amber-700 mt-1">
-          `公司設定`、`使用者管理` 目前仍是主管專屬路由與 API，不開放指派給員工。
+          下列權限不開放給員工。員工完成草稿後請按「送審給主管」，主管才會在儀表板看到待審核。
         </p>
+        <div className="mt-3 flex flex-wrap gap-2">
+          {reservedItems.map((item) => (
+            <span key={item.key} className="rounded-full bg-white/80 px-3 py-1 text-[11px] font-semibold text-amber-800 ring-1 ring-amber-200">
+              {item.label}
+            </span>
+          ))}
+        </div>
       </div>
 
       <div className="grid gap-4">
@@ -122,7 +179,7 @@ export default function RolePermissionsPage() {
           <div key={group.groupKey} className="rubber-card overflow-hidden">
             <div className="px-5 py-4 border-b border-slate-200 bg-slate-50">
               <h2 className="text-sm font-semibold text-slate-700">{group.title}</h2>
-              <p className="text-[11px] text-slate-400 mt-1">以下开关针对 `employee` 角色生效。</p>
+              <p className="text-[11px] text-slate-400 mt-1">以下開關針對員工角色生效；預設應全部開啟。</p>
             </div>
             <div className="divide-y divide-slate-100">
               {group.items.map((item) => {
