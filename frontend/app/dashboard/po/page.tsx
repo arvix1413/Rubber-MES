@@ -744,8 +744,11 @@ export default function PoPage() {
                                 else await changeStatus(p.id, toStatus, { stopPropagation: ()=>{} } as any)
                               }} />
                             <button onClick={e => { e.stopPropagation(); printPo(p.id) }} className="btn-ghost ml-1" title="列印">🖨 列印</button>
-                            {canWrite && (p.status === 'draft' || p.status === 'pending_review') && (
+                            {canWrite && p.status === 'draft' && (
                               <button onClick={e => startEdit(p, e)} className="btn-ghost text-blue-600">✏ 編輯</button>
+                            )}
+                            {p.status === 'pending_review' && !canApprove && (
+                              <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg ring-1 ring-amber-200">已送審・等待主管</span>
                             )}
                             {canDel && (
                               <button onClick={e => del(p.id, e)} className="btn-danger">刪除</button>

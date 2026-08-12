@@ -619,8 +619,11 @@ export default function QuotationsPage() {
                                 await changeStatus(q.id, toStatus, { stopPropagation: ()=>{} } as any)
                               }} />
                             <button onClick={e=>{ e.stopPropagation(); printQuotation(q.id, q) }} className="btn-ghost ml-1" title="列印">🖨 列印</button>
-                            {canWrite && (q.status === 'draft' || q.status === 'pending_review') && (
+                            {canWrite && q.status === 'draft' && (
                               <button onClick={e => startEdit(q, e)} className="btn-ghost text-blue-600">✏ 編輯</button>
+                            )}
+                            {q.status === 'pending_review' && !canApprove && (
+                              <span className="text-[11px] font-semibold text-amber-700 bg-amber-50 px-2 py-1 rounded-lg ring-1 ring-amber-200">已送審・等待主管</span>
                             )}
                             {canDelete && <button onClick={e=>del(q.id,e)} className="btn-danger">刪除</button>}
                           </div>

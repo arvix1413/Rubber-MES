@@ -107,7 +107,7 @@ export const PO_STEPS: StatusStep[] = [
 ]
 
 export const DN_STEPS: StatusStep[] = [
-  { key: 'draft',     label: '尚未審核', color: 'gray'  },
+  { key: 'draft',     label: '草稿・等待主管審核', color: 'yellow' },
   { key: 'confirmed', label: '已審核', color: 'blue'  },
   { key: 'shipped',   label: '已出貨', color: 'green' },
 ]

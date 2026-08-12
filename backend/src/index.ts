@@ -22,6 +22,15 @@ const normalizeUserRole = (role: any): 'manager' | 'employee' => (role === 'mana
 /** Sync employee role to: all ops except approve / company / user admin. */
 let employeePolicyApplied = false
 let ensureEmployeePermissionsPromise: Promise<void> | null = null
+
+const ensureAppMetaTable = async () => {
+  await execute(`CREATE TABLE IF NOT EXISTS app_meta (
+    meta_key VARCHAR(64) PRIMARY KEY,
+    meta_value VARCHAR(255) NOT NULL,
+    updated_at DATETIME NOT NULL
+  )`)
+}
+
 const ensureEmployeePermissions = async (force = false) => {
   if (employeePolicyApplied && !force) return
   if (!ensureEmployeePermissionsPromise) {
@@ -56,6 +65,22 @@ const ensureEmployeePermissions = async (force = false) => {
     })
   }
   await ensureEmployeePermissionsPromise
+}
+
+/** Apply employee permission redesign once per policy version; later boots only seed/lock. */
+const EMPLOYEE_PERM_POLICY = 'employee_ops_v2'
+const bootstrapEmployeePermissionPolicy = async () => {
+  await ensureAppMetaTable()
+  const row = await queryOne<any>('SELECT meta_value FROM app_meta WHERE meta_key=?', ['employee_perm_policy'])
+  if (row?.meta_value === EMPLOYEE_PERM_POLICY) {
+    await ensureEmployeePermissions(false)
+    return
+  }
+  await ensureEmployeePermissions(true)
+  await execute(
+    'INSERT INTO app_meta (meta_key, meta_value, updated_at) VALUES (?,?,?) ON DUPLICATE KEY UPDATE meta_value=?, updated_at=?',
+    ['employee_perm_policy', EMPLOYEE_PERM_POLICY, now8(), EMPLOYEE_PERM_POLICY, now8()],
+  )
 }
 
 /** Ensure DANNY (and aliases) always has manager = full approve rights. */
@@ -3316,9 +3341,21 @@ app.post('/api/auth/logout', authMiddleware, async c => {
 
 app.get('/api/auth/me', authMiddleware, async c => {
   const u = c.get('user')
+  await ensureDannyManager()
   const user = await queryOne<any>('SELECT id,email,name,role,signature_url FROM users WHERE id=? AND deleted_at IS NULL', [u.userId])
   if (!user) return c.json({ error: 'Not found' }, 404)
-  return c.json({ user: { ...user, role: normalizeUserRole(user.role) } })
+  const normalizedRole = normalizeUserRole(user.role)
+  let permissions: string[] = []
+  if (normalizedRole === 'manager') {
+    permissions = ALL_PERMISSIONS.map((p) => p.key)
+  } else {
+    const rows = await query<any>('SELECT permission FROM role_permissions WHERE role=? AND allowed=1', ['employee'])
+    permissions = rows.map((r: any) => r.permission)
+  }
+  return c.json({
+    user: { ...user, role: normalizedRole },
+    permissions,
+  })
 })
 
 // Save signature URL for current user
@@ -4168,7 +4205,7 @@ app.put('/api/po/:id', authMiddleware, requirePerm('po.create'), async c => {
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const po = await queryOne<any>('SELECT status FROM purchase_orders WHERE id=? AND deleted_at IS NULL', [id])
     if (!po) return c.json({ error: 'Not found' }, 404)
-    if (!['draft', 'pending_review'].includes(po.status)) return c.json({ error: '只能編輯草稿或待審核狀態的採購單' }, 400)
+    if (po.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的採購單；已送審請先退回草稿或等主管處理' }, 400)
     const subTotal = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     const taxRate = Math.min(25, Math.max(1, Number(b.tax_rate) || 8))
     const total = Math.round(subTotal * (1 + taxRate / 100) * 100) / 100
@@ -5137,7 +5174,7 @@ app.put('/api/quotations/:id', authMiddleware, requirePerm('customer_order.creat
     const id = c.req.param('id'); const b = await c.req.json(); const u = c.get('user')
     const existing = await queryOne<any>('SELECT status FROM quotations WHERE id=? AND deleted_at IS NULL', [id])
     if (!existing) return c.json({ error: 'Not found' }, 404)
-    if (!['draft', 'pending_review'].includes(existing.status)) return c.json({ error: '只能編輯草稿或待審核狀態的報價單' }, 400)
+    if (existing.status !== 'draft') return c.json({ error: '只能編輯草稿狀態的報價單；已送審請先退回草稿或等主管處理' }, 400)
     const total = (b.items||[]).reduce((s: number, i: any) => s + (i.total_price||0), 0)
     await execute('UPDATE quotations SET customer_id=?,customer_name=?,currency=?,valid_until=?,remark=?,total_amount=? WHERE id=?',
       [b.customer_id||null, b.customer_name, b.currency||'VND', b.valid_until||null, b.remark||'', total, id])
@@ -8266,7 +8303,7 @@ const port = parseInt(process.env.PORT || '3001')
 console.log(`RUBBER MES Backend starting on port ${port}`)
 serve({ fetch: app.fetch, port }, (info) => {
   console.log(`✓ Server running at http://localhost:${info.port}`)
-  void ensureEmployeePermissions(true).catch((e) => {
+  void bootstrapEmployeePermissionPolicy().catch((e) => {
     console.error('[employee permissions] startup failed:', e)
   })
   void ensureDannyManager().catch((e) => {

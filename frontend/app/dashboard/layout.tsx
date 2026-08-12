@@ -142,7 +142,19 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       return
     }
     setUser(getUser())
-    // Load company settings for sidebar display
+    // Refresh permissions from server so role changes apply without full re-login
+    apiFetch<{ user: any; permissions?: string[] }>('/api/auth/me')
+      .then((data) => {
+        if (Array.isArray(data?.permissions)) {
+          localStorage.setItem('rubber_permissions', JSON.stringify(data.permissions))
+        }
+        if (data?.user) {
+          localStorage.setItem('rubber_user', JSON.stringify(data.user))
+          setUser(data.user)
+          window.dispatchEvent(new Event('rubber:user-updated'))
+        }
+      })
+      .catch(() => {})
     getCompany().then(setCompany).catch(() => {})
   }, [router])
 
