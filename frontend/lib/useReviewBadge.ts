@@ -8,6 +8,7 @@ type PoSummary = { status: string }
 type QuotationSummary = { status: string }
 
 export function useReviewBadge() {
+  // Counts documents awaiting approval (status=pending_review), not drafts.
   const [poDraftCount, setPoDraftCount] = useState(0)
   const [quotationDraftCount, setQuotationDraftCount] = useState(0)
   const [loading, setLoading] = useState(false)
@@ -25,8 +26,8 @@ export function useReviewBadge() {
         canApprovePo ? apiFetch<PoSummary[]>('/api/po') : Promise.resolve([]),
         canReviewQuotation ? apiFetch<QuotationSummary[]>('/api/quotations') : Promise.resolve([]),
       ])
-      setPoDraftCount((poRows || []).filter((row) => row.status === 'draft').length)
-      setQuotationDraftCount((quotationRows || []).filter((row) => row.status === 'draft').length)
+      setPoDraftCount((poRows || []).filter((row) => row.status === 'pending_review').length)
+      setQuotationDraftCount((quotationRows || []).filter((row) => row.status === 'pending_review').length)
     } catch {
       setPoDraftCount(0)
       setQuotationDraftCount(0)
