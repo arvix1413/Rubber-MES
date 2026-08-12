@@ -221,7 +221,7 @@ export default function QuotationsPage() {
       })
     } catch(e:any){ toast('刪除失敗：'+e.message, 'error') }
   }
-  const save = async () => {
+  const save = async (submitAfter = false) => {
     if (!form.customer_name) { toast('請選擇客戶', 'error'); return }
     const validItems = form.items.filter(item => item.bom_id)
     if (!validItems.length) { toast('請至少選擇一個 BOM 品項', 'error'); return }
@@ -236,14 +236,42 @@ export default function QuotationsPage() {
       }
     })
     try {
-      const savedId = editingId
+      let savedId = editingId
       if (editingId) {
         await apiFetch(`/api/quotations/${editingId}`,{method:'PUT',body:JSON.stringify({...form, items: itemsToSave})})
-        toast('報價單已更新')
       } else {
-        await apiFetch('/api/quotations',{method:'POST',body:JSON.stringify({...form, items: itemsToSave})})
-        toast('報價單建立成功')
+        const created = await apiFetch<{ id: number }>('/api/quotations',{method:'POST',body:JSON.stringify({...form, items: itemsToSave})})
+        savedId = created.id
       }
+
+      if (submitAfter && savedId) {
+        const ok = await confirmDialog(
+          '確認送審給主管？',
+          '送審後才會出現在主管的待審核清單；草稿不會通知主管。',
+          '確認送審',
+        )
+        if (ok) {
+          await apiFetch(`/api/quotations/${savedId}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'pending_review' }) })
+          toast('已送審，等待主管審核')
+        } else {
+          toast('已存成草稿（尚未送審）')
+        }
+      } else if (editingId) {
+        toast('草稿已更新（尚未送審）')
+      } else {
+        const goSubmit = await confirmDialog(
+          '已存成草稿，尚未送審',
+          '現在只是草稿，主管看不到。要立刻送審給主管嗎？',
+          '立刻送審',
+        )
+        if (goSubmit && savedId) {
+          await apiFetch(`/api/quotations/${savedId}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'pending_review' }) })
+          toast('已送審，等待主管審核')
+        } else {
+          toast('已存成草稿（尚未送審）')
+        }
+      }
+
       resetForm()
       await load()
       if (savedId !== null) {
@@ -481,8 +509,8 @@ export default function QuotationsPage() {
           <div className="border-b border-[#eadfce] bg-white px-6 pt-6 pb-4 shadow-sm">
           <div className="mb-4 flex items-start justify-between gap-4">
             <div>
-              <h2 className="text-sm font-semibold text-[#2d261d]">{editingId ? '編輯報價單' : '新增報價單'}</h2>
-              <p className="mt-1 text-[11px] text-[#9f8e7d]">報價資訊與新增品項固定顯示，長內容編輯更順手。</p>
+              <h2 className="text-sm font-semibold text-[#2d261d]">{editingId ? '編輯報價單（草稿）' : '建立報價單草稿'}</h2>
+              <p className="mt-1 text-[11px] font-medium text-amber-700">存成草稿後還要按「送審給主管」，主管才會收到待審核。</p>
             </div>
             <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5] shrink-0">返回列表</button>
           </div>
@@ -558,8 +586,13 @@ export default function QuotationsPage() {
           <div className="border-t border-[#eadfce] bg-white px-6 py-4">
             <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
               <div className="text-xs text-[#7d705f]">目前品項 <span className="font-semibold text-[#2d261d]">{form.items.length}</span></div>
-              <div className="flex gap-2">
-                <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立報價單'}</button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void save(false)} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5]">
+                  {editingId ? '只儲存草稿' : '存成草稿'}
+                </button>
+                <button onClick={() => void save(true)} className="btn-primary bg-amber-500 hover:bg-amber-600 border-amber-500">
+                  {editingId ? '儲存並送審給主管' : '存成草稿並送審給主管'}
+                </button>
                 <button onClick={() => resetForm()} className="rounded-xl border border-[#d8c9b5] px-3 py-2 text-sm text-[#6d5b49] transition hover:bg-[#f8efe5]">取消</button>
               </div>
             </div>

@@ -377,7 +377,7 @@ export default function PoPage() {
     }))
   }
 
-  const save = async () => {
+  const save = async (submitAfter = false) => {
     if (!form.supplier_id) { toast('請選擇供應商', 'error'); return }
     const validItems = form.items
       .filter(i => i.keep !== false && i.material_id)
@@ -397,15 +397,44 @@ export default function PoPage() {
       }))
     if (!validItems.length) { toast('請至少選擇一個材料品項', 'error'); return }
     try {
+      let savedId = editingId
       if (editingId) {
         await apiFetch(`/api/po/${editingId}`, { method: 'PUT', body: JSON.stringify({ ...form, items: validItems }) })
-        toast('採購單已更新')
-        setEditingId(null)
       } else {
-        await apiFetch('/api/po', { method: 'POST', body: JSON.stringify({ ...form, items: validItems }) })
-        toast('採購單建立成功')
-        setCreating(false)
+        const created = await apiFetch<{ id: number }>('/api/po', { method: 'POST', body: JSON.stringify({ ...form, items: validItems }) })
+        savedId = created.id
       }
+
+      if (submitAfter && savedId) {
+        const ok = await confirmDialog(
+          '確認送審給主管？',
+          '送審後才會出現在主管的待審核清單；草稿不會通知主管。',
+          '確認送審',
+        )
+        if (ok) {
+          await apiFetch(`/api/po/${savedId}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'pending_review' }) })
+          toast('已送審，等待主管審核')
+        } else {
+          toast('已存成草稿（尚未送審）')
+        }
+      } else if (editingId) {
+        toast('草稿已更新（尚未送審）')
+      } else {
+        const goSubmit = await confirmDialog(
+          '已存成草稿，尚未送審',
+          '現在只是草稿，主管看不到。要立刻送審給主管嗎？',
+          '立刻送審',
+        )
+        if (goSubmit && savedId) {
+          await apiFetch(`/api/po/${savedId}/status`, { method: 'PATCH', body: JSON.stringify({ status: 'pending_review' }) })
+          toast('已送審，等待主管審核')
+        } else {
+          toast('已存成草稿（尚未送審）')
+        }
+      }
+
+      setEditingId(null)
+      setCreating(false)
       setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] })
       setUnitPriceInputs({})
       setSourceOrderPoNo('')
@@ -530,8 +559,8 @@ export default function PoPage() {
           <div className="border-b border-slate-200 bg-white px-6 pt-6 pb-4 shadow-sm">
           <div className="flex items-start justify-between gap-4 mb-4">
             <div>
-              <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯採購單（草稿）' : '建立採購單'}</h2>
-              <p className="mt-1 text-[11px] text-slate-400">採購資訊與新增料號固定顯示，長單據操作不需再拉回頂部。</p>
+              <h2 className="text-sm font-semibold text-slate-800">{editingId ? '編輯採購單（草稿）' : '建立採購單草稿'}</h2>
+              <p className="mt-1 text-[11px] text-amber-700 font-medium">存成草稿後還要按「送審給主管」，主管才會收到待審核。</p>
             </div>
             <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200 shrink-0">關閉</button>
           </div>
@@ -678,8 +707,13 @@ export default function PoPage() {
                 <span className="mx-2 text-slate-300">|</span>
                 含稅合計 <span className="font-semibold text-slate-700">{formatDecimal(formTotal * (1 + (form.tax_rate || 8) / 100))}</span>
               </div>
-              <div className="flex gap-2">
-                <button onClick={save} className="btn-primary">{editingId ? '儲存修改' : '建立採購單'}</button>
+              <div className="flex flex-wrap gap-2">
+                <button onClick={() => void save(false)} className="btn-ghost border border-slate-200">
+                  {editingId ? '只儲存草稿' : '存成草稿'}
+                </button>
+                <button onClick={() => void save(true)} className="btn-primary bg-amber-500 hover:bg-amber-600 border-amber-500">
+                  {editingId ? '儲存並送審給主管' : '存成草稿並送審給主管'}
+                </button>
                 <button onClick={() => { setCreating(false); setEditingId(null); setForm({ po_number: '', supplier_id: '', supplier_name:'', currency:'VND', tax_rate: 8, remark:'', items:[emptyItem()] }); setUnitPriceInputs({}); setSourceOrderPoNo(''); setSourceMeta(null) }} className="btn-ghost border border-slate-200">取消</button>
               </div>
             </div>
