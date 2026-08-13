@@ -35,11 +35,6 @@ const MANAGER_RESERVED_PERMISSIONS = new Set([
   'user.manage',
   'quotation.approve',
   'po.approve',
-  'delivery.approve',
-  'reconciliation.approve',
-  'invoice.approve',
-  'goods_receipt.approve',
-  'stock.approve',
 ])
 
 export default function RolePermissionsPage() {
@@ -114,7 +109,7 @@ export default function RolePermissionsPage() {
   const resetDefaults = async () => {
     if (!await confirmDialog(
       '重置員工權限為新預設？',
-      '員工將擁有除「審核／公司設定／使用者管理」以外的全部權限。',
+      '員工將擁有除「採購／報價審核、公司設定、使用者管理」以外的全部權限。出貨單員工可自行確認。',
       '確認重置',
     )) return
     setResetting(true)
@@ -140,7 +135,7 @@ export default function RolePermissionsPage() {
         <div>
           <h1 className="text-xl font-bold text-slate-800">權限設定</h1>
           <p className="text-xs text-slate-400 mt-0.5">
-            新規則：員工可做全部日常作業；審核只留給主管（例如 DANNY）。員工建立後需「送審」。
+            新規則：只有採購單／報價單需主管審核；出貨等其餘作業員工可自行處理。
           </p>
         </div>
         <div className="flex items-start gap-3">
@@ -161,9 +156,9 @@ export default function RolePermissionsPage() {
       </div>
 
       <div className="rubber-card px-5 py-4 mb-4 border border-amber-200 bg-amber-50/60">
-        <div className="text-sm font-semibold text-amber-800">主管專屬（含審核）</div>
+        <div className="text-sm font-semibold text-amber-800">主管專屬（僅採購／報價審核 + 系統管理）</div>
         <p className="text-xs text-amber-700 mt-1">
-          下列權限不開放給員工。員工完成草稿後請按「送審給主管」，主管才會在儀表板看到待審核。
+          出貨單、發票等不需主管審核。員工可自行確認出貨；採購／報價仍須送審後由主管核准。
         </p>
         <div className="mt-3 flex flex-wrap gap-2">
           {reservedItems.map((item) => (

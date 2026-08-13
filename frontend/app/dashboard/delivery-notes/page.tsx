@@ -18,8 +18,8 @@ type PendingOrder = { id:number; po_number:string; po_date:string; items_summary
 type OrderItem = { id:number; bom_id:number|null; qty:number; unit_price:number; product_name:string; product_sku:string }
 
 const STATUS_MAP: Record<string,{label:string;badge:string}> = {
-  draft:     { label:'草稿・等待主管審核', badge:'badge-yellow'  },
-  confirmed: { label:'已審核', badge:'badge-blue'  },
+  draft:     { label:'草稿', badge:'badge-gray'  },
+  confirmed: { label:'已確認', badge:'badge-blue'  },
   shipped:   { label:'已出貨', badge:'badge-green' },
 }
 
@@ -218,10 +218,10 @@ export default function DeliveryNotesPage() {
 
   const changeStatus = async (id: number, status: string) => {
     const labels: Record<string, string> = {
-      confirmed: '審核此出貨單？',
+      confirmed: '確認此出貨單？',
       shipped: '確認出貨？出貨後狀態不可撤銷',
     }
-    const btnLabels: Record<string, string> = { confirmed: '審核', shipped: '確認出貨' }
+    const btnLabels: Record<string, string> = { confirmed: '確認', shipped: '確認出貨' }
     if (!await confirmDialog(labels[status] || '確認變更狀態？', '', btnLabels[status] || '確認')) return
     setActionLoading(id)
     try {

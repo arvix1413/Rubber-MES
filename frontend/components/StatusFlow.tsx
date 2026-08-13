@@ -107,8 +107,8 @@ export const PO_STEPS: StatusStep[] = [
 ]
 
 export const DN_STEPS: StatusStep[] = [
-  { key: 'draft',     label: '草稿・等待主管審核', color: 'yellow' },
-  { key: 'confirmed', label: '已審核', color: 'blue'  },
+  { key: 'draft',     label: '草稿', color: 'gray'  },
+  { key: 'confirmed', label: '已確認', color: 'blue'  },
   { key: 'shipped',   label: '已出貨', color: 'green' },
 ]
 
@@ -147,8 +147,8 @@ export function getPOActions(status: string): StatusAction[] {
 }
 
 export function getDNActions(status: string): StatusAction[] {
-  if (status === 'draft')     return [{ label: '審核', toStatus: 'confirmed', icon: '✓' }]
-  if (status === 'confirmed') return [{ label: '出貨', toStatus: 'shipped', icon: '�' }]
+  if (status === 'draft')     return [{ label: '確認', toStatus: 'confirmed', icon: '✓' }]
+  if (status === 'confirmed') return [{ label: '出貨', toStatus: 'shipped', icon: '🚚' }]
   return []
 }
 

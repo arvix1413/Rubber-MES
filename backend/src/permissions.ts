@@ -15,43 +15,43 @@ export const ALL_PERMISSIONS: PermissionItem[] = [
   { key: 'production.create', label: '新增生產單' },
   { key: 'production.delete', label: '刪除生產單' },
   { key: 'delivery.create', label: '新增出貨單' },
-  { key: 'delivery.approve', label: '審核出貨單' },
+  { key: 'delivery.approve', label: '確認出貨單' },
   { key: 'delivery.delete', label: '刪除出貨單' },
-  { key: 'reconciliation.approve', label: '審核數量核對單' },
-  { key: 'invoice.approve', label: '審核發票' },
-  { key: 'goods_receipt.approve', label: '審核進貨單' },
+  { key: 'reconciliation.approve', label: '確認數量核對單' },
+  { key: 'invoice.approve', label: '確認發票' },
+  { key: 'goods_receipt.approve', label: '確認進貨單' },
   { key: 'customer.manage', label: '管理客戶' },
   { key: 'supplier.manage', label: '管理供應商' },
   { key: 'stock.adjust', label: '庫存調整' },
-  { key: 'stock.approve', label: '審核庫存調整' },
+  { key: 'stock.approve', label: '確認庫存調整' },
   { key: 'company.manage', label: '公司設定' },
   { key: 'user.manage', label: '使用者管理' },
   { key: 'audit.view', label: '檢視操作日誌' },
 ]
 
-/** Approval / review actions — reserved for manager (e.g. DANNY). */
-export const APPROVE_PERMISSIONS = new Set(
-  ALL_PERMISSIONS.filter((p) => p.key.endsWith('.approve')).map((p) => p.key),
-)
-
 /**
- * Admin surface still gated by manager role in routes.
- * Employees get everything else except approve.
+ * Only PO + quotation require manager approval.
+ * Other *.approve keys are operational confirms employees can do.
  */
+export const MANAGER_APPROVE_PERMISSIONS = new Set([
+  'po.approve',
+  'quotation.approve',
+])
+
+/** Admin surface + manager-only document approvals. */
 export const MANAGER_ONLY_PERMISSIONS = new Set([
   'company.manage',
   'user.manage',
-  ...APPROVE_PERMISSIONS,
+  ...MANAGER_APPROVE_PERMISSIONS,
 ])
 
-export function isApprovePermission(key: string): boolean {
-  return APPROVE_PERMISSIONS.has(key) || key.endsWith('.approve')
+export function isManagerApprovePermission(key: string): boolean {
+  return MANAGER_APPROVE_PERMISSIONS.has(key)
 }
 
-/** Employee default: all operational rights, no approve / company / user admin. */
+/** Employee default: all ops except company/user admin and PO/quotation approve. */
 export function defaultEmployeeAllowed(key: string): boolean {
   if (MANAGER_ONLY_PERMISSIONS.has(key)) return false
-  if (isApprovePermission(key)) return false
   return true
 }
 

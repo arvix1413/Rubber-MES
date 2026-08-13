@@ -68,7 +68,7 @@ const ensureEmployeePermissions = async (force = false) => {
 }
 
 /** Apply employee permission redesign once per policy version; later boots only seed/lock. */
-const EMPLOYEE_PERM_POLICY = 'employee_ops_v2'
+const EMPLOYEE_PERM_POLICY = 'employee_ops_v3'
 const bootstrapEmployeePermissionPolicy = async () => {
   await ensureAppMetaTable()
   const row = await queryOne<any>('SELECT meta_value FROM app_meta WHERE meta_key=?', ['employee_perm_policy'])
@@ -7323,7 +7323,7 @@ app.put('/api/role-permissions', authMiddleware, requireManager, async c => {
     const { role, permission, allowed } = await c.req.json()
     if (role !== 'employee') return c.json({ error: 'Only employee role can be modified' }, 400)
     if (MANAGER_ONLY_PERMISSIONS.has(String(permission || ''))) {
-      return c.json({ error: '審核／公司設定／使用者管理為主管專屬，不可指派給員工' }, 400)
+      return c.json({ error: '採購／報價審核與公司設定／使用者管理為主管專屬，不可指派給員工' }, 400)
     }
     await execute('INSERT INTO role_permissions (role,permission,allowed) VALUES (?,?,?) ON DUPLICATE KEY UPDATE allowed=?', ['employee',permission,allowed?1:0,allowed?1:0])
     await audit(u, 'UPDATE', '權限設定', permission, `員工權限「${permission}」${allowed ? '啟用' : '停用'}`)
@@ -7335,7 +7335,7 @@ app.post('/api/role-permissions/reset-employee', authMiddleware, requireManager,
   try {
     const u = c.get('user')
     await ensureEmployeePermissions(true)
-    await audit(u, 'UPDATE', '權限設定', 'employee', '重置員工權限：除審核／公司／使用者管理外全部開啟')
+    await audit(u, 'UPDATE', '權限設定', 'employee', '重置員工權限：除採購／報價審核與公司／使用者管理外全部開啟')
     const rows = await query<any>('SELECT role,permission,allowed FROM role_permissions WHERE role=?', ['employee'])
     const map: any = { employee: {} }
     rows.forEach((r: any) => { map.employee[r.permission] = r.allowed === 1 })
