@@ -5396,7 +5396,6 @@ app.post('/api/order-intake', authMiddleware, requirePerm('customer_order.create
     await ensureDeliveryNoteProgressIdColumn()
     const b = await c.req.json()
     const u = c.get('user')
-    if (!await hasPermission(u, 'po.create')) return c.json({ error: '無此操作權限（po.create）' }, 403)
     const customerOrderIds: number[] = Array.isArray(b?.customer_order_ids)
       ? Array.from(new Set<number>(b.customer_order_ids.map((it: any) => Number(it)).filter((it: number) => Number.isFinite(it) && it > 0)))
       : []
@@ -5718,7 +5717,9 @@ const generatePurchaseOrdersFromProgress = async (
     grouped.set(key, group)
   }
 
-  if (!grouped.size) throw new Error(`進度 ${progress.progress_no} 已採購完成`)
+  if (!grouped.size) {
+    return { created: [], count: 0 }
+  }
 
   const created: Array<{ id: number; po_number: string; supplier_name: string }> = []
   let seq = 1
@@ -5758,6 +5759,9 @@ app.post('/api/order-intake/:id/generate-po', authMiddleware, requirePerm('po.cr
     let payload: any = {}
     try { payload = await c.req.json() } catch { payload = {} }
     const result = await generatePurchaseOrdersFromProgress(c.req.param('id'), c.get('user'), payload)
+    if (!result.count) {
+      return c.json({ error: '此交期進度已無待採購數量（可能已採購完成）', ...result }, 409)
+    }
     return c.json(result, 201)
   } catch (e: any) {
     const message = String(e.message)
@@ -7077,8 +7081,8 @@ app.patch('/api/delivery-notes/:id/status', authMiddleware, async c => {
   } catch (e: any) {
     const message = String(e.message || '')
     if (message === 'DN_NOT_FOUND') return c.json({ error: 'Not found' }, 404)
-    if (message === 'INVALID_CONFIRM_TRANSITION') return c.json({ error: '只有草稿出貨單可以審核' }, 400)
-    if (message === 'INVALID_SHIP_TRANSITION') return c.json({ error: '出貨前需先審核出貨單' }, 400)
+    if (message === 'INVALID_CONFIRM_TRANSITION') return c.json({ error: '只有草稿出貨單可以確認' }, 400)
+    if (message === 'INVALID_SHIP_TRANSITION') return c.json({ error: '出貨前需先確認出貨單' }, 400)
     return c.json({ error: message }, 500)
   }
 })
